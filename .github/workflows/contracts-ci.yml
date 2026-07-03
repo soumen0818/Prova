@@ -1,0 +1,28 @@
+name: contracts-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ['contracts/**', '.github/workflows/contracts-ci.yml']
+  pull_request:
+    branches: [main]
+    paths: ['contracts/**', '.github/workflows/contracts-ci.yml']
+
+defaults:
+  run:
+    working-directory: contracts
+
+jobs:
+  build:
+    name: Fmt, clippy & wasm build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --target wasm32-unknown-unknown --release

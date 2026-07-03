@@ -1,0 +1,14 @@
+[package]
+name = "prova-verifier"
+version = { workspace = true }
+edition = { workspace = true }
+description = "Prova on-chain verifier: Groth16 proof check, nullifier registry, commitment store."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "22"
+
+[dev-dependencies]
+soroban-sdk = { version = "22", features = ["testutils"] }

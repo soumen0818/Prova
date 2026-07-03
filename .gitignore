@@ -1,0 +1,29 @@
+# --- Prova monorepo root ignores ---
+# (each subproject also has its own .gitignore for toolchain-specific files)
+
+# Internal planning docs — not tracked in git
+Docs/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+*.log
+
+# Env / secrets (subprojects keep their own .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+
+# Rust
+target/
+
+# Go
+bin/
+
+# Build output
+dist/
+build/

@@ -1,0 +1,33 @@
+name: circuits-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ['circuits/**', '.github/workflows/circuits-ci.yml']
+  pull_request:
+    branches: [main]
+    paths: ['circuits/**', '.github/workflows/circuits-ci.yml']
+
+defaults:
+  run:
+    working-directory: circuits
+
+jobs:
+  build:
+    name: Install circom & compile circuits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: circuits/package-lock.json
+      - name: Install circom
+        run: |
+          curl -L https://github.com/iden3/circom/releases/latest/download/circom-linux-amd64 -o /usr/local/bin/circom
+          chmod +x /usr/local/bin/circom
+          circom --version
+      - run: npm ci
+      - name: Compile circuits
+        run: npm run compile

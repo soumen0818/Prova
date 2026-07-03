@@ -8,13 +8,11 @@ set -euo pipefail
 
 IDENTITY="${STELLAR_IDENTITY:-prova-test}"
 NETWORK="${STELLAR_NETWORK:-testnet}"
-WASM="target/wasm32-unknown-unknown/release/prova_verifier.wasm"
+# soroban-sdk 22 / stellar-cli 27 emit to the wasm32v1-none target dir.
+WASM="target/wasm32v1-none/release/prova_verifier.wasm"
 
-echo "Building contract (release wasm)..."
-stellar contract build
-
-echo "Optimizing..."
-stellar contract optimize --wasm "$WASM" || true
+echo "Building + optimizing contract (release wasm)..."
+stellar contract build --optimize
 
 echo "Deploying to $NETWORK as $IDENTITY..."
 stellar contract deploy \

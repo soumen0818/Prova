@@ -33,11 +33,7 @@ pub struct Verifier;
 #[contractimpl]
 impl Verifier {
     /// Submit one private transfer: verify, reject replays, record commitment, emit event.
-    pub fn submit(
-        env: Env,
-        commitment: BytesN<32>,
-        nullifier: BytesN<32>,
-    ) -> Result<(), Error> {
+    pub fn submit(env: Env, commitment: BytesN<32>, nullifier: BytesN<32>) -> Result<(), Error> {
         let nullifier_key = DataKey::Nullifier(nullifier.clone());
         if env.storage().persistent().has(&nullifier_key) {
             return Err(Error::NullifierAlreadyUsed);

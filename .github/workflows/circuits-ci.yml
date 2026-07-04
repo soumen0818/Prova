@@ -10,24 +10,16 @@ on:
 
 defaults:
   run:
-    working-directory: circuits
+    working-directory: circuits/prover
 
 jobs:
-  build:
-    name: Install circom & compile circuits
+  prover:
+    name: BLS12-381 Groth16 prover (arkworks)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: circuits/package-lock.json
-      - name: Install circom
-        run: |
-          curl -L https://github.com/iden3/circom/releases/latest/download/circom-linux-amd64 -o /usr/local/bin/circom
-          chmod +x /usr/local/bin/circom
-          circom --version
-      - run: npm ci
-      - name: Compile circuits
-        run: npm run compile
+          components: rustfmt
+      - run: cargo fmt --all --check
+      - run: cargo test

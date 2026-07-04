@@ -10,6 +10,7 @@ import type { ComponentType } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, GlassIconButton, Screen } from '@/components/ui';
+import { env } from '@/config/env';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
@@ -89,6 +90,7 @@ export default function HomeScreen() {
         Prova design system is live — Urbanist type, chartreuse accent, glass controls, dark
         surfaces.
       </Text>
+      <Text style={styles.note}>{`@prova/shared v${env.schemaVersion} · ${env.network}`}</Text>
     </Screen>
   );
 }

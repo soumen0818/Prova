@@ -3,10 +3,10 @@ name: mobile-ci
 on:
   push:
     branches: [main]
-    paths: ['mobile/**', '.github/workflows/mobile-ci.yml']
+    paths: ['mobile/**', 'shared/**', '.github/workflows/mobile-ci.yml']
   pull_request:
     branches: [main]
-    paths: ['mobile/**', '.github/workflows/mobile-ci.yml']
+    paths: ['mobile/**', 'shared/**', '.github/workflows/mobile-ci.yml']
 
 defaults:
   run:
@@ -23,6 +23,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+      # mobile consumes @prova/shared via a local file: dependency; build it first so its
+      # dist/ exists for typecheck and bundling.
+      - name: Build @prova/shared
+        working-directory: shared
+        run: |
+          npm ci
+          npm run build
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint

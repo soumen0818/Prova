@@ -3,6 +3,10 @@ pragma circom 2.1.6;
 include "circomlib/circuits/poseidon.circom";
 include "circomlib/circuits/comparators.circom";
 
+// ⚠️ SUPERSEDED (Phase 1): Soroban has no BN254 host functions, so the ZK stack was moved to
+// BLS12-381 Groth16 via arkworks. The live circuit + prover is `circuits/prover/` (Rust).
+// This BN254 Circom circuit is kept for reference only. See Docs/phase1-findings.md.
+//
 // Prova compliance circuit — Phase 0 skeleton.
 //
 // Proves, without revealing the amount:

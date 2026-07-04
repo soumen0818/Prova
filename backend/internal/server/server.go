@@ -24,6 +24,7 @@ func New(logger *slog.Logger, cfg config.Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
+	mux.HandleFunc("/", h.notFound)
 
 	return logging(logger, mux)
 }

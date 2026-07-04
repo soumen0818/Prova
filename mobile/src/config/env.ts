@@ -7,8 +7,11 @@
  * secure enclave (see lib/secure-store.ts).
  */
 
+import { SCHEMA_VERSION, type StellarNetwork } from '@prova/shared';
+
 export type AppEnv = 'development' | 'staging' | 'production';
-export type StellarNetwork = 'testnet' | 'mainnet';
+// StellarNetwork is sourced from the shared cross-component contract (@prova/shared).
+export type { StellarNetwork };
 
 function str(value: string | undefined, fallback: string): string {
   return value && value.length > 0 ? value : fallback;
@@ -36,6 +39,8 @@ const STELLAR_DEFAULTS: Record<
 export const env = {
   appEnv,
   isProd: appEnv === 'production',
+  /** Version of the shared cross-component contract (@prova/shared) this build was compiled against. */
+  schemaVersion: SCHEMA_VERSION,
   network,
   stellar: {
     horizonUrl: str(process.env.EXPO_PUBLIC_HORIZON_URL, STELLAR_DEFAULTS[network].horizon),

@@ -23,6 +23,8 @@ target/
 
 # Go
 bin/
+# ...but Rust source bin dirs (src/bin/*.rs) are source, not build output
+!**/src/bin/
 
 # Build output
 dist/

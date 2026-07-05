@@ -24,6 +24,7 @@ rand = "0.8"
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ark-ed-on-bls12-381 = { version = "0.5", features = ["r1cs"] }
 
 [profile.release]
 opt-level = 3

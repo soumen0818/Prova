@@ -1,12 +1,15 @@
-//! Prova Phase 1 circuit + prover (arkworks, BLS12-381 Groth16).
+//! Prova circuit + prover (arkworks, BLS12-381 Groth16). Circuit v2 (Phase 3, KYC-inclusive).
 //!
-//! Circuit v1 proves, without revealing the amount:
+//! Proves, without revealing the amount or identity:
 //!   1. `1 <= amount <= MAX_AMOUNT`                       (range check via bit-decomposition)
 //!   2. `commitment = Poseidon(amount, secret)`
 //!   3. `nullifier  = Poseidon(secret, transferId)`       (anti-replay, unlinkable)
+//!   4. the anchor signed `(user_id, kyc_level, expiry)`  (Jubjub EdDSA verified in-circuit; see
+//!      `credential`), with `user_id = Poseidon(secret, domain)`, `expiry >= currentTime`, and
+//!      `kyc_level >= MIN_KYC_LEVEL`.
 //!
-//! Public inputs (in order): `[commitment, nullifier]`. Everything else is a private witness.
-//! The KYC/EdDSA check is Phase 3 and intentionally not here.
+//! Public inputs (in order): `[commitment, nullifier, anchorPk.x, anchorPk.y, currentTime]`.
+//! Everything else (amount, secret, transferId, kyc_level, expiry, signature) is a private witness.
 
 use ark_bls12_381::Fr;
 use ark_crypto_primitives::sponge::{
@@ -16,9 +19,21 @@ use ark_crypto_primitives::sponge::{
     },
     Absorb, CryptographicSponge, FieldBasedCryptographicSponge,
 };
+use ark_ec::AffineRepr;
+use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsAffine, Fr as JubjubFr};
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, fields::FieldVar};
+use ark_r1cs_std::{
+    alloc::AllocVar, convert::ToBitsGadget, eq::EqGadget, fields::fp::FpVar, fields::FieldVar,
+    groups::CurveVar,
+};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+
+pub mod credential;
+
+/// Bit width for timestamp differences in the expiry check (unix seconds fit well under 2^40).
+const TIME_BITS: usize = 40;
+/// Bit width for the kyc-level margin (levels are tiny).
+const KYC_BITS: usize = 8;
 
 /// UAE within-limit ceiling (FEMA/UAE placeholder). Frozen for circuit v1.
 pub const MAX_AMOUNT: u64 = 9999;
@@ -52,9 +67,15 @@ pub fn poseidon_config<F: PrimeField>() -> PoseidonConfig<F> {
 
 /// Native 2->1 Poseidon hash, matching the in-circuit gadget exactly.
 pub fn poseidon_hash2<F: PrimeField + Absorb>(cfg: &PoseidonConfig<F>, a: F, b: F) -> F {
+    poseidon_hash_n(cfg, &[a, b])
+}
+
+/// Native variable-arity Poseidon hash (absorb all inputs, squeeze one), matching the sponge gadget.
+pub fn poseidon_hash_n<F: PrimeField + Absorb>(cfg: &PoseidonConfig<F>, inputs: &[F]) -> F {
     let mut sponge = PoseidonSponge::new(cfg);
-    sponge.absorb(&a);
-    sponge.absorb(&b);
+    for x in inputs {
+        sponge.absorb(x);
+    }
     sponge.squeeze_native_field_elements(1)[0]
 }
 
@@ -77,14 +98,31 @@ pub struct TransferCircuit {
     pub amount: Option<Fr>,
     pub secret: Option<Fr>,
     pub transfer_id: Option<Fr>,
+    pub kyc_level: Option<u64>,
+    pub expiry: Option<u64>,
+    pub sig_r: Option<EdwardsAffine>,
+    pub sig_s: Option<JubjubFr>,
     // Public inputs.
     pub commitment: Option<Fr>,
     pub nullifier: Option<Fr>,
+    pub anchor_pk: Option<EdwardsAffine>,
+    pub current_time: Option<u64>,
 }
 
 impl TransferCircuit {
-    /// Build a fully-assigned circuit from private inputs, computing the public outputs natively.
-    pub fn from_inputs(cfg: PoseidonConfig<Fr>, amount: Fr, secret: Fr, transfer_id: Fr) -> Self {
+    /// Build a fully-assigned circuit from private inputs + an anchor-attested credential.
+    ///
+    /// The credential MUST have been issued for `user_id = credential::user_id(cfg, secret)` by the
+    /// anchor whose public key is `anchor_pk`, or the in-circuit signature check will fail.
+    pub fn new(
+        cfg: PoseidonConfig<Fr>,
+        amount: Fr,
+        secret: Fr,
+        transfer_id: Fr,
+        cred: &credential::Credential,
+        anchor_pk: EdwardsAffine,
+        current_time: u64,
+    ) -> Self {
         let commitment = commitment_of(&cfg, amount, secret);
         let nullifier = nullifier_of(&cfg, secret, transfer_id);
         Self {
@@ -93,38 +131,47 @@ impl TransferCircuit {
             amount: Some(amount),
             secret: Some(secret),
             transfer_id: Some(transfer_id),
+            kyc_level: Some(cred.kyc_level),
+            expiry: Some(cred.expiry),
+            sig_r: Some(cred.sig.r),
+            sig_s: Some(cred.sig.s),
             commitment: Some(commitment),
             nullifier: Some(nullifier),
+            anchor_pk: Some(anchor_pk),
+            current_time: Some(current_time),
         }
     }
 
-    /// A circuit shape with no assignments — used for the trusted setup.
-    pub fn empty(cfg: PoseidonConfig<Fr>) -> Self {
-        Self {
-            cfg,
-            max_amount: MAX_AMOUNT,
-            amount: None,
-            secret: None,
-            transfer_id: None,
-            commitment: None,
-            nullifier: None,
-        }
-    }
-
-    /// The public inputs in verification order: `[commitment, nullifier]`.
-    pub fn public_inputs(&self) -> Option<[Fr; 2]> {
-        Some([self.commitment?, self.nullifier?])
+    /// The public inputs in verification order: `[commitment, nullifier, pk.x, pk.y, current_time]`.
+    pub fn public_inputs(&self) -> Option<Vec<Fr>> {
+        let pk = self.anchor_pk?;
+        Some(vec![
+            self.commitment?,
+            self.nullifier?,
+            pk.x,
+            pk.y,
+            Fr::from(self.current_time?),
+        ])
     }
 }
 
 impl ConstraintSynthesizer<Fr> for TransferCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
-        // Public inputs (order matters: must match verifier).
+        // Public inputs (order matters: must match the verifier / VK IC layout).
         let commitment = FpVar::new_input(cs.clone(), || {
             self.commitment.ok_or(SynthesisError::AssignmentMissing)
         })?;
         let nullifier = FpVar::new_input(cs.clone(), || {
             self.nullifier.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        // Anchor public key (x, y) — 2 public inputs, so the contract can check the trusted set.
+        let anchor_pk = EdwardsVar::new_input(cs.clone(), || {
+            self.anchor_pk.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        let current_time = FpVar::new_input(cs.clone(), || {
+            Ok(Fr::from(
+                self.current_time.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
         })?;
 
         // Private witnesses.
@@ -137,37 +184,90 @@ impl ConstraintSynthesizer<Fr> for TransferCircuit {
         let transfer_id = FpVar::new_witness(cs.clone(), || {
             self.transfer_id.ok_or(SynthesisError::AssignmentMissing)
         })?;
+        let kyc_level = FpVar::new_witness(cs.clone(), || {
+            Ok(Fr::from(
+                self.kyc_level.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
+        })?;
+        let expiry = FpVar::new_witness(cs.clone(), || {
+            Ok(Fr::from(
+                self.expiry.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
+        })?;
+        let sig_r = EdwardsVar::new_witness(cs.clone(), || {
+            self.sig_r.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        let sig_s = FpVar::new_witness(cs.clone(), || {
+            Ok(credential::scalar_to_field(
+                self.sig_s.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
+        })?;
 
-        // Range check: 1 <= amount <= max_amount.
-        //
-        // Enforced as two non-negative differences that must each fit in RANGE_BITS bits:
-        //   lo = amount - 1        must be in [0, 2^RANGE_BITS)  => amount >= 1
-        //   hi = max_amount - amount must be in [0, 2^RANGE_BITS) => amount <= max_amount
-        // Because max_amount (9999) < 2^RANGE_BITS, any out-of-range or field-wrapped amount makes
-        // one difference exceed RANGE_BITS bits and fails the top-bits-zero check.
+        // --- 1. Range check: 1 <= amount <= max_amount (two non-negative RANGE_BITS-bounded diffs).
         let one = FpVar::constant(Fr::from(1u64));
         let max = FpVar::constant(Fr::from(self.max_amount));
-        let lo = &amount - &one;
-        let hi = &max - &amount;
-        let _ = lo.to_bits_le_with_top_bits_zero(RANGE_BITS)?;
-        let _ = hi.to_bits_le_with_top_bits_zero(RANGE_BITS)?;
+        let _ = (&amount - &one).to_bits_le_with_top_bits_zero(RANGE_BITS)?;
+        let _ = (&max - &amount).to_bits_le_with_top_bits_zero(RANGE_BITS)?;
 
-        // commitment = Poseidon(amount, secret)
-        let mut sponge_c = PoseidonSpongeVar::new(cs.clone(), &self.cfg);
-        sponge_c.absorb(&amount)?;
-        sponge_c.absorb(&secret)?;
-        let computed_commitment = sponge_c.squeeze_field_elements(1)?;
-        computed_commitment[0].enforce_equal(&commitment)?;
+        // --- 2. commitment = Poseidon(amount, secret)
+        let computed_commitment = poseidon_sponge(cs.clone(), &self.cfg, &[&amount, &secret])?;
+        computed_commitment.enforce_equal(&commitment)?;
 
-        // nullifier = Poseidon(secret, transfer_id)
-        let mut sponge_n = PoseidonSpongeVar::new(cs.clone(), &self.cfg);
-        sponge_n.absorb(&secret)?;
-        sponge_n.absorb(&transfer_id)?;
-        let computed_nullifier = sponge_n.squeeze_field_elements(1)?;
-        computed_nullifier[0].enforce_equal(&nullifier)?;
+        // --- 3. nullifier = Poseidon(secret, transfer_id)
+        let computed_nullifier = poseidon_sponge(cs.clone(), &self.cfg, &[&secret, &transfer_id])?;
+        computed_nullifier.enforce_equal(&nullifier)?;
+
+        // --- 4. KYC credential: the anchor signed (user_id, kyc_level, expiry), verified in-circuit.
+        // user_id = Poseidon(secret, USER_ID_DOMAIN) — binds the credential to THIS transfer's secret.
+        let domain = FpVar::constant(Fr::from(credential::USER_ID_DOMAIN_CONST));
+        let user_id = poseidon_sponge(cs.clone(), &self.cfg, &[&secret, &domain])?;
+        // m = Poseidon(user_id, kyc_level, expiry)
+        let m = poseidon_sponge(cs.clone(), &self.cfg, &[&user_id, &kyc_level, &expiry])?;
+        // Verify the Schnorr/EdDSA signature over Jubjub: s·G == R + e·pk, e = Poseidon(R,pk,m).
+        verify_signature(cs.clone(), &self.cfg, &anchor_pk, &sig_r, &sig_s, &m)?;
+
+        // --- 5. expiry >= current_time  (expiry - current_time is a non-negative TIME_BITS value).
+        let _ = (&expiry - &current_time).to_bits_le_with_top_bits_zero(TIME_BITS)?;
+
+        // --- 6. kyc_level >= MIN_KYC_LEVEL.
+        let min_level = FpVar::constant(Fr::from(credential::MIN_KYC_LEVEL));
+        let _ = (&kyc_level - &min_level).to_bits_le_with_top_bits_zero(KYC_BITS)?;
 
         Ok(())
     }
+}
+
+/// Poseidon sponge over field-var inputs (absorb all, squeeze one) — the in-circuit hash.
+fn poseidon_sponge(
+    cs: ConstraintSystemRef<Fr>,
+    cfg: &PoseidonConfig<Fr>,
+    inputs: &[&FpVar<Fr>],
+) -> Result<FpVar<Fr>, SynthesisError> {
+    let mut sponge = PoseidonSpongeVar::new(cs, cfg);
+    for x in inputs {
+        sponge.absorb(*x)?;
+    }
+    Ok(sponge.squeeze_field_elements(1)?[0].clone())
+}
+
+/// In-circuit Schnorr/EdDSA verification over Jubjub: enforces `s·G == R + e·pk`, where
+/// `e = Poseidon(R.x, R.y, pk.x, pk.y, m)`. Native counterpart: `credential::verify`.
+fn verify_signature(
+    cs: ConstraintSystemRef<Fr>,
+    cfg: &PoseidonConfig<Fr>,
+    pk: &EdwardsVar,
+    r: &EdwardsVar,
+    s: &FpVar<Fr>,
+    m: &FpVar<Fr>,
+) -> Result<(), SynthesisError> {
+    let e = poseidon_sponge(cs.clone(), cfg, &[&r.x, &r.y, &pk.x, &pk.y, m])?;
+    let e_bits = e.to_bits_le()?;
+    let s_bits = s.to_bits_le()?;
+    let generator = EdwardsVar::new_constant(cs, EdwardsAffine::generator())?;
+    let lhs = generator.scalar_mul_le(s_bits.iter())?; // s·G
+    let e_pk = pk.scalar_mul_le(e_bits.iter())?; // e·pk
+    let rhs = r + &e_pk; // R + e·pk
+    lhs.enforce_equal(&rhs)
 }
 
 /// Serialization to the exact byte layout Soroban's BLS12-381 host functions expect.
@@ -246,18 +346,16 @@ pub mod soroban_ser {
     }
 
     /// Proof + public-input blob for the test vector:
-    /// `A(96) ‖ B(192) ‖ C(96) ‖ commitment(32) ‖ nullifier(32)`.
-    pub fn proof_blob(
-        proof: &Proof<ark_bls12_381::Bls12_381>,
-        commitment: &Fr,
-        nullifier: &Fr,
-    ) -> Vec<u8> {
+    /// `A(96) ‖ B(192) ‖ C(96) ‖ public_inputs(32 each)`.
+    /// Circuit v2 public inputs: `[commitment, nullifier, anchorPk.x, anchorPk.y, currentTime]`.
+    pub fn proof_blob(proof: &Proof<ark_bls12_381::Bls12_381>, public_inputs: &[Fr]) -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(&g1_bytes(&proof.a));
         v.extend_from_slice(&g2_bytes(&proof.b));
         v.extend_from_slice(&g1_bytes(&proof.c));
-        v.extend_from_slice(&fr_bytes(commitment));
-        v.extend_from_slice(&fr_bytes(nullifier));
+        for pi in public_inputs {
+            v.extend_from_slice(&fr_bytes(pi));
+        }
         v
     }
 }
@@ -266,36 +364,119 @@ pub mod soroban_ser {
 mod tests {
     use super::*;
     use ark_relations::r1cs::ConstraintSystem;
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
 
-    #[test]
-    fn valid_witness_satisfies_constraints() {
+    const NOW: u64 = 1_700_000_000;
+    const LATER: u64 = 2_000_000_000;
+
+    /// Build a fully valid circuit: a credential issued by `anchor` for `user_id(secret)`.
+    fn valid_circuit(seed: u64, amount: u64) -> (TransferCircuit, credential::AnchorKey) {
         let cfg = poseidon_config::<Fr>();
-        let circuit =
-            TransferCircuit::from_inputs(cfg, Fr::from(500u64), Fr::from(1234u64), Fr::from(99u64));
+        let mut rng = StdRng::seed_from_u64(seed);
+        let anchor = credential::AnchorKey::generate(&mut rng);
+        let secret = Fr::from(987654321u64 + seed);
+        let uid = credential::user_id(&cfg, secret);
+        let cred = credential::issue(&cfg, &anchor, uid, 2, LATER, &mut rng);
+        let circuit = TransferCircuit::new(
+            cfg,
+            Fr::from(amount),
+            secret,
+            Fr::from(555u64),
+            &cred,
+            anchor.pk,
+            NOW,
+        );
+        (circuit, anchor)
+    }
+
+    fn satisfied(circuit: TransferCircuit) -> bool {
         let cs = ConstraintSystem::<Fr>::new_ref();
         circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap(), "valid witness must satisfy");
+        cs.is_satisfied().unwrap()
+    }
+
+    #[test]
+    fn valid_kyc_transfer_satisfies() {
+        let (circuit, _) = valid_circuit(1, 500);
+        assert!(satisfied(circuit), "valid KYC transfer must satisfy");
     }
 
     #[test]
     fn out_of_range_amount_fails() {
-        let cfg = poseidon_config::<Fr>();
-        // amount = 10000 > MAX_AMOUNT (9999)
-        let circuit =
-            TransferCircuit::from_inputs(cfg, Fr::from(10000u64), Fr::from(1u64), Fr::from(2u64));
-        let cs = ConstraintSystem::<Fr>::new_ref();
-        circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(!cs.is_satisfied().unwrap(), "out-of-range amount must fail");
+        let (circuit, _) = valid_circuit(2, 10_000); // > MAX_AMOUNT
+        assert!(!satisfied(circuit), "out-of-range amount must fail");
     }
 
     #[test]
     fn zero_amount_fails() {
+        let (circuit, _) = valid_circuit(3, 0);
+        assert!(!satisfied(circuit), "zero amount must fail");
+    }
+
+    #[test]
+    fn expired_credential_fails() {
         let cfg = poseidon_config::<Fr>();
-        let circuit =
-            TransferCircuit::from_inputs(cfg, Fr::from(0u64), Fr::from(1u64), Fr::from(2u64));
-        let cs = ConstraintSystem::<Fr>::new_ref();
-        circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(!cs.is_satisfied().unwrap(), "zero amount must fail");
+        let mut rng = StdRng::seed_from_u64(4);
+        let anchor = credential::AnchorKey::generate(&mut rng);
+        let secret = Fr::from(111u64);
+        let uid = credential::user_id(&cfg, secret);
+        // expiry is BEFORE current time.
+        let cred = credential::issue(&cfg, &anchor, uid, 2, NOW - 1, &mut rng);
+        let circuit = TransferCircuit::new(
+            cfg,
+            Fr::from(100u64),
+            secret,
+            Fr::from(9u64),
+            &cred,
+            anchor.pk,
+            NOW,
+        );
+        assert!(!satisfied(circuit), "expired credential must fail");
+    }
+
+    #[test]
+    fn forged_signature_fails() {
+        let cfg = poseidon_config::<Fr>();
+        let mut rng = StdRng::seed_from_u64(5);
+        let real_anchor = credential::AnchorKey::generate(&mut rng);
+        let attacker = credential::AnchorKey::generate(&mut rng);
+        let secret = Fr::from(222u64);
+        let uid = credential::user_id(&cfg, secret);
+        // Signed by the attacker but checked against the real anchor's public key.
+        let cred = credential::issue(&cfg, &attacker, uid, 2, LATER, &mut rng);
+        let circuit = TransferCircuit::new(
+            cfg,
+            Fr::from(100u64),
+            secret,
+            Fr::from(9u64),
+            &cred,
+            real_anchor.pk,
+            NOW,
+        );
+        assert!(!satisfied(circuit), "forged signature must fail");
+    }
+
+    #[test]
+    fn wrong_user_credential_fails() {
+        // A credential issued for a DIFFERENT user's secret must not prove this transfer.
+        let cfg = poseidon_config::<Fr>();
+        let mut rng = StdRng::seed_from_u64(6);
+        let anchor = credential::AnchorKey::generate(&mut rng);
+        let other_uid = credential::user_id(&cfg, Fr::from(999u64));
+        let cred = credential::issue(&cfg, &anchor, other_uid, 2, LATER, &mut rng);
+        let circuit = TransferCircuit::new(
+            cfg,
+            Fr::from(100u64),
+            Fr::from(222u64), // different secret than the credential's user
+            Fr::from(9u64),
+            &cred,
+            anchor.pk,
+            NOW,
+        );
+        assert!(
+            !satisfied(circuit),
+            "credential bound to another user must fail"
+        );
     }
 
     #[test]
@@ -303,36 +484,21 @@ mod tests {
         use ark_bls12_381::Bls12_381;
         use ark_groth16::Groth16;
         use ark_snark::SNARK;
-        use ark_std::rand::{rngs::StdRng, SeedableRng};
 
-        let cfg = poseidon_config::<Fr>();
         let mut rng = StdRng::seed_from_u64(42);
-
-        // Trusted setup uses a valid dummy assignment (structure is value-independent).
-        let setup_circuit = TransferCircuit::from_inputs(
-            cfg.clone(),
-            Fr::from(1u64),
-            Fr::from(1u64),
-            Fr::from(1u64),
-        );
+        let (setup_circuit, _) = valid_circuit(10, 1);
         let (pk, vk) =
             Groth16::<Bls12_381>::circuit_specific_setup(setup_circuit, &mut rng).unwrap();
 
-        // Prove a real transfer.
-        let circuit = TransferCircuit::from_inputs(
-            cfg.clone(),
-            Fr::from(4200u64),
-            Fr::from(987654321u64),
-            Fr::from(555u64),
-        );
+        let (circuit, _) = valid_circuit(11, 4200);
         let public = circuit.public_inputs().unwrap();
         let proof = Groth16::<Bls12_381>::prove(&pk, circuit, &mut rng).unwrap();
 
-        // Valid proof + correct public inputs must verify.
         assert!(Groth16::<Bls12_381>::verify(&vk, &public, &proof).unwrap());
 
         // Tampered public input (wrong commitment) must be rejected.
-        let tampered = [public[0] + Fr::from(1u64), public[1]];
+        let mut tampered = public.clone();
+        tampered[0] += Fr::from(1u64);
         assert!(!Groth16::<Bls12_381>::verify(&vk, &tampered, &proof).unwrap());
     }
 }

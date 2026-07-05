@@ -17,6 +17,7 @@ import (
 	"github.com/prova/backend/internal/anchor"
 	"github.com/prova/backend/internal/chain"
 	"github.com/prova/backend/internal/config"
+	"github.com/prova/backend/internal/kyc"
 	"github.com/prova/backend/internal/server"
 	"github.com/prova/backend/internal/store"
 	"github.com/prova/backend/internal/transfers"
@@ -89,6 +90,15 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) serv
 		deps.Anchor = anchor.New(cfg.AnchorHomeDomain)
 		deps.SEP10Key = kp
 		logger.Info("anchor client ready", "home_domain", cfg.AnchorHomeDomain, "account", kp.Address())
+	}
+
+	// KYC credential issuer (anchor side) — signs via the prover CLI.
+	issuer := kyc.CLIIssuer{ProverBin: cfg.ProverBin, AnchorSeed: cfg.AnchorSeed}
+	if pk, perr := issuer.AnchorPublicKey(ctx); perr != nil {
+		logger.Warn("prover CLI unavailable — /kyc routes disabled", "err", perr, "bin", cfg.ProverBin)
+	} else {
+		deps.KYC = issuer
+		logger.Info("kyc issuer ready", "anchor_pk_x", pk.X)
 	}
 
 	return deps

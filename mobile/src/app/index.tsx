@@ -86,7 +86,11 @@ export default function HomeScreen() {
           trailing={<ArrowDownToLine color={Palette.onAccent} size={18} />}
           onPress={() => router.push('/deposit')}
         />
-        <Button label="Add recipient" variant="secondary" />
+        <Button
+          label="Verify identity (KYC)"
+          variant="secondary"
+          onPress={() => router.push('/kyc')}
+        />
         <Button label="Learn how proofs work" variant="glass" />
       </View>
       <Text style={styles.note}>

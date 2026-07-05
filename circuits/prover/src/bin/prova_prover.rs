@@ -1,25 +1,33 @@
-//! Prova Phase 1 prover CLI.
+//! Prova prover CLI (Phase 3 — KYC-inclusive).
 //!
-//! Runs the BLS12-381 Groth16 trusted setup, proves one transfer, verifies it off-chain, and
-//! writes two byte blobs in Soroban's BLS12-381 encoding:
-//!   - `verifying_key.bin` — embedded by the on-chain verifier contract
-//!   - `sample_proof.bin`  — a valid proof + public inputs, used as the contract's test vector
+//! Subcommands:
+//!   (default)          setup + prove a KYC transfer; export VK + sample proof + anchor pubkey
+//!   issue-credential   the anchor signs (user_id, kyc_level, expiry) → prints a credential as JSON
 //!
-//! Usage:
-//!   prova-prover --out DIR [--amount A] [--secret S] [--transfer-id T] [--seed N]
+//! Default flow:
+//!   prova-prover --out DIR [--amount A] [--secret S] [--transfer-id T]
+//!                [--kyc-level L] [--expiry E] [--now N] [--seed K] [--anchor-seed HEX]
 //!
-//! NOTE: the setup randomness here is seeded for reproducible testnet artifacts. This is the
-//! "toxic waste" — acceptable for testnet only. Mainnet uses the public ceremony (Phase 5).
+//! Credential issuance (used by the backend SEP-12 handoff):
+//!   prova-prover issue-credential --user-id HEX --kyc-level L --expiry E [--anchor-seed HEX]
+//!
+//! Setup randomness is seeded for reproducible testnet artifacts (toxic waste — testnet only).
 
 use std::fs;
 use std::path::PathBuf;
 
 use ark_bls12_381::{Bls12_381, Fr};
+use ark_ed_on_bls12_381::Fr as JubjubFr;
+use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
 use ark_snark::SNARK;
 use ark_std::rand::{rngs::StdRng, SeedableRng};
 
-use prova_prover::{poseidon_config, soroban_ser, TransferCircuit};
+use prova_prover::{credential, poseidon_config, soroban_ser, TransferCircuit};
+
+/// Fixed dev anchor secret seed (32 bytes hex). The backend uses the same to reproduce the key.
+const DEFAULT_ANCHOR_SEED: &str =
+    "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
 fn arg(name: &str, default: &str) -> String {
     let args: Vec<String> = std::env::args().collect();
@@ -33,35 +41,108 @@ fn arg(name: &str, default: &str) -> String {
     default.to_string()
 }
 
+// --- hex helpers (32-byte big-endian, matching Soroban scalar encoding) ---
+
+fn fq_hex(f: &Fr) -> String {
+    hex::encode(soroban_ser::fr_bytes(f))
+}
+fn fq_from_hex(s: &str) -> Fr {
+    Fr::from_be_bytes_mod_order(&hex::decode(s).expect("hex"))
+}
+fn jfr_hex(f: &JubjubFr) -> String {
+    let b = f.into_bigint().to_bytes_be();
+    let mut o = [0u8; 32];
+    o[32 - b.len()..].copy_from_slice(&b);
+    hex::encode(o)
+}
+fn anchor_from_seed(seed_hex: &str) -> credential::AnchorKey {
+    let sk = JubjubFr::from_be_bytes_mod_order(&hex::decode(seed_hex).expect("anchor seed hex"));
+    credential::AnchorKey::from_secret(sk)
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let sub = args.get(1).map(String::as_str).unwrap_or("");
+    match sub {
+        "issue-credential" => issue_credential(),
+        "anchor-pubkey" => anchor_pubkey(),
+        _ => setup_and_prove(),
+    }
+}
+
+/// Print the anchor's Jubjub public key `{x, y}` as JSON (for the backend's trusted-anchor set).
+fn anchor_pubkey() {
+    let anchor = anchor_from_seed(&arg("--anchor-seed", DEFAULT_ANCHOR_SEED));
+    println!(
+        "{{\"x\":\"{}\",\"y\":\"{}\"}}",
+        fq_hex(&anchor.pk.x),
+        fq_hex(&anchor.pk.y),
+    );
+}
+
+/// The anchor signs (user_id, kyc_level, expiry) and prints the credential + anchor pubkey as JSON.
+fn issue_credential() {
+    let cfg = poseidon_config::<Fr>();
+    let anchor = anchor_from_seed(&arg("--anchor-seed", DEFAULT_ANCHOR_SEED));
+    let user_id = fq_from_hex(&arg("--user-id", &fq_hex(&Fr::from(0u64))));
+    let kyc_level: u64 = arg("--kyc-level", "2").parse().expect("kyc-level");
+    let expiry: u64 = arg("--expiry", "2000000000").parse().expect("expiry");
+
+    let mut rng = StdRng::from_entropy();
+    let cred = credential::issue(&cfg, &anchor, user_id, kyc_level, expiry, &mut rng);
+
+    println!(
+        "{{\"userId\":\"{}\",\"kycLevel\":{},\"expiry\":{},\"sigRx\":\"{}\",\"sigRy\":\"{}\",\"sigS\":\"{}\",\"anchorPkX\":\"{}\",\"anchorPkY\":\"{}\"}}",
+        fq_hex(&user_id),
+        kyc_level,
+        expiry,
+        fq_hex(&cred.sig.r.x),
+        fq_hex(&cred.sig.r.y),
+        jfr_hex(&cred.sig.s),
+        fq_hex(&anchor.pk.x),
+        fq_hex(&anchor.pk.y),
+    );
+}
+
+/// Setup + prove a KYC transfer; export the VK, a sample proof, and the anchor public key.
+fn setup_and_prove() {
     let out = PathBuf::from(arg("--out", "artifacts"));
     let amount: u64 = arg("--amount", "4200").parse().expect("amount");
     let secret: u64 = arg("--secret", "987654321").parse().expect("secret");
     let transfer_id: u64 = arg("--transfer-id", "555").parse().expect("transfer-id");
+    let kyc_level: u64 = arg("--kyc-level", "2").parse().expect("kyc-level");
+    let expiry: u64 = arg("--expiry", "2000000000").parse().expect("expiry");
+    let now: u64 = arg("--now", "1700000000").parse().expect("now");
     let seed: u64 = arg("--seed", "42").parse().expect("seed");
+    let anchor_seed = arg("--anchor-seed", DEFAULT_ANCHOR_SEED);
 
     fs::create_dir_all(&out).expect("create out dir");
-    let mut rng = StdRng::seed_from_u64(seed);
     let cfg = poseidon_config::<Fr>();
+    let anchor = anchor_from_seed(&anchor_seed);
 
-    // Trusted setup (structure is value-independent; use a valid dummy assignment).
-    let setup_circuit =
-        TransferCircuit::from_inputs(cfg.clone(), Fr::from(1u64), Fr::from(1u64), Fr::from(1u64));
-    let (pk, vk) =
-        Groth16::<Bls12_381>::circuit_specific_setup(setup_circuit, &mut rng).expect("setup");
+    // Anchor issues a credential for this user (user_id bound to the transfer secret).
+    let secret_fr = Fr::from(secret);
+    let user_id = credential::user_id(&cfg, secret_fr);
+    let mut cred_rng = StdRng::seed_from_u64(seed ^ 0xC0FFEE);
+    let cred = credential::issue(&cfg, &anchor, user_id, kyc_level, expiry, &mut cred_rng);
 
-    // Prove the requested transfer.
-    let circuit = TransferCircuit::from_inputs(
+    // Build the circuit and prove.
+    let circuit = TransferCircuit::new(
         cfg,
         Fr::from(amount),
-        Fr::from(secret),
+        secret_fr,
         Fr::from(transfer_id),
+        &cred,
+        anchor.pk,
+        now,
     );
     let public = circuit.public_inputs().expect("public inputs");
-    let (commitment, nullifier) = (public[0], public[1]);
+
+    let mut rng = StdRng::seed_from_u64(seed);
+    let (pk, vk) =
+        Groth16::<Bls12_381>::circuit_specific_setup(circuit.clone(), &mut rng).expect("setup");
     let proof = Groth16::<Bls12_381>::prove(&pk, circuit, &mut rng).expect("prove");
 
-    // Sanity: it must verify off-chain before we ship it on-chain.
     let ok = Groth16::<Bls12_381>::verify(&vk, &public, &proof).expect("verify");
     assert!(
         ok,
@@ -70,26 +151,35 @@ fn main() {
 
     // Export Soroban-encoded blobs.
     let vk_blob = soroban_ser::verifying_key_blob(&vk);
-    let proof_blob = soroban_ser::proof_blob(&proof, &commitment, &nullifier);
-    let vk_path = out.join("verifying_key.bin");
-    let proof_path = out.join("sample_proof.bin");
-    fs::write(&vk_path, &vk_blob).expect("write vk");
-    fs::write(&proof_path, &proof_blob).expect("write proof");
+    let proof_blob = soroban_ser::proof_blob(&proof, &public);
+    let mut anchor_pk = Vec::new();
+    anchor_pk.extend_from_slice(&soroban_ser::fr_bytes(&anchor.pk.x));
+    anchor_pk.extend_from_slice(&soroban_ser::fr_bytes(&anchor.pk.y));
 
-    println!("off-chain verify: OK");
+    fs::write(out.join("verifying_key.bin"), &vk_blob).expect("write vk");
+    fs::write(out.join("sample_proof.bin"), &proof_blob).expect("write proof");
+    fs::write(out.join("anchor_pubkey.bin"), &anchor_pk).expect("write anchor pubkey");
+
+    println!("off-chain verify: OK ({} public inputs)", public.len());
     println!(
-        "public inputs: {} (commitment), {} (nullifier)",
-        commitment, nullifier
+        "  commitment={} nullifier={}",
+        fq_hex(&public[0]),
+        fq_hex(&public[1])
     );
     println!(
-        "wrote {} ({} bytes)  [alpha 96 | -beta 192 | -gamma 192 | -delta 192 | IC {}x96]",
-        vk_path.display(),
+        "wrote {} ({} bytes)  [alpha 96 | -beta/-gamma/-delta 192 | IC {}x96]",
+        out.join("verifying_key.bin").display(),
         vk_blob.len(),
         vk.gamma_abc_g1.len()
     );
     println!(
-        "wrote {} ({} bytes)  [A 96 | B 192 | C 96 | commitment 32 | nullifier 32]",
-        proof_path.display(),
-        proof_blob.len()
+        "wrote {} ({} bytes)  [A 96 | B 192 | C 96 | {} public inputs x32]",
+        out.join("sample_proof.bin").display(),
+        proof_blob.len(),
+        public.len()
+    );
+    println!(
+        "wrote {} (64 bytes anchor pubkey x‖y)",
+        out.join("anchor_pubkey.bin").display()
     );
 }

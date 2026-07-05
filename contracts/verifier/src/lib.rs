@@ -22,9 +22,10 @@ use soroban_sdk::{
     symbol_short, vec, BytesN, Env, U256,
 };
 
-/// Frozen circuit-v1 verifying key, in Soroban BLS12-381 encoding, produced by the prova-prover CLI:
-/// `alpha(96) ‖ -beta(192) ‖ -gamma(192) ‖ -delta(192) ‖ IC0(96) ‖ IC1(96) ‖ IC2(96)`.
+/// Frozen circuit-v2 (KYC) verifying key, in Soroban BLS12-381 encoding, from the prova-prover CLI:
+/// `alpha(96) ‖ -beta(192) ‖ -gamma(192) ‖ -delta(192) ‖ IC0..IC5(96 each)`.
 /// beta/gamma/delta are pre-negated so verification is a single `pairing_check`.
+/// Public inputs (order): `[commitment, nullifier, anchorPk.x, anchorPk.y, currentTime]`.
 static VK: &[u8] = include_bytes!("verifying_key.bin");
 
 // Byte offsets into VK.
@@ -32,9 +33,12 @@ const ALPHA: usize = 0;
 const NEG_BETA: usize = 96;
 const NEG_GAMMA: usize = 288;
 const NEG_DELTA: usize = 480;
-const IC0: usize = 672;
-const IC1: usize = 768;
-const IC2: usize = 864;
+const IC0: usize = 672; // constant term
+const IC1: usize = 768; // commitment
+const IC2: usize = 864; // nullifier
+const IC3: usize = 960; // anchor pk.x
+const IC4: usize = 1056; // anchor pk.y
+const IC5: usize = 1152; // current time
 
 #[contracttype]
 pub enum DataKey {
@@ -69,18 +73,26 @@ fn vk_g2(env: &Env, off: usize) -> G2Affine {
     G2Affine::from_bytes(BytesN::from_array(env, &a))
 }
 
+/// Public inputs for circuit v2, in verification order.
+struct PublicInputs {
+    commitment: BytesN<32>,
+    nullifier: BytesN<32>,
+    anchor_pk_x: BytesN<32>,
+    anchor_pk_y: BytesN<32>,
+    current_time: BytesN<32>,
+}
+
 /// Core Groth16 check, shared by the pure `verify` view and the stateful `submit`.
 ///
 /// Reduces the Groth16 equation to a single pairing check:
 ///   `e(A,B) · e(alpha, -beta) · e(vk_x, -gamma) · e(C, -delta) == 1`
-/// where `vk_x = IC0 + commitment·IC1 + nullifier·IC2`.
+/// where `vk_x = IC0 + commitment·IC1 + nullifier·IC2 + pkx·IC3 + pky·IC4 + time·IC5`.
 fn verify_proof(
     env: &Env,
     proof_a: BytesN<96>,
     proof_b: BytesN<192>,
     proof_c: BytesN<96>,
-    commitment: &BytesN<32>,
-    nullifier: &BytesN<32>,
+    pi: &PublicInputs,
 ) -> bool {
     let bls = env.crypto().bls12_381();
 
@@ -93,14 +105,25 @@ fn verify_proof(
     let neg_gamma = vk_g2(env, NEG_GAMMA);
     let neg_delta = vk_g2(env, NEG_DELTA);
 
-    // vk_x = IC0·1 + IC1·commitment + IC2·nullifier   (G1 multi-scalar multiplication)
+    // vk_x = IC0·1 + IC1·commitment + IC2·nullifier + IC3·pkx + IC4·pky + IC5·time  (G1 MSM)
     let one = Fr::from_u256(U256::from_u32(env, 1));
-    let ic = vec![env, vk_g1(env, IC0), vk_g1(env, IC1), vk_g1(env, IC2)];
+    let ic = vec![
+        env,
+        vk_g1(env, IC0),
+        vk_g1(env, IC1),
+        vk_g1(env, IC2),
+        vk_g1(env, IC3),
+        vk_g1(env, IC4),
+        vk_g1(env, IC5),
+    ];
     let scalars = vec![
         env,
         one,
-        Fr::from_bytes(commitment.clone()),
-        Fr::from_bytes(nullifier.clone()),
+        Fr::from_bytes(pi.commitment.clone()),
+        Fr::from_bytes(pi.nullifier.clone()),
+        Fr::from_bytes(pi.anchor_pk_x.clone()),
+        Fr::from_bytes(pi.anchor_pk_y.clone()),
+        Fr::from_bytes(pi.current_time.clone()),
     ];
     let vk_x = bls.g1_msm(ic, scalars);
 
@@ -111,7 +134,10 @@ fn verify_proof(
 
 #[contractimpl]
 impl Verifier {
-    /// Pure proof check (no state change). Returns true iff the proof is valid for these inputs.
+    /// Pure proof check (no state change). Returns true iff the KYC-inclusive proof is valid.
+    ///
+    /// Public inputs: `commitment`, `nullifier`, the anchor public key (`anchor_pk_x`,
+    /// `anchor_pk_y`) the credential was signed by, and `current_time` used for the expiry check.
     pub fn verify(
         env: Env,
         proof_a: BytesN<96>,
@@ -119,15 +145,26 @@ impl Verifier {
         proof_c: BytesN<96>,
         commitment: BytesN<32>,
         nullifier: BytesN<32>,
+        anchor_pk_x: BytesN<32>,
+        anchor_pk_y: BytesN<32>,
+        current_time: BytesN<32>,
     ) -> bool {
-        verify_proof(&env, proof_a, proof_b, proof_c, &commitment, &nullifier)
+        let pi = PublicInputs {
+            commitment,
+            nullifier,
+            anchor_pk_x,
+            anchor_pk_y,
+            current_time,
+        };
+        verify_proof(&env, proof_a, proof_b, proof_c, &pi)
     }
 
-    /// Submit one private transfer: verify the proof, reject replays, record the commitment +
-    /// nullifier, and emit an event the indexer consumes. This is the Phase 2 state machine.
+    /// Submit one private transfer: verify the KYC proof, reject replays, record the commitment +
+    /// nullifier, and emit an event the indexer consumes.
     ///
     /// Errors: `InvalidProof` if the proof fails; `NullifierAlreadyUsed` if the nullifier is spent.
-    /// The contract never sees the amount — only the commitment and nullifier.
+    /// The contract never sees the amount or identity — only the commitment and nullifier.
+    #[allow(clippy::too_many_arguments)]
     pub fn submit(
         env: Env,
         proof_a: BytesN<96>,
@@ -135,6 +172,9 @@ impl Verifier {
         proof_c: BytesN<96>,
         commitment: BytesN<32>,
         nullifier: BytesN<32>,
+        anchor_pk_x: BytesN<32>,
+        anchor_pk_y: BytesN<32>,
+        current_time: BytesN<32>,
     ) -> Result<(), Error> {
         // 1. Reject replays first (cheap) — anti-replay / double-spend.
         let nullifier_key = DataKey::Nullifier(nullifier.clone());
@@ -143,7 +183,14 @@ impl Verifier {
         }
 
         // 2. Verify the proof before recording anything.
-        if !verify_proof(&env, proof_a, proof_b, proof_c, &commitment, &nullifier) {
+        let pi = PublicInputs {
+            commitment: commitment.clone(),
+            nullifier: nullifier.clone(),
+            anchor_pk_x,
+            anchor_pk_y,
+            current_time,
+        };
+        if !verify_proof(&env, proof_a, proof_b, proof_c, &pi) {
             return Err(Error::InvalidProof);
         }
 

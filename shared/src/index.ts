@@ -7,4 +7,5 @@ export * from './proof.js';
 export * from './ivms101.js';
 export * from './api.js';
 export * from './events.js';
+export * from './credential.js';
 export * from './errors.js';

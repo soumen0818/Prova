@@ -23,6 +23,10 @@ type Config struct {
 	AnchorHomeDomain string // e.g. testanchor.stellar.org (SEP-1 toml host)
 	AnchorAsset      string // deposit asset code on the anchor (SDF testanchor: SRT)
 	SEP10Seed        string // Stellar secret seed the backend uses for SEP-10 auth (dev)
+
+	// Phase 3 — KYC credential issuance (anchor side).
+	ProverBin  string // path to the prova-prover CLI (signs credentials, matches the circuit)
+	AnchorSeed string // hex Jubjub anchor secret seed; empty → the CLI's built-in dev key
 }
 
 // Load reads config from the environment with sensible testnet defaults.
@@ -43,6 +47,9 @@ func Load() Config {
 		AnchorHomeDomain: getenv("ANCHOR_HOME_DOMAIN", "testanchor.stellar.org"),
 		AnchorAsset:      getenv("ANCHOR_ASSET", "SRT"),
 		SEP10Seed:        getenv("SEP10_SEED", ""), // empty → an ephemeral key is generated
+
+		ProverBin:  getenv("PROVER_BIN", "prova-prover"),
+		AnchorSeed: getenv("ANCHOR_SEED", ""), // empty → the CLI's built-in dev anchor key
 	}
 }
 

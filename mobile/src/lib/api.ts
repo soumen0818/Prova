@@ -36,6 +36,14 @@ export interface TransferResponse {
   txHash?: string;
 }
 
+export interface KycCredential {
+  userId: string;
+  kycLevel: number;
+  expiry: number;
+  signature: { rX: string; rY: string; s: string };
+  anchor: { x: string; y: string };
+}
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -55,6 +63,14 @@ export function getHealth(): Promise<HealthResponse> {
 /** Start a SEP-24 interactive deposit; returns the anchor popup URL to open. */
 export function startDeposit(): Promise<DepositResponse> {
   return json<DepositResponse>('/sep24/deposit', { method: 'POST' });
+}
+
+/** SEP-12 KYC handoff: the anchor signs a credential for this user id. */
+export function submitKyc(userId: string, kycLevel = 2): Promise<KycCredential> {
+  return json<KycCredential>('/kyc/credential', {
+    method: 'POST',
+    body: JSON.stringify({ userId, kycLevel }),
+  });
 }
 
 /** The resolved backend base URL (for display/debugging). */

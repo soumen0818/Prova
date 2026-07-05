@@ -66,7 +66,36 @@ fn main() {
     match sub {
         "issue-credential" => issue_credential(),
         "anchor-pubkey" => anchor_pubkey(),
+        "prove-json" => prove_json_cmd(),
+        "user-id" => {
+            let secret = arg("--secret", &fq_hex(&Fr::from(0u64)));
+            println!(
+                "{}",
+                prova_prover::ffi::user_id_hex(&secret).expect("user-id")
+            );
+        }
         _ => setup_and_prove(),
+    }
+}
+
+/// Generate a proof from a JSON input (stdin or --input FILE) via the exact on-device FFI path.
+/// Prints the 544-byte Soroban proof blob as hex. Used to verify the FFI path on the real contract.
+fn prove_json_cmd() {
+    let path = arg("--input", "");
+    let input = if path.is_empty() {
+        use std::io::Read;
+        let mut s = String::new();
+        std::io::stdin().read_to_string(&mut s).expect("read stdin");
+        s
+    } else {
+        std::fs::read_to_string(&path).expect("read input file")
+    };
+    match prova_prover::ffi::prove_json(&input) {
+        Ok(h) => println!("{h}"),
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -138,9 +167,10 @@ fn setup_and_prove() {
     );
     let public = circuit.public_inputs().expect("public inputs");
 
-    let mut rng = StdRng::seed_from_u64(seed);
-    let (pk, vk) =
-        Groth16::<Bls12_381>::circuit_specific_setup(circuit.clone(), &mut rng).expect("setup");
+    // Use the SAME key source as the on-device prover (setup_keys → dummy_circuit) so the deployed
+    // VK and the FFI proving key are a matched pair.
+    let (pk, vk) = prova_prover::setup_keys(seed);
+    let mut rng = StdRng::seed_from_u64(seed.wrapping_add(1));
     let proof = Groth16::<Bls12_381>::prove(&pk, circuit, &mut rng).expect("prove");
 
     let ok = Groth16::<Bls12_381>::verify(&vk, &public, &proof).expect("verify");

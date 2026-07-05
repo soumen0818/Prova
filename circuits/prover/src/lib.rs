@@ -29,6 +29,12 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 pub mod credential;
+pub mod ffi;
+#[cfg(target_os = "android")]
+pub mod jni_bridge;
+
+/// Seed for the deterministic (testnet-grade) trusted setup. Mainnet uses the public ceremony.
+pub const SETUP_SEED: u64 = 42;
 
 /// Bit width for timestamp differences in the expiry check (unix seconds fit well under 2^40).
 const TIME_BITS: usize = 40;
@@ -235,6 +241,43 @@ impl ConstraintSynthesizer<Fr> for TransferCircuit {
 
         Ok(())
     }
+}
+
+/// A self-consistent dummy circuit instance — used only for the (value-independent) trusted setup.
+pub fn dummy_circuit(cfg: PoseidonConfig<Fr>) -> TransferCircuit {
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
+    let mut rng = StdRng::seed_from_u64(1);
+    let anchor = credential::AnchorKey::generate(&mut rng);
+    let secret = Fr::from(1u64);
+    let uid = credential::user_id(&cfg, secret);
+    let cred = credential::issue(&cfg, &anchor, uid, 2, 2_000_000_000, &mut rng);
+    TransferCircuit::new(
+        cfg,
+        Fr::from(1u64),
+        secret,
+        Fr::from(1u64),
+        &cred,
+        anchor.pk,
+        1,
+    )
+}
+
+/// Deterministic Groth16 keys for circuit v2 (matches the deployed VK when seeded with `SETUP_SEED`).
+pub fn setup_keys(
+    seed: u64,
+) -> (
+    ark_groth16::ProvingKey<ark_bls12_381::Bls12_381>,
+    ark_groth16::VerifyingKey<ark_bls12_381::Bls12_381>,
+) {
+    use ark_snark::SNARK;
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
+    let cfg = poseidon_config::<Fr>();
+    let mut rng = StdRng::seed_from_u64(seed);
+    ark_groth16::Groth16::<ark_bls12_381::Bls12_381>::circuit_specific_setup(
+        dummy_circuit(cfg),
+        &mut rng,
+    )
+    .expect("setup")
 }
 
 /// Poseidon sponge over field-var inputs (absorb all, squeeze one) — the in-circuit hash.

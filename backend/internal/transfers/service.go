@@ -6,6 +6,7 @@ package transfers
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -37,11 +38,9 @@ func New(st *store.Store, sub chain.Submitter, rdb *redis.Client, logger *slog.L
 // Submit accepts a proof, records it, and relays it to the contract. It is idempotent by nullifier:
 // resubmitting the same transfer returns the existing record rather than double-spending.
 func (s *Service) Submit(ctx context.Context, req schema.SubmitTransferRequest) (schema.SubmitTransferResponse, error) {
-	p := req.TransferProof
-	commitment := p.PublicSignals.Commitment
-	nullifier := p.PublicSignals.Nullifier
-	if p.Proof.A == "" || p.Proof.B == "" || p.Proof.C == "" || commitment == "" || nullifier == "" {
-		return schema.SubmitTransferResponse{}, ErrInvalidRequest
+	proof, commitment, nullifier, perr := parseProofBlob(req.ProofBlob)
+	if perr != nil {
+		return schema.SubmitTransferResponse{}, perr
 	}
 
 	// Redis idempotency lock — stops two concurrent submits of the same nullifier from both
@@ -70,9 +69,7 @@ func (s *Service) Submit(ctx context.Context, req schema.SubmitTransferRequest) 
 
 	// Relay to the contract, tracking the lifecycle.
 	_ = s.store.SetStatus(ctx, id, schema.StatusSubmitting, "")
-	txHash, serr := s.submitWithRetry(ctx, chain.Proof{
-		A: p.Proof.A, B: p.Proof.B, C: p.Proof.C, Commitment: commitment, Nullifier: nullifier,
-	})
+	txHash, serr := s.submitWithRetry(ctx, proof)
 
 	var status schema.TransferStatus
 	switch {
@@ -92,6 +89,19 @@ func (s *Service) Submit(ctx context.Context, req schema.SubmitTransferRequest) 
 	rec.Status = status
 	rec.TxHash = txHash
 	return respFromTransfer(rec), nil
+}
+
+// List returns recent transfer history (populated by relays + the indexer).
+func (s *Service) List(ctx context.Context, limit int) ([]schema.TransferRecord, error) {
+	ts, err := s.store.List(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]schema.TransferRecord, 0, len(ts))
+	for i := range ts {
+		out = append(out, ts[i].ToRecord())
+	}
+	return out, nil
 }
 
 // Get returns the current record for a transfer id.
@@ -122,6 +132,38 @@ func (s *Service) submitWithRetry(ctx context.Context, p chain.Proof) (string, e
 		}
 	}
 	return "", lastErr
+}
+
+// parseProofBlob slices the 544-byte v2 proof blob into contract args, returning the chain proof
+// plus the commitment/nullifier used for the DB record.
+func parseProofBlob(blobHex string) (chain.Proof, string, string, error) {
+	if blobHex == "" {
+		return chain.Proof{}, "", "", ErrInvalidRequest
+	}
+	b, err := hex.DecodeString(blobHex)
+	want := 2*schema.G1Len + schema.G2Len + 5*schema.ScalarLen
+	if err != nil || len(b) != want {
+		return chain.Proof{}, "", "", ErrInvalidRequest
+	}
+	off := 0
+	take := func(n int) string {
+		s := hex.EncodeToString(b[off : off+n])
+		off += n
+		return s
+	}
+	a := take(schema.G1Len)
+	bb := take(schema.G2Len)
+	c := take(schema.G1Len)
+	commitment := take(schema.ScalarLen)
+	nullifier := take(schema.ScalarLen)
+	pkx := take(schema.ScalarLen)
+	pky := take(schema.ScalarLen)
+	t := take(schema.ScalarLen)
+	return chain.Proof{
+		A: a, B: bb, C: c,
+		Commitment: commitment, Nullifier: nullifier,
+		AnchorPkX: pkx, AnchorPkY: pky, CurrentTime: t,
+	}, commitment, nullifier, nil
 }
 
 func respFromTransfer(t *store.Transfer) schema.SubmitTransferResponse {

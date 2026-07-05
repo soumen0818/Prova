@@ -7,17 +7,21 @@
  */
 
 import type { SealedTravelRuleEnvelope } from './ivms101.js';
-import type { TransferProof } from './proof.js';
+import type { Hex, TransferProof } from './proof.js';
 
 export type StellarNetwork = 'testnet' | 'mainnet';
 
 /**
- * POST /transfers — submit a private transfer. The client sends the proof + its public signals
- * (commitment, nullifier); the backend relays it to the Soroban `submit`. The amount never leaves
- * the device, so it is never in this request.
+ * POST /transfers — submit a private transfer. The device sends the raw proof blob produced by the
+ * on-device prover (544-byte Soroban encoding: `A‖B‖C‖commitment‖nullifier‖anchorPk.x‖anchorPk.y‖
+ * currentTime`); the backend parses it and relays it to the Soroban `submit`. The amount never
+ * leaves the device, so it is never in this request.
  */
 export interface SubmitTransferRequest {
-  transferProof: TransferProof;
+  /** Raw proof blob (hex) from the on-device prover — the Phase 4 path. */
+  proofBlob?: Hex;
+  /** Structured proof (legacy/testing). One of `proofBlob` or `transferProof` must be present. */
+  transferProof?: TransferProof;
   /** Travel-Rule envelope — optional in Phase 2, required for the real corridor in Phase 5. */
   travelRuleEnvelope?: SealedTravelRuleEnvelope;
 }

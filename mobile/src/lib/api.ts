@@ -73,5 +73,13 @@ export function submitKyc(userId: string, kycLevel = 2): Promise<KycCredential> 
   });
 }
 
+/** Relay a proof (raw blob from the on-device prover) to the contract via the backend. */
+export function submitTransfer(proofBlob: string): Promise<TransferResponse> {
+  return json<TransferResponse>('/transfers', {
+    method: 'POST',
+    body: JSON.stringify({ proofBlob }),
+  });
+}
+
 /** The resolved backend base URL (for display/debugging). */
 export const apiBaseUrl = baseUrl();

@@ -109,6 +109,42 @@ SELECT id, status, commitment, nullifier, tx_hash, created_at, updated_at FROM t
 	return t, err
 }
 
+// UpsertConfirmed records a transfer seen on-chain by the indexer. If the nullifier is new
+// (e.g. a transfer not relayed by this backend) it inserts a confirmed row; otherwise it fills the
+// tx hash and promotes an in-flight status to confirmed.
+func (s *Store) UpsertConfirmed(ctx context.Context, commitment, nullifier, txHash string) error {
+	_, err := s.pool.Exec(ctx, `
+INSERT INTO transfers (id, status, commitment, nullifier, tx_hash)
+VALUES (gen_random_uuid(), 'confirmed', $1, $2, $3)
+ON CONFLICT (nullifier) DO UPDATE SET
+    tx_hash = COALESCE(NULLIF(EXCLUDED.tx_hash, ''), transfers.tx_hash),
+    status = CASE WHEN transfers.status IN ('pending','submitting','submitted')
+                  THEN 'confirmed' ELSE transfers.status END,
+    updated_at = now()`,
+		commitment, nullifier, txHash)
+	return err
+}
+
+// List returns the most recent transfers (history).
+func (s *Store) List(ctx context.Context, limit int) ([]Transfer, error) {
+	rows, err := s.pool.Query(ctx, `
+SELECT id, status, commitment, nullifier, tx_hash, created_at, updated_at
+FROM transfers ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Transfer
+	for rows.Next() {
+		t, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
 // GetByNullifier fetches a transfer by nullifier.
 func (s *Store) GetByNullifier(ctx context.Context, nullifier string) (*Transfer, error) {
 	row := s.pool.QueryRow(ctx, `

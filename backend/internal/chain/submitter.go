@@ -22,13 +22,17 @@ var (
 	ErrInvalidProof = errors.New("invalid proof")
 )
 
-// Proof carries the hex-encoded Soroban BLS12-381 blobs (as produced by the prover / shared schema).
+// Proof carries the hex-encoded Soroban BLS12-381 blobs (v2/KYC public inputs), as produced by the
+// on-device prover.
 type Proof struct {
-	A          string
-	B          string
-	C          string
-	Commitment string
-	Nullifier  string
+	A           string
+	B           string
+	C           string
+	Commitment  string
+	Nullifier   string
+	AnchorPkX   string
+	AnchorPkY   string
+	CurrentTime string
 }
 
 // Submitter relays a transfer to the contract and returns the transaction hash.
@@ -61,6 +65,9 @@ func (s CLISubmitter) Submit(ctx context.Context, p Proof) (string, error) {
 		"--proof_c", p.C,
 		"--commitment", p.Commitment,
 		"--nullifier", p.Nullifier,
+		"--anchor_pk_x", p.AnchorPkX,
+		"--anchor_pk_y", p.AnchorPkY,
+		"--current_time", p.CurrentTime,
 	}
 	out, err := exec.CommandContext(ctx, s.Bin, args...).CombinedOutput()
 	text := string(out)

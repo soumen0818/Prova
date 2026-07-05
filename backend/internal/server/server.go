@@ -47,8 +47,9 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
 
-	// Phase 2 — transfer relay + lifecycle.
+	// Phase 2 — transfer relay + lifecycle. Phase 4 — history (from relays + the indexer).
 	mux.HandleFunc("POST /transfers", h.submitTransfer)
+	mux.HandleFunc("GET /transfers", h.listTransfers)
 	mux.HandleFunc("GET /transfers/{id}", h.getTransfer)
 
 	// Phase 2 — anchor deposit rails (dev endpoints).

@@ -17,6 +17,7 @@ import (
 	"github.com/prova/backend/internal/anchor"
 	"github.com/prova/backend/internal/chain"
 	"github.com/prova/backend/internal/config"
+	"github.com/prova/backend/internal/indexer"
 	"github.com/prova/backend/internal/kyc"
 	"github.com/prova/backend/internal/server"
 	"github.com/prova/backend/internal/store"
@@ -80,6 +81,11 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) serv
 		}
 		deps.Transfers = transfers.New(st, submitter, rdb, logger)
 		logger.Info("transfer relay ready", "contract", cfg.ContractID)
+
+		// Indexer: reconcile on-chain transfer events into history (background goroutine).
+		events := chain.NewEventsClient(cfg.SorobanRPCURL, cfg.ContractID)
+		go indexer.New(events, st, logger, 15*time.Second, 20_000).Run(ctx)
+		logger.Info("indexer started", "rpc", cfg.SorobanRPCURL)
 	}
 
 	// Anchor (SEP-10 / SEP-24) with a dev key.

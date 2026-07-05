@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { submitKyc, type KycCredential } from '@/lib/api';
+import { userId as deriveUserId } from '@/lib/prover';
 import { getSecret, SecureKey, setSecret } from '@/lib/secure-store';
 import { Button, Card, Screen } from '@/components/ui';
 import { Palette, Spacing, Typography } from '@/constants/theme';
@@ -39,13 +40,14 @@ export default function KycScreen() {
     setBusy(true);
     setError('');
     try {
-      // The user id is derived from the wallet's ZK secret. On-device Poseidon derivation lands in
-      // Phase 4; for this slice we use a stable random id persisted in the enclave.
-      let userId = await getSecret(SecureKey.zkSecretKey);
-      if (!userId) {
-        userId = randomHex32();
-        await setSecret(SecureKey.zkSecretKey, userId);
+      // Load or generate the wallet's ZK secret, then derive user_id = Poseidon(secret, domain) on
+      // device via the native prover — the same secret the send flow proves against.
+      let secret = await getSecret(SecureKey.zkSecretKey);
+      if (!secret) {
+        secret = randomHex32();
+        await setSecret(SecureKey.zkSecretKey, secret);
       }
+      const userId = await deriveUserId(secret);
       const cred = await submitKyc(userId, 2);
       await setSecret(SecureKey.kycCredential, JSON.stringify(cred));
       setCredential(cred);

@@ -34,6 +34,20 @@ func (h *handler) submitTransfer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
+// listTransfers returns recent transfer history (relays + indexer).
+func (h *handler) listTransfers(w http.ResponseWriter, r *http.Request) {
+	if h.transfers == nil {
+		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "transfer service unavailable")
+		return
+	}
+	recs, err := h.transfers.List(r.Context(), 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, schema.ErrInternal, "could not list transfers")
+		return
+	}
+	writeJSON(w, http.StatusOK, recs)
+}
+
 // getTransfer returns the current lifecycle record for a transfer id.
 func (h *handler) getTransfer(w http.ResponseWriter, r *http.Request) {
 	if h.transfers == nil {

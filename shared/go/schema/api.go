@@ -24,10 +24,13 @@ const (
 	StatusFailed     TransferStatus = "failed"     // submission error after retries
 )
 
-// SubmitTransferRequest is the body of POST /transfers. The amount never leaves the device, so it
-// is never in this request.
+// SubmitTransferRequest is the body of POST /transfers. The device sends the raw proof blob from the
+// on-device prover (544-byte Soroban encoding). The amount never leaves the device.
 type SubmitTransferRequest struct {
-	TransferProof TransferProof `json:"transferProof"`
+	// ProofBlob is the raw proof (hex) from the on-device prover — the Phase 4 path.
+	ProofBlob Hex `json:"proofBlob,omitempty"`
+	// TransferProof is the structured form (legacy/testing).
+	TransferProof *TransferProof `json:"transferProof,omitempty"`
 	// TravelRuleEnvelope is optional in Phase 2, required for the real corridor in Phase 5.
 	TravelRuleEnvelope *SealedTravelRuleEnvelope `json:"travelRuleEnvelope,omitempty"`
 }

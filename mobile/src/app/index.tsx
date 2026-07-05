@@ -82,8 +82,13 @@ export default function HomeScreen() {
       <Text style={styles.sectionTitle}>Foundation preview</Text>
       <View style={styles.previewGroup}>
         <Button
+          label="Send privately"
+          trailing={<ArrowUpRight color={Palette.onAccent} size={18} />}
+          onPress={() => router.push('/send')}
+        />
+        <Button
           label="Deposit (testnet)"
-          trailing={<ArrowDownToLine color={Palette.onAccent} size={18} />}
+          variant="secondary"
           onPress={() => router.push('/deposit')}
         />
         <Button
@@ -91,7 +96,6 @@ export default function HomeScreen() {
           variant="secondary"
           onPress={() => router.push('/kyc')}
         />
-        <Button label="Learn how proofs work" variant="glass" />
       </View>
       <Text style={styles.note}>
         Prova design system is live — Urbanist type, chartreuse accent, glass controls, dark

@@ -1,20 +1,17 @@
 #![no_std]
-//! Prova on-chain verifier.
+// The Soroban `#[contractimpl]` macros regenerate the multi-input `verify`/`submit` signatures for
+// the client + args types, so `too_many_arguments` must be allowed crate-wide, not per-function.
+#![allow(clippy::too_many_arguments)]
+//! Prova on-chain verifier (circuit v2, KYC-inclusive).
 //!
-//! Phase 1: verifies a BLS12-381 Groth16 proof against the embedded verification key using
-//! Soroban's native `bls12_381` host functions (`g1_msm` + `pairing_check`), returning accept/reject.
-//! (The design pivoted from BN254 to BLS12-381 because Soroban only exposes BLS12-381 host
-//! functions — see Docs and the prova-prover crate.)
+//! Verifies a BLS12-381 Groth16 proof against the embedded verification key using Soroban's native
+//! `bls12_381` host functions (`g1_msm` + `pairing_check`). The proof asserts, without revealing the
+//! amount or identity: amount in range, commitment + nullifier are correct, and the sender holds an
+//! anchor-signed KYC credential (verified in-circuit) that is unexpired and of sufficient level.
 //!
-//! The proof asserts, without revealing the amount:
-//!   - `1 <= amount <= 9999`                     (range)
-//!   - `commitment = Poseidon(amount, secret)`
-//!   - `nullifier  = Poseidon(secret, transferId)`
-//!
-//! Public inputs (in order): `[commitment, nullifier]`.
-//!
-//! Phase 0's nullifier registry + commitment store + events remain for Phase 2; `submit` records a
-//! transfer, `verify` is the pure proof check.
+//! Public inputs (order): `[commitment, nullifier, anchorPk.x, anchorPk.y, currentTime]`.
+//! `submit` verifies the proof, rejects replays, records the commitment + nullifier, and emits an
+//! event; `verify` is the pure proof check.
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
@@ -164,7 +161,6 @@ impl Verifier {
     ///
     /// Errors: `InvalidProof` if the proof fails; `NullifierAlreadyUsed` if the nullifier is spent.
     /// The contract never sees the amount or identity — only the commitment and nullifier.
-    #[allow(clippy::too_many_arguments)]
     pub fn submit(
         env: Env,
         proof_a: BytesN<96>,

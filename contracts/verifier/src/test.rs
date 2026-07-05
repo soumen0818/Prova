@@ -24,65 +24,87 @@ fn parse_proof(env: &Env) -> (BytesN<96>, BytesN<192>, BytesN<96>, BytesN<32>, B
     (a, b, c, commitment, nullifier)
 }
 
+fn tampered_commitment(env: &Env) -> BytesN<32> {
+    let mut bad = [0u8; 32];
+    bad.copy_from_slice(&SAMPLE_PROOF[384..416]);
+    bad[31] ^= 1;
+    BytesN::from_array(env, &bad)
+}
+
+// ---- Pure verification (no state) ----
+
 #[test]
 fn verifies_valid_proof() {
     let (env, client) = setup();
     let (a, b, c, commitment, nullifier) = parse_proof(&env);
-    assert!(
-        client.verify(&a, &b, &c, &commitment, &nullifier),
-        "a valid proof must verify"
-    );
+    assert!(client.verify(&a, &b, &c, &commitment, &nullifier));
 }
 
 #[test]
 fn rejects_tampered_public_input() {
     let (env, client) = setup();
     let (a, b, c, _commitment, nullifier) = parse_proof(&env);
-    // Flip one bit of the commitment — the proof no longer matches its public inputs.
-    let mut bad = [0u8; 32];
-    bad.copy_from_slice(&SAMPLE_PROOF[384..416]);
-    bad[31] ^= 1;
-    let bad_commitment = BytesN::from_array(&env, &bad);
+    let bad_commitment = tampered_commitment(&env);
+    assert!(!client.verify(&a, &b, &c, &bad_commitment, &nullifier));
+}
+
+// ---- Stateful submit (Phase 2 state machine) ----
+
+#[test]
+fn submit_records_valid_transfer() {
+    let (env, client) = setup();
+    let (a, b, c, commitment, nullifier) = parse_proof(&env);
+
+    assert!(!client.is_spent(&nullifier));
+    assert!(!client.is_committed(&commitment));
+
+    client.submit(&a, &b, &c, &commitment, &nullifier);
+
     assert!(
-        !client.verify(&a, &b, &c, &bad_commitment, &nullifier),
-        "a tampered public input must be rejected"
+        client.is_spent(&nullifier),
+        "nullifier must be marked spent"
+    );
+    assert!(
+        client.is_committed(&commitment),
+        "commitment must be stored + queryable"
     );
 }
+
+#[test]
+fn submit_rejects_invalid_proof() {
+    let (env, client) = setup();
+    let (a, b, c, _commitment, nullifier) = parse_proof(&env);
+    let bad_commitment = tampered_commitment(&env);
+
+    let result = client.try_submit(&a, &b, &c, &bad_commitment, &nullifier);
+    assert_eq!(result, Err(Ok(Error::InvalidProof)));
+
+    // Nothing must be recorded when the proof is invalid.
+    assert!(!client.is_spent(&nullifier));
+    assert!(!client.is_committed(&bad_commitment));
+}
+
+#[test]
+fn submit_rejects_replayed_nullifier() {
+    let (env, client) = setup();
+    let (a, b, c, commitment, nullifier) = parse_proof(&env);
+
+    client.submit(&a, &b, &c, &commitment, &nullifier);
+    let result = client.try_submit(&a, &b, &c, &commitment, &nullifier);
+    assert_eq!(result, Err(Ok(Error::NullifierAlreadyUsed)));
+}
+
+// ---- Cost ----
 
 #[test]
 fn measure_verify_cost() {
     let (env, client) = setup();
     let (a, b, c, commitment, nullifier) = parse_proof(&env);
-    // Measure just the verify call.
     env.cost_estimate().budget().reset_default();
     let ok = client.verify(&a, &b, &c, &commitment, &nullifier);
     assert!(ok);
     let cpu = env.cost_estimate().budget().cpu_instruction_cost();
     let mem = env.cost_estimate().budget().memory_bytes_cost();
     std::println!("PROVA_VERIFY_COST cpu_insns={cpu} mem_bytes={mem}");
-    // Soroban's per-transaction CPU ceiling is 100_000_000 instructions; one verify must fit well
-    // under it (native measurement underestimates wasm, so keep generous headroom).
     assert!(cpu < 100_000_000, "verify must fit the CPU budget");
-}
-
-#[test]
-fn records_transfer_and_tracks_nullifier() {
-    let (env, client) = setup();
-    let commitment = BytesN::from_array(&env, &[1u8; 32]);
-    let nullifier = BytesN::from_array(&env, &[2u8; 32]);
-
-    assert!(!client.is_spent(&nullifier));
-    client.submit(&commitment, &nullifier);
-    assert!(client.is_spent(&nullifier));
-}
-
-#[test]
-fn rejects_replayed_nullifier() {
-    let (env, client) = setup();
-    let commitment = BytesN::from_array(&env, &[1u8; 32]);
-    let nullifier = BytesN::from_array(&env, &[2u8; 32]);
-
-    client.submit(&commitment, &nullifier);
-    let result = client.try_submit(&commitment, &nullifier);
-    assert_eq!(result, Err(Ok(Error::NullifierAlreadyUsed)));
 }

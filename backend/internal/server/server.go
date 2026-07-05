@@ -6,24 +6,51 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/stellar/go/keypair"
+
+	"github.com/prova/backend/internal/anchor"
 	"github.com/prova/backend/internal/config"
+	"github.com/prova/backend/internal/transfers"
 )
 
 type handler struct {
-	logger *slog.Logger
-	cfg    config.Config
+	logger    *slog.Logger
+	cfg       config.Config
+	transfers *transfers.Service
+	anchor    *anchor.Client
+	sep10Key  *keypair.Full
+}
+
+// Deps are the runtime dependencies the server needs. Any of the Phase 2 services may be nil (e.g.
+// when Postgres/anchor are unavailable); the corresponding routes then return 503.
+type Deps struct {
+	Transfers *transfers.Service
+	Anchor    *anchor.Client
+	SEP10Key  *keypair.Full
 }
 
 // New builds the backend HTTP handler.
-//
-// Phase 0 exposes health/readiness only. SEP/anchor, transfer relay, Travel-Rule, and indexer
-// routes land in Phases 2–5 (see Docs/implementation-guide.md).
-func New(logger *slog.Logger, cfg config.Config) http.Handler {
-	h := &handler{logger: logger, cfg: cfg}
+func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
+	h := &handler{
+		logger:    logger,
+		cfg:       cfg,
+		transfers: deps.Transfers,
+		anchor:    deps.Anchor,
+		sep10Key:  deps.SEP10Key,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
+
+	// Phase 2 — transfer relay + lifecycle.
+	mux.HandleFunc("POST /transfers", h.submitTransfer)
+	mux.HandleFunc("GET /transfers/{id}", h.getTransfer)
+
+	// Phase 2 — anchor deposit rails (dev endpoints).
+	mux.HandleFunc("POST /sep10/auth", h.sep10Auth)
+	mux.HandleFunc("POST /sep24/deposit", h.sep24Deposit)
+
 	mux.HandleFunc("/", h.notFound)
 
 	return logging(logger, mux)

@@ -69,13 +69,49 @@ fn vk_g2(env: &Env, off: usize) -> G2Affine {
     G2Affine::from_bytes(BytesN::from_array(env, &a))
 }
 
+/// Core Groth16 check, shared by the pure `verify` view and the stateful `submit`.
+///
+/// Reduces the Groth16 equation to a single pairing check:
+///   `e(A,B) · e(alpha, -beta) · e(vk_x, -gamma) · e(C, -delta) == 1`
+/// where `vk_x = IC0 + commitment·IC1 + nullifier·IC2`.
+fn verify_proof(
+    env: &Env,
+    proof_a: BytesN<96>,
+    proof_b: BytesN<192>,
+    proof_c: BytesN<96>,
+    commitment: &BytesN<32>,
+    nullifier: &BytesN<32>,
+) -> bool {
+    let bls = env.crypto().bls12_381();
+
+    let a = G1Affine::from_bytes(proof_a);
+    let b = G2Affine::from_bytes(proof_b);
+    let c = G1Affine::from_bytes(proof_c);
+
+    let alpha = vk_g1(env, ALPHA);
+    let neg_beta = vk_g2(env, NEG_BETA);
+    let neg_gamma = vk_g2(env, NEG_GAMMA);
+    let neg_delta = vk_g2(env, NEG_DELTA);
+
+    // vk_x = IC0·1 + IC1·commitment + IC2·nullifier   (G1 multi-scalar multiplication)
+    let one = Fr::from_u256(U256::from_u32(env, 1));
+    let ic = vec![env, vk_g1(env, IC0), vk_g1(env, IC1), vk_g1(env, IC2)];
+    let scalars = vec![
+        env,
+        one,
+        Fr::from_bytes(commitment.clone()),
+        Fr::from_bytes(nullifier.clone()),
+    ];
+    let vk_x = bls.g1_msm(ic, scalars);
+
+    let vp1 = vec![env, a, alpha, vk_x, c];
+    let vp2 = vec![env, b, neg_beta, neg_gamma, neg_delta];
+    bls.pairing_check(vp1, vp2)
+}
+
 #[contractimpl]
 impl Verifier {
-    /// Verify a Groth16 proof for one transfer against the embedded VK. Returns true iff valid.
-    ///
-    /// Reduces the Groth16 equation to a single pairing check:
-    ///   `e(A,B) · e(alpha, -beta) · e(vk_x, -gamma) · e(C, -delta) == 1`
-    /// where `vk_x = IC0 + commitment·IC1 + nullifier·IC2`.
+    /// Pure proof check (no state change). Returns true iff the proof is valid for these inputs.
     pub fn verify(
         env: Env,
         proof_a: BytesN<96>,
@@ -84,31 +120,41 @@ impl Verifier {
         commitment: BytesN<32>,
         nullifier: BytesN<32>,
     ) -> bool {
-        let bls = env.crypto().bls12_381();
+        verify_proof(&env, proof_a, proof_b, proof_c, &commitment, &nullifier)
+    }
 
-        let a = G1Affine::from_bytes(proof_a);
-        let b = G2Affine::from_bytes(proof_b);
-        let c = G1Affine::from_bytes(proof_c);
+    /// Submit one private transfer: verify the proof, reject replays, record the commitment +
+    /// nullifier, and emit an event the indexer consumes. This is the Phase 2 state machine.
+    ///
+    /// Errors: `InvalidProof` if the proof fails; `NullifierAlreadyUsed` if the nullifier is spent.
+    /// The contract never sees the amount — only the commitment and nullifier.
+    pub fn submit(
+        env: Env,
+        proof_a: BytesN<96>,
+        proof_b: BytesN<192>,
+        proof_c: BytesN<96>,
+        commitment: BytesN<32>,
+        nullifier: BytesN<32>,
+    ) -> Result<(), Error> {
+        // 1. Reject replays first (cheap) — anti-replay / double-spend.
+        let nullifier_key = DataKey::Nullifier(nullifier.clone());
+        if env.storage().persistent().has(&nullifier_key) {
+            return Err(Error::NullifierAlreadyUsed);
+        }
 
-        let alpha = vk_g1(&env, ALPHA);
-        let neg_beta = vk_g2(&env, NEG_BETA);
-        let neg_gamma = vk_g2(&env, NEG_GAMMA);
-        let neg_delta = vk_g2(&env, NEG_DELTA);
+        // 2. Verify the proof before recording anything.
+        if !verify_proof(&env, proof_a, proof_b, proof_c, &commitment, &nullifier) {
+            return Err(Error::InvalidProof);
+        }
 
-        // vk_x = IC0·1 + IC1·commitment + IC2·nullifier   (G1 multi-scalar multiplication)
-        let one = Fr::from_u256(U256::from_u32(&env, 1));
-        let ic = vec![&env, vk_g1(&env, IC0), vk_g1(&env, IC1), vk_g1(&env, IC2)];
-        let scalars = vec![
-            &env,
-            one,
-            Fr::from_bytes(commitment),
-            Fr::from_bytes(nullifier),
-        ];
-        let vk_x = bls.g1_msm(ic, scalars);
-
-        let vp1 = vec![&env, a, alpha, vk_x, c];
-        let vp2 = vec![&env, b, neg_beta, neg_gamma, neg_delta];
-        bls.pairing_check(vp1, vp2)
+        // 3. Record nullifier (spent) + commitment, then emit the transfer event.
+        env.storage().persistent().set(&nullifier_key, &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Commitment(commitment.clone()), &true);
+        env.events()
+            .publish((symbol_short!("transfer"),), (commitment, nullifier));
+        Ok(())
     }
 
     /// Has this nullifier already been spent?
@@ -118,23 +164,11 @@ impl Verifier {
             .has(&DataKey::Nullifier(nullifier))
     }
 
-    /// Record one transfer: reject replays, store the commitment, emit an event.
-    ///
-    /// Phase 2 wires proof verification in front of this; Phase 0/1 keep the registry mechanics.
-    pub fn submit(env: Env, commitment: BytesN<32>, nullifier: BytesN<32>) -> Result<(), Error> {
-        let nullifier_key = DataKey::Nullifier(nullifier.clone());
-        if env.storage().persistent().has(&nullifier_key) {
-            return Err(Error::NullifierAlreadyUsed);
-        }
-
-        env.storage().persistent().set(&nullifier_key, &true);
+    /// Is this commitment recorded on-chain?
+    pub fn is_committed(env: Env, commitment: BytesN<32>) -> bool {
         env.storage()
             .persistent()
-            .set(&DataKey::Commitment(commitment.clone()), &true);
-
-        env.events()
-            .publish((symbol_short!("transfer"),), (commitment, nullifier));
-        Ok(())
+            .has(&DataKey::Commitment(commitment))
     }
 }
 

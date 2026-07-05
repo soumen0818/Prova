@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import {
   ArrowDownToLine,
   ArrowUpRight,
@@ -23,6 +24,7 @@ const QUICK_ACTIONS: { label: string; Icon: IconType }[] = [
 ];
 
 export default function HomeScreen() {
+  const router = useRouter();
   return (
     <Screen scroll>
       {/* Top bar */}
@@ -80,8 +82,9 @@ export default function HomeScreen() {
       <Text style={styles.sectionTitle}>Foundation preview</Text>
       <View style={styles.previewGroup}>
         <Button
-          label="Send privately"
-          trailing={<ArrowUpRight color={Palette.onAccent} size={18} />}
+          label="Deposit (testnet)"
+          trailing={<ArrowDownToLine color={Palette.onAccent} size={18} />}
+          onPress={() => router.push('/deposit')}
         />
         <Button label="Add recipient" variant="secondary" />
         <Button label="Learn how proofs work" variant="glass" />

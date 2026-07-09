@@ -36,6 +36,16 @@ export interface TransferResponse {
   txHash?: string;
 }
 
+export interface TransferRecord {
+  transferId: string;
+  status: string;
+  commitment: string;
+  nullifier: string;
+  createdAt: string;
+  updatedAt: string;
+  txHash?: string;
+}
+
 export interface KycCredential {
   userId: string;
   kycLevel: number;
@@ -79,6 +89,11 @@ export function submitTransfer(proofBlob: string): Promise<TransferResponse> {
     method: 'POST',
     body: JSON.stringify({ proofBlob }),
   });
+}
+
+/** Recent transfer history (from the backend's relays + on-chain indexer). */
+export function getHistory(): Promise<TransferRecord[]> {
+  return json<TransferRecord[]>('/transfers');
 }
 
 /** The resolved backend base URL (for display/debugging). */

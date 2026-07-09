@@ -5,7 +5,9 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { submitKyc, type KycCredential } from '@/lib/api';
 import { userId as deriveUserId } from '@/lib/prover';
 import { getSecret, SecureKey, setSecret } from '@/lib/secure-store';
+import { getOrCreateSecret } from '@/lib/wallet';
 import { Button, Card, Screen } from '@/components/ui';
+import { useToast } from '@/components/toast';
 import { Palette, Spacing, Typography } from '@/constants/theme';
 
 /**
@@ -18,6 +20,7 @@ export default function KycScreen() {
   const [busy, setBusy] = useState(false);
   const [credential, setCredential] = useState<KycCredential | null>(null);
   const [error, setError] = useState('');
+  const toast = useToast();
 
   useEffect(() => {
     let active = true;
@@ -40,23 +43,22 @@ export default function KycScreen() {
     setBusy(true);
     setError('');
     try {
-      // Load or generate the wallet's ZK secret, then derive user_id = Poseidon(secret, domain) on
-      // device via the native prover — the same secret the send flow proves against.
-      let secret = await getSecret(SecureKey.zkSecretKey);
-      if (!secret) {
-        secret = randomHex32();
-        await setSecret(SecureKey.zkSecretKey, secret);
-      }
+      // Load or securely create the wallet's ZK secret, then derive user_id = Poseidon(secret,
+      // domain) on device via the native prover — the same secret the send flow proves against.
+      const secret = await getOrCreateSecret();
       const userId = await deriveUserId(secret);
       const cred = await submitKyc(userId, 2);
       await setSecret(SecureKey.kycCredential, JSON.stringify(cred));
       setCredential(cred);
+      toast.success('Verified ✅');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'verification failed');
+      const msg = e instanceof Error ? e.message : 'verification failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [toast]);
 
   return (
     <Screen scroll>
@@ -100,17 +102,6 @@ export default function KycScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </Screen>
   );
-}
-
-/** 32 random bytes as hex — a placeholder wallet id until Phase 4's Poseidon derivation. */
-function randomHex32(): string {
-  let out = '';
-  for (let i = 0; i < 32; i++) {
-    out += Math.floor(Math.random() * 256)
-      .toString(16)
-      .padStart(2, '0');
-  }
-  return out;
 }
 
 const styles = StyleSheet.create({

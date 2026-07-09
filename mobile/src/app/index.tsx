@@ -1,60 +1,89 @@
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import {
-  ArrowDownToLine,
-  ArrowUpRight,
-  Bell,
-  Clock,
-  Settings,
-  ShieldCheck,
-} from 'lucide-react-native';
+import { ArrowDownToLine, ArrowUpRight, Clock, Settings, ShieldCheck } from 'lucide-react-native';
 import type { ComponentType } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, GlassIconButton, Screen } from '@/components/ui';
+import { GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
+import { useHealth } from '@/lib/queries';
+import { hasSecret, SecureKey } from '@/lib/secure-store';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
+type QuickAction = {
+  label: string;
+  Icon: IconType;
+  route: '/send' | '/deposit' | '/kyc' | '/activity';
+};
 
-const QUICK_ACTIONS: { label: string; Icon: IconType }[] = [
-  { label: 'Send', Icon: ArrowUpRight },
-  { label: 'Request', Icon: ArrowDownToLine },
-  { label: 'Deposit', Icon: ArrowDownToLine },
-  { label: 'History', Icon: Clock },
+const QUICK_ACTIONS: QuickAction[] = [
+  { label: 'Send', Icon: ArrowUpRight, route: '/send' },
+  { label: 'Deposit', Icon: ArrowDownToLine, route: '/deposit' },
+  { label: 'Verify', Icon: ShieldCheck, route: '/kyc' },
+  { label: 'Activity', Icon: Clock, route: '/activity' },
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
+  const health = useHealth();
+  const [verified, setVerified] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    hasSecret(SecureKey.kycCredential).then((v) => {
+      if (active) setVerified(v);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const online = !health.isError && health.data != null;
+
   return (
     <Screen scroll>
-      {/* Top bar */}
+      {/* Top bar: brand logo + settings */}
       <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>R</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <GlassIconButton badge accessibilityLabel="Notifications">
-            <Bell color={Palette.white} size={20} strokeWidth={1.8} />
-          </GlassIconButton>
-          <GlassIconButton accessibilityLabel="Settings">
-            <Settings color={Palette.white} size={20} strokeWidth={1.8} />
-          </GlassIconButton>
-        </View>
+        <Image
+          source={require('@/assets/images/brand-wordmark.png')}
+          style={styles.wordmark}
+          contentFit="contain"
+        />
+        <GlassIconButton accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
+          <Settings color={Palette.white} size={20} strokeWidth={1.8} />
+        </GlassIconButton>
       </View>
 
-      {/* Balance */}
-      <View style={styles.balanceBlock}>
-        <Text style={styles.balanceCaption}>Total balance</Text>
-        <Text style={styles.balance}>
-          AED 10,560<Text style={styles.balanceDecimals}>.00</Text>
-        </Text>
+      {/* Wallet status — honest, no fake balance */}
+      <View style={styles.walletCard}>
+        <Text style={styles.walletTitle}>Private wallet</Text>
+        <View style={styles.chipRow}>
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>{env.network}</Text>
+          </View>
+          <StatusRow
+            label="Identity"
+            value={verified == null ? '…' : verified ? 'Verified' : 'Not verified'}
+            color={verified ? Palette.accent : Palette.textSecondary}
+          />
+          <StatusRow
+            label="Backend"
+            value={health.isLoading ? '…' : online ? 'Online' : 'Offline'}
+            color={online ? Palette.statusUp : Palette.statusDown}
+          />
+        </View>
       </View>
 
       {/* Quick actions */}
       <View style={styles.quickRow}>
-        {QUICK_ACTIONS.map(({ label, Icon }) => (
+        {QUICK_ACTIONS.map(({ label, Icon, route }) => (
           <View key={label} style={styles.quickItem}>
-            <GlassIconButton size={56} accessibilityLabel={label}>
+            <GlassIconButton
+              size={56}
+              accessibilityLabel={label}
+              onPress={() => router.push(route)}>
               <Icon color={Palette.white} size={22} strokeWidth={1.8} />
             </GlassIconButton>
             <Text style={styles.quickLabel}>{label}</Text>
@@ -62,47 +91,26 @@ export default function HomeScreen() {
         ))}
       </View>
 
-      {/* Highlight cards */}
-      <View style={styles.cardRow}>
-        <Card tone="accent" style={styles.halfCard}>
-          <Text style={[styles.cardTitle, styles.onAccent]}>Send privately</Text>
-          <Text style={[styles.cardSubtitle, styles.onAccent]}>UAE → India</Text>
-          <Text style={[styles.cardValue, styles.onAccent]}>Ready</Text>
-        </Card>
-        <Card tone="lilac" style={styles.halfCard}>
-          <View style={styles.cardIconRow}>
-            <ShieldCheck color={Palette.onAccent} size={18} strokeWidth={2} />
-          </View>
-          <Text style={[styles.cardTitle, styles.onAccent]}>Privacy</Text>
-          <Text style={[styles.cardValue, styles.onAccent]}>Active</Text>
-        </Card>
+      {/* Privacy explainer */}
+      <View style={styles.explainer}>
+        <ShieldCheck color={Palette.accent} size={18} strokeWidth={2} />
+        <Text style={styles.explainerText}>
+          Your amount is proved compliant on this device and never leaves it — only a commitment is
+          written on-chain.
+        </Text>
       </View>
 
-      {/* Style preview — confirms the design system renders. Remove once real screens land. */}
-      <Text style={styles.sectionTitle}>Foundation preview</Text>
-      <View style={styles.previewGroup}>
-        <Button
-          label="Send privately"
-          trailing={<ArrowUpRight color={Palette.onAccent} size={18} />}
-          onPress={() => router.push('/send')}
-        />
-        <Button
-          label="Deposit (testnet)"
-          variant="secondary"
-          onPress={() => router.push('/deposit')}
-        />
-        <Button
-          label="Verify identity (KYC)"
-          variant="secondary"
-          onPress={() => router.push('/kyc')}
-        />
-      </View>
-      <Text style={styles.note}>
-        Prova design system is live — Urbanist type, chartreuse accent, glass controls, dark
-        surfaces.
-      </Text>
       <Text style={styles.note}>{`@prova/shared v${env.schemaVersion} · ${env.network}`}</Text>
     </Screen>
+  );
+}
+
+function StatusRow({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View style={styles.statusRow}>
+      <Text style={styles.statusLabel}>{label}</Text>
+      <Text style={[styles.statusValue, { color }]}>{value}</Text>
+    </View>
   );
 }
 
@@ -113,91 +121,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Spacing.six,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.full,
+  wordmark: { width: 104, height: 30 },
+  walletCard: {
     backgroundColor: Palette.bgElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: Radius.card,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Palette.border,
-  },
-  avatarText: {
-    ...Typography.section,
-    color: Palette.white,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-  },
-  balanceBlock: {
-    alignItems: 'center',
+    padding: Spacing.five,
     marginBottom: Spacing.seven,
-  },
-  balanceCaption: {
-    ...Typography.caption,
-    color: Palette.textSecondary,
-    marginBottom: Spacing.two,
-  },
-  balance: {
-    ...Typography.displayBalance,
-    color: Palette.white,
-  },
-  balanceDecimals: {
-    color: Palette.textMuted,
-  },
-  quickRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.seven,
-  },
-  quickItem: {
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  quickLabel: {
-    ...Typography.micro,
-    color: Palette.textSecondary,
-  },
-  cardRow: {
-    flexDirection: 'row',
     gap: Spacing.four,
-    marginBottom: Spacing.seven,
   },
-  halfCard: {
-    flex: 1,
-    minHeight: 120,
-    justifyContent: 'space-between',
+  walletTitle: { ...Typography.section, color: Palette.white },
+  chipRow: { gap: Spacing.three },
+  chip: {
+    alignSelf: 'flex-start',
+    backgroundColor: Palette.glass,
+    borderColor: Palette.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
   },
-  cardIconRow: {
+  chipText: { ...Typography.micro, color: Palette.textSecondary, textTransform: 'uppercase' },
+  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statusLabel: { ...Typography.caption, color: Palette.textSecondary },
+  statusValue: { ...Typography.caption, fontWeight: '600' },
+  quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.seven },
+  quickItem: { alignItems: 'center', gap: Spacing.two },
+  quickLabel: { ...Typography.micro, color: Palette.textSecondary },
+  explainer: {
     flexDirection: 'row',
-  },
-  cardTitle: {
-    ...Typography.section,
-  },
-  cardSubtitle: {
-    ...Typography.caption,
-    opacity: 0.7,
-  },
-  cardValue: {
-    ...Typography.title,
-  },
-  onAccent: {
-    color: Palette.onAccent,
-  },
-  sectionTitle: {
-    ...Typography.section,
-    color: Palette.white,
-    marginBottom: Spacing.four,
-  },
-  previewGroup: {
     gap: Spacing.three,
-    marginBottom: Spacing.five,
+    alignItems: 'flex-start',
+    backgroundColor: Palette.bgElevated,
+    borderRadius: Radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Palette.border,
+    padding: Spacing.four,
+    marginBottom: Spacing.six,
   },
-  note: {
-    ...Typography.caption,
-    color: Palette.textMuted,
-    textAlign: 'center',
-  },
+  explainerText: { ...Typography.caption, color: Palette.textSecondary, flex: 1 },
+  note: { ...Typography.caption, color: Palette.textMuted, textAlign: 'center' },
 });

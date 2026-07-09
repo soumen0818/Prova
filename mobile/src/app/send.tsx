@@ -5,7 +5,9 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-nati
 import { submitTransfer, type KycCredential } from '@/lib/api';
 import { isProverAvailable, prove } from '@/lib/prover';
 import { getSecret, SecureKey } from '@/lib/secure-store';
+import { secureRandomU64 } from '@/lib/wallet';
 import { Button, Card, Screen } from '@/components/ui';
+import { useToast } from '@/components/toast';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 type Phase = 'idle' | 'proving' | 'submitting' | 'sent' | 'error';
@@ -28,6 +30,7 @@ export default function SendScreen() {
   const [txHash, setTxHash] = useState('');
   const [error, setError] = useState('');
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     let active = true;
@@ -78,7 +81,7 @@ export default function SendScreen() {
       startProgress();
 
       const now = Math.floor(Date.now() / 1000);
-      const transferId = String(now * 1000 + Math.floor(Math.random() * 1000));
+      const transferId = secureRandomU64();
       const blob = await prove({
         amount: String(amt),
         secret,
@@ -101,16 +104,20 @@ export default function SendScreen() {
       if (resp.status === 'confirmed') {
         setTxHash(resp.txHash ?? '');
         setPhase('sent');
+        toast.success('Sent — no amount on-chain');
       } else {
         setError(`Transfer ${resp.status}.`);
         setPhase('error');
+        toast.error(`Transfer ${resp.status}`);
       }
     } catch (e) {
       stopProgress();
-      setError(e instanceof Error ? e.message : 'send failed');
+      const msg = e instanceof Error ? e.message : 'send failed';
+      setError(msg);
       setPhase('error');
+      toast.error(msg);
     }
-  }, [amount, secret, credential]);
+  }, [amount, secret, credential, toast]);
 
   const busy = phase === 'proving' || phase === 'submitting';
 

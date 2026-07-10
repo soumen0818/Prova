@@ -65,9 +65,36 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface OtpRequestResponse {
+  status: string;
+  /** Present only in development mode: the code to type. */
+  devCode?: string;
+}
+
+export interface OtpVerifyResponse {
+  token: string;
+  phone: string;
+}
+
 /** Liveness + shared-schema check against the backend. */
 export function getHealth(): Promise<HealthResponse> {
   return json<HealthResponse>('/healthz');
+}
+
+/** Request an SMS OTP for a phone number (production auth path). */
+export function requestOtp(phone: string): Promise<OtpRequestResponse> {
+  return json<OtpRequestResponse>('/auth/otp/request', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  });
+}
+
+/** Verify an OTP code, returning a session token (production auth path). */
+export function verifyOtp(phone: string, code: string): Promise<OtpVerifyResponse> {
+  return json<OtpVerifyResponse>('/auth/otp/verify', {
+    method: 'POST',
+    body: JSON.stringify({ phone, code }),
+  });
 }
 
 /** Start a SEP-24 interactive deposit; returns the anchor popup URL to open. */

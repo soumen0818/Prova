@@ -17,8 +17,11 @@ function str(value: string | undefined, fallback: string): string {
   return value && value.length > 0 ? value : fallback;
 }
 
+export type AuthMode = 'development' | 'production';
+
 const appEnv = str(process.env.EXPO_PUBLIC_APP_ENV, 'development') as AppEnv;
 const network = str(process.env.EXPO_PUBLIC_STELLAR_NETWORK, 'testnet') as StellarNetwork;
+const authMode = str(process.env.EXPO_PUBLIC_AUTH_MODE, 'development') as AuthMode;
 
 const STELLAR_DEFAULTS: Record<
   StellarNetwork,
@@ -51,4 +54,19 @@ export const env = {
   apiBaseUrl: str(process.env.EXPO_PUBLIC_API_BASE_URL, 'http://localhost:8080'),
   /** Optional Sentry DSN; empty disables remote error reporting. */
   sentryDsn: str(process.env.EXPO_PUBLIC_SENTRY_DSN, ''),
+  /**
+   * Phone-login credential mode.
+   *  - `development`: OTP is bypassed on-device with a fixed dev code, so the app works without an
+   *    SMS provider. A dev phone + code are pre-filled to make sign-in one tap.
+   *  - `production`: OTP is requested/verified through the backend (real SMS provider). Flip
+   *    `EXPO_PUBLIC_AUTH_MODE=production` once real credentials are wired — no code changes needed.
+   */
+  auth: {
+    mode: authMode,
+    isDev: authMode === 'development',
+    devPhone: str(process.env.EXPO_PUBLIC_DEV_PHONE, '+971 50 123 4567'),
+    devOtp: str(process.env.EXPO_PUBLIC_DEV_OTP, '000000'),
+  },
+  /** Display currency (funding side). */
+  currency: str(process.env.EXPO_PUBLIC_CURRENCY, 'AED'),
 } as const;

@@ -27,6 +27,11 @@ type Config struct {
 	// Phase 3 — KYC credential issuance (anchor side).
 	ProverBin  string // path to the prova-prover CLI (signs credentials, matches the circuit)
 	AnchorSeed string // hex Jubjub anchor secret seed; empty → the CLI's built-in dev key
+
+	// Phone-login OTP. "development" bypasses SMS with a fixed code; "production" wires a real
+	// SMS provider (Twilio, not yet configured — returns 501). Flip via AUTH_MODE.
+	AuthMode string
+	DevOTP   string // the accepted code in development mode
 }
 
 // Load reads config from the environment with sensible testnet defaults.
@@ -50,6 +55,9 @@ func Load() Config {
 
 		ProverBin:  getenv("PROVER_BIN", "prova-prover"),
 		AnchorSeed: getenv("ANCHOR_SEED", ""), // empty → the CLI's built-in dev anchor key
+
+		AuthMode: getenv("AUTH_MODE", "development"),
+		DevOTP:   getenv("DEV_OTP", "000000"),
 	}
 }
 

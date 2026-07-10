@@ -17,6 +17,12 @@ export const SecureKey = {
   zkSecretKey: 'prova.zk_secret_key',
   kycCredential: 'prova.kyc_credential',
   stellarSecret: 'prova.stellar_secret',
+  /** Signed-in account: phone + display name (JSON). */
+  session: 'prova.session',
+  /** Spendable balance in minor units — kept on-device because the amount is private. */
+  balance: 'prova.balance',
+  /** Saved beneficiaries (JSON array). */
+  recipients: 'prova.recipients',
 } as const;
 
 export type SecureKeyId = (typeof SecureKey)[keyof typeof SecureKey];

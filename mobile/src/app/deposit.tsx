@@ -1,138 +1,164 @@
-import { Stack } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { apiBaseUrl, getHealth, startDeposit } from '@/lib/api';
+import { startDeposit } from '@/lib/api';
+import { credit, formatMinor } from '@/lib/balance';
+import { useBalance, QK } from '@/lib/queries';
 import { Button, Card, Screen } from '@/components/ui';
-import { Palette, Spacing, Typography } from '@/constants/theme';
+import { useToast } from '@/components/toast';
+import { env } from '@/config/env';
+import { captureError } from '@/lib/reporting';
+import { validateAmount } from '@/lib/validation';
+import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
-type Connection = 'checking' | 'online' | 'offline';
+const QUICK = [100, 500, 1000, 2500];
+const MAX_DEPOSIT = 100_000;
 
 /**
- * Phase 2 thin slice: "connect + deposit". Checks the backend is reachable, then drives a SEP-24
- * interactive deposit through the backend and opens the anchor's page. No on-device proving yet.
+ * Add money. In development this instantly tops up the on-device testnet balance so the send flow
+ * is usable end-to-end. In production it drives a SEP-24 interactive deposit through the anchor.
+ * (Balance is device-local because the amount is private — the backend never sees it.)
  */
 export default function DepositScreen() {
-  const [connection, setConnection] = useState<Connection>('checking');
-  const [schemaVersion, setSchemaVersion] = useState<string>('');
+  const router = useRouter();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const { data: balanceMinor } = useBalance();
+  const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [submitted, setSubmitted] = useState(false);
 
-  const checkConnection = useCallback(async () => {
-    setConnection('checking');
-    setError('');
-    try {
-      const h = await getHealth();
-      setSchemaVersion(h.schemaVersion);
-      setConnection('online');
-    } catch {
-      setConnection('offline');
+  const amt = Number(amount);
+  const check = validateAmount(amount, { min: 1, max: MAX_DEPOSIT });
+  const showError = submitted && !check.ok ? check.error : '';
+
+  const onDevCredit = useCallback(async () => {
+    setSubmitted(true);
+    const v = validateAmount(amount, { min: 1, max: MAX_DEPOSIT });
+    if (!v.ok) {
+      toast.error(v.error);
+      return;
     }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const h = await getHealth();
-        if (!active) return;
-        setSchemaVersion(h.schemaVersion);
-        setConnection('online');
-      } catch {
-        if (active) setConnection('offline');
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const onDeposit = useCallback(async () => {
     setBusy(true);
-    setError('');
-    setStatus('');
     try {
-      const dep = await startDeposit();
-      setStatus(`Deposit ${dep.id.slice(0, 8)}… started — opening anchor`);
-      await WebBrowser.openBrowserAsync(dep.url);
+      await credit(amt);
+      await queryClient.invalidateQueries({ queryKey: QK.balance });
+      toast.success(`Added ${formatMinor(amt * 100)}`);
+      router.back();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'deposit failed');
+      captureError(e, { step: 'dev-deposit' });
+      toast.error('Could not add funds');
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [amount, amt, queryClient, router, toast]);
+
+  const onSep24 = useCallback(async () => {
+    setBusy(true);
+    try {
+      const dep = await startDeposit();
+      toast.info('Opening the anchor…');
+      await WebBrowser.openBrowserAsync(dep.url);
+    } catch (e) {
+      captureError(e, { step: 'sep24-deposit' });
+      toast.error(e instanceof Error ? e.message : 'Deposit failed');
+    } finally {
+      setBusy(false);
+    }
+  }, [toast]);
 
   return (
     <Screen scroll>
-      <Stack.Screen options={{ title: 'Deposit (testnet)' }} />
-
-      <Text style={styles.title}>Add funds</Text>
-      <Text style={styles.subtitle}>
-        Deposit a test asset via the SDF testanchor (SEP-24). The backend authenticates (SEP-10) and
-        opens the anchor’s deposit page.
-      </Text>
-
-      <Card style={styles.card}>
-        <View style={styles.row}>
-          <Text style={styles.label}>Backend</Text>
-          <Text style={[styles.value, styles[connection]]}>{connection}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>API</Text>
-          <Text style={styles.mono}>{apiBaseUrl}</Text>
-        </View>
-        {schemaVersion ? (
-          <View style={styles.row}>
-            <Text style={styles.label}>@prova/shared</Text>
-            <Text style={styles.mono}>v{schemaVersion}</Text>
-          </View>
-        ) : null}
+      <Card tone="accent" style={styles.balanceCard}>
+        <Text style={styles.balanceLabel}>Current balance</Text>
+        <Text style={styles.balanceValue}>{formatMinor(balanceMinor ?? 0)}</Text>
       </Card>
 
-      <View style={styles.actions}>
-        <Button
-          label={busy ? 'Starting…' : 'Deposit test funds'}
-          onPress={onDeposit}
-          disabled={busy || connection !== 'online'}
+      <Text style={styles.label}>Amount to add ({env.currency})</Text>
+      <View style={styles.amountRow}>
+        <Text style={styles.currency}>{env.currency}</Text>
+        <TextInput
+          style={styles.amountInput}
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="number-pad"
+          placeholder="0"
+          placeholderTextColor={Palette.textMuted}
+          editable={!busy}
+          autoFocus
         />
-        {connection === 'offline' ? (
-          <Button label="Retry connection" variant="secondary" onPress={checkConnection} />
-        ) : null}
+      </View>
+      {showError ? <Text style={styles.error}>{showError}</Text> : null}
+
+      <View style={styles.chips}>
+        {QUICK.map((q) => (
+          <Pressable key={q} style={styles.chip} onPress={() => setAmount(String(q))}>
+            <Text style={styles.chipText}>
+              {env.currency} {q}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      {busy ? <ActivityIndicator color={Palette.accent} style={styles.spinner} /> : null}
-      {status ? <Text style={styles.status}>{status}</Text> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {connection === 'offline' ? (
-        <Text style={styles.hint}>
-          Can’t reach the backend. Start it with `go run ./cmd/api` in `backend/`, and on the
-          Android emulator the API host is `10.0.2.2` (handled automatically).
-        </Text>
-      ) : null}
+      {env.auth.isDev ? (
+        <>
+          <Button
+            label={busy ? 'Adding…' : 'Add to balance'}
+            onPress={onDevCredit}
+            loading={busy}
+            disabled={!check.ok}
+            style={styles.action}
+          />
+          <Text style={styles.note}>
+            Testnet top-up — funds are credited instantly on this device for testing. Switch
+            `EXPO_PUBLIC_AUTH_MODE=production` to use the real anchor (SEP-24) deposit.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Button
+            label={busy ? 'Starting…' : 'Deposit via anchor'}
+            onPress={onSep24}
+            loading={busy}
+            style={styles.action}
+          />
+          <Text style={styles.note}>
+            Deposit a test asset via the anchor (SEP-24). The backend authenticates (SEP-10) and
+            opens the anchor’s deposit page.
+          </Text>
+        </>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { ...Typography.title, color: Palette.white, marginBottom: Spacing.two },
-  subtitle: { ...Typography.caption, color: Palette.textSecondary, marginBottom: Spacing.five },
-  card: { gap: Spacing.three, marginBottom: Spacing.five },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { ...Typography.caption, color: Palette.textSecondary },
-  value: { ...Typography.caption, fontWeight: '600' },
-  mono: { ...Typography.micro, color: Palette.textMuted },
-  checking: { color: Palette.textMuted },
-  online: { color: Palette.accent },
-  offline: { color: '#ff6b6b' },
-  actions: { gap: Spacing.three },
-  spinner: { marginTop: Spacing.four },
-  status: { ...Typography.caption, color: Palette.accent, marginTop: Spacing.four },
-  error: { ...Typography.caption, color: '#ff6b6b', marginTop: Spacing.four },
-  hint: {
-    ...Typography.micro,
-    color: Palette.textMuted,
-    marginTop: Spacing.four,
+  balanceCard: { gap: Spacing.one, marginBottom: Spacing.six, alignItems: 'flex-start' },
+  balanceLabel: { ...Typography.caption, color: 'rgba(17,19,26,0.7)', fontWeight: '600' },
+  balanceValue: { ...Typography.title, fontSize: 28, color: Palette.onAccent },
+  label: { ...Typography.caption, color: Palette.textSecondary, marginBottom: Spacing.two },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.two,
+    marginBottom: Spacing.four,
   },
+  currency: { ...Typography.title, color: Palette.textSecondary },
+  amountInput: { ...Typography.displayBalance, color: Palette.white, flex: 1, padding: 0 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginBottom: Spacing.six },
+  chip: {
+    backgroundColor: Palette.bgElevated,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Palette.border,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
+  },
+  chipText: { ...Typography.caption, color: Palette.white },
+  action: { marginBottom: Spacing.four },
+  note: { ...Typography.micro, color: Palette.textMuted },
+  error: { ...Typography.caption, color: Palette.statusDown, marginBottom: Spacing.four },
 });

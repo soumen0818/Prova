@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { submitKyc, type KycCredential } from '@/lib/api';
 import { userId as deriveUserId } from '@/lib/prover';
+import { QK } from '@/lib/queries';
 import { getSecret, SecureKey, setSecret } from '@/lib/secure-store';
 import { getOrCreateSecret } from '@/lib/wallet';
 import { Button, Card, Screen } from '@/components/ui';
@@ -21,6 +23,7 @@ export default function KycScreen() {
   const [credential, setCredential] = useState<KycCredential | null>(null);
   const [error, setError] = useState('');
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     let active = true;
@@ -49,6 +52,7 @@ export default function KycScreen() {
       const userId = await deriveUserId(secret);
       const cred = await submitKyc(userId, 2);
       await setSecret(SecureKey.kycCredential, JSON.stringify(cred));
+      await queryClient.invalidateQueries({ queryKey: QK.kyc });
       setCredential(cred);
       toast.success('Verified ✅');
     } catch (e) {
@@ -58,7 +62,7 @@ export default function KycScreen() {
     } finally {
       setBusy(false);
     }
-  }, [toast]);
+  }, [toast, queryClient]);
 
   return (
     <Screen scroll>

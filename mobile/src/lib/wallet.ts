@@ -46,9 +46,12 @@ export function hasWallet(): Promise<boolean> {
   return hasSecret(SecureKey.zkSecretKey);
 }
 
-/** Wipe wallet material from the enclave (sign-out / reset). */
+/** Wipe wallet + account material from the enclave (sign-out / reset). */
 export async function resetWallet(): Promise<void> {
   await deleteSecret(SecureKey.zkSecretKey);
   await deleteSecret(SecureKey.kycCredential);
   await deleteSecret(SecureKey.stellarSecret);
+  await deleteSecret(SecureKey.session);
+  await deleteSecret(SecureKey.balance);
+  await deleteSecret(SecureKey.recipients);
 }

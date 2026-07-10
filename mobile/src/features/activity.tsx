@@ -9,16 +9,17 @@ import {
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { env } from '@/config/env';
 import type { TransferRecord } from '@/lib/api';
 import { useHistory } from '@/lib/queries';
-import { Button, Card, Screen } from '@/components/ui';
-import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
+import { Button, Card } from '@/components/ui';
+import { BottomTabInset, Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
-/** Activity / history — recent transfers from the backend (relays + on-chain indexer). Shows only
- * commitments; amounts are never on-chain. */
-export default function ActivityScreen() {
+/** Activity tab: recent transfers from the backend (relays + on-chain indexer). Commitments only —
+ * amounts are never on-chain. */
+export function ActivityScreen() {
   const { data, isLoading, isError, refetch, isRefetching } = useHistory();
 
   const openTx = useCallback((txHash?: string) => {
@@ -27,7 +28,7 @@ export default function ActivityScreen() {
   }, []);
 
   return (
-    <Screen padded={false}>
+    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       <Text style={styles.title}>Activity</Text>
 
       {isLoading ? (
@@ -37,7 +38,7 @@ export default function ActivityScreen() {
       ) : isError ? (
         <View style={styles.center}>
           <Text style={styles.muted}>Couldn’t load activity.</Text>
-          <Button label="Retry" variant="secondary" onPress={() => refetch()} />
+          <Button label="Retry" variant="secondary" onPress={() => refetch()} fullWidth={false} />
         </View>
       ) : (
         <FlatList
@@ -60,7 +61,7 @@ export default function ActivityScreen() {
           renderItem={({ item }) => <Row item={item} onPress={() => openTx(item.txHash)} />}
         />
       )}
-    </Screen>
+    </SafeAreaView>
   );
 }
 
@@ -94,14 +95,19 @@ function statusMeta(status: string): { label: string; color: string } {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: Palette.bgBase },
   title: {
     ...Typography.title,
     color: Palette.white,
     paddingHorizontal: Spacing.five,
-    paddingTop: Spacing.two,
+    paddingTop: Spacing.four,
     paddingBottom: Spacing.four,
   },
-  list: { paddingHorizontal: Spacing.five, paddingBottom: Spacing.eight, gap: Spacing.three },
+  list: {
+    paddingHorizontal: Spacing.five,
+    paddingBottom: BottomTabInset + Spacing.six,
+    gap: Spacing.three,
+  },
   center: {
     alignItems: 'center',
     justifyContent: 'center',

@@ -1,15 +1,13 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, ScanFace, Send, ShieldCheck } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { Lock, Send, ShieldCheck } from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui';
-import { canUseBiometrics } from '@/lib/auth';
-import { captureError } from '@/lib/reporting';
-import { getOrCreateSecret } from '@/lib/wallet';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
@@ -33,31 +31,13 @@ const SLIDES: Slide[] = [
   },
 ];
 
-/** First-run onboarding: intro slides, then create the on-device wallet. Calls `onDone` when the
- * secure wallet secret has been created. */
-export function Onboarding({ onDone }: { onDone: () => void }) {
+/** First screen for a signed-out user: value-prop slides, then "Get started" → phone sign-in. */
+export default function WelcomeScreen() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const isLast = step === SLIDES.length;
-
-  const createWallet = useCallback(async () => {
-    setBusy(true);
-    setError('');
-    try {
-      await getOrCreateSecret(); // secure RNG, stored in the enclave
-      await canUseBiometrics().catch(() => false); // warm up; AppLock enforces it next launch
-      onDone();
-    } catch (e) {
-      captureError(e, { step: 'create-wallet' });
-      setError('Could not create your wallet. Please try again.');
-    } finally {
-      setBusy(false);
-    }
-  }, [onDone]);
-
-  const slide = SLIDES[Math.min(step, SLIDES.length - 1)];
-  const Icon = isLast ? ScanFace : slide.Icon;
+  const slide = SLIDES[step];
+  const Icon = slide.Icon;
+  const isLast = step === SLIDES.length - 1;
 
   return (
     <View style={styles.root}>
@@ -76,32 +56,27 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <View style={styles.badge}>
             <Icon color={Palette.accent} size={40} strokeWidth={1.6} />
           </View>
-          <Text style={styles.title}>{isLast ? 'Create your wallet' : slide.title}</Text>
-          <Text style={styles.subtitle}>
-            {isLast
-              ? 'We’ll generate a private key on this device, secured by your biometrics/PIN. It never leaves your phone.'
-              : slide.body}
-          </Text>
+          <Text style={styles.title}>{slide.title}</Text>
+          <Text style={styles.subtitle}>{slide.body}</Text>
         </View>
 
         <View style={styles.dots}>
-          {[...SLIDES, null].map((_, i) => (
+          {SLIDES.map((_, i) => (
             <View key={i} style={[styles.dot, i === step && styles.dotActive]} />
           ))}
         </View>
 
         <View style={styles.actions}>
           {isLast ? (
-            <Button
-              label={busy ? 'Creating…' : 'Create wallet & continue'}
-              onPress={createWallet}
-              disabled={busy}
-            />
+            <Button label="Get started" onPress={() => router.push('/phone')} />
           ) : (
             <Button label="Continue" onPress={() => setStep((s) => s + 1)} />
           )}
-          {busy ? <ActivityIndicator color={Palette.accent} style={styles.spinner} /> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button
+            label={isLast ? 'Back' : 'Skip'}
+            variant="glass"
+            onPress={() => (isLast ? setStep((s) => s - 1) : router.push('/phone'))}
+          />
         </View>
       </SafeAreaView>
     </View>
@@ -136,6 +111,4 @@ const styles = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 999, backgroundColor: Palette.bgSelected },
   dotActive: { backgroundColor: Palette.accent, width: 20 },
   actions: { gap: Spacing.three, paddingBottom: Spacing.four },
-  spinner: { marginTop: Spacing.two },
-  error: { ...Typography.caption, color: '#ff6b6b', textAlign: 'center' },
 });

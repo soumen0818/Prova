@@ -1,0 +1,16 @@
+# Build context for the backend image (docker build -f backend/Dockerfile .).
+# Only backend/ and shared/go/ are needed — exclude everything else so the context stays small.
+.git
+Docs
+circuits
+contracts
+mobile
+
+# Never ship local/build artifacts.
+**/node_modules
+**/target
+**/dist
+**/.expo
+**/*.log
+**/.env
+**/.env.*

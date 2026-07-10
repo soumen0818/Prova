@@ -5,11 +5,16 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/prova/backend/migrations"
 	"github.com/prova/shared/schema"
 )
 
@@ -33,8 +38,19 @@ type Store struct {
 }
 
 // New connects a pool to the given Postgres URL.
-func New(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+//
+// simpleProtocol disables prepared statements (pgx "simple protocol"). Set it when connecting
+// through a transaction-mode connection pooler that doesn't support prepared statements — notably
+// Supabase's pooled (pgBouncer) endpoint. Direct/session connections don't need it.
+func New(ctx context.Context, databaseURL string, simpleProtocol bool) (*Store, error) {
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if simpleProtocol {
+		cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -48,21 +64,31 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 // Close releases the pool.
 func (s *Store) Close() { s.pool.Close() }
 
-// Migrate creates the schema if it does not exist. The nullifier is UNIQUE, giving DB-level
-// anti-replay/idempotency for the whole transfer lifecycle.
+// Migrate applies the embedded SQL migrations (backend/migrations/*.sql) in filename order. Each
+// file is idempotent (IF NOT EXISTS), so re-running on every boot — and across replicas — is safe.
+// These are the same files you can run by hand against a managed database (e.g. Supabase).
 func (s *Store) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `
-CREATE TABLE IF NOT EXISTS transfers (
-    id          UUID PRIMARY KEY,
-    status      TEXT NOT NULL,
-    commitment  TEXT NOT NULL,
-    nullifier   TEXT NOT NULL UNIQUE,
-    tx_hash     TEXT NOT NULL DEFAULT '',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS transfers_commitment_idx ON transfers (commitment);`)
-	return err
+	entries, err := fs.ReadDir(migrations.FS, ".")
+	if err != nil {
+		return fmt.Errorf("read migrations: %w", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		sqlBytes, rerr := migrations.FS.ReadFile(name)
+		if rerr != nil {
+			return fmt.Errorf("read migration %s: %w", name, rerr)
+		}
+		if _, eerr := s.pool.Exec(ctx, string(sqlBytes)); eerr != nil {
+			return fmt.Errorf("apply migration %s: %w", name, eerr)
+		}
+	}
+	return nil
 }
 
 // Create inserts a new transfer in the given status. If the nullifier already exists it returns

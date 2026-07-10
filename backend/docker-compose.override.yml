@@ -1,0 +1,41 @@
+# Dev-only extras, auto-merged by `docker compose up`. This adds a local Postgres container and
+# points the API/indexer at it. For a managed/external database (Supabase), DON'T use this file:
+#
+#   docker compose -f docker-compose.yml up --build
+#
+# and provide DATABASE_URL yourself.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prova
+      POSTGRES_PASSWORD: prova
+      POSTGRES_DB: prova
+    # Host port is overridable to avoid clashing with other local Postgres instances.
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U prova']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    environment:
+      DATABASE_URL: postgres://prova:prova@postgres:5432/prova?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  indexer:
+    environment:
+      DATABASE_URL: postgres://prova:prova@postgres:5432/prova?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

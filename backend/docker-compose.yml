@@ -1,21 +1,18 @@
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: prova
-      POSTGRES_PASSWORD: prova
-      POSTGRES_DB: prova
-    # Host port is overridable to avoid clashing with other local Postgres instances.
-    ports:
-      - '${POSTGRES_PORT:-5432}:5432'
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U prova']
-      interval: 5s
-      timeout: 5s
-      retries: 5
+# Prova backend — full stack in Docker.
+#
+#   Local dev (Postgres container):   docker compose up --build
+#       └─ docker-compose.override.yml is auto-merged and adds a local Postgres + points the app at it.
+#
+#   Managed / external DB (Supabase): docker compose -f docker-compose.yml up --build
+#       └─ set DATABASE_URL (+ DB_SIMPLE_PROTOCOL=true for a transaction-mode pooler like Supabase).
+#
+# The API and the on-chain indexer run as separate roles (RUN_MODE) from the SAME image, so the
+# stateless API scales horizontally without spawning duplicate indexers. Redis is the shared
+# idempotency lock. The ZK prover binary is built once (prover-init) and shared via a volume, so the
+# API image stays small.
+name: prova-backend
 
+services:
   redis:
     image: redis:7-alpine
     ports:
@@ -25,6 +22,65 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # One-shot: publish the prover binary into a shared volume for the API/indexer to exec.
+  prover-init:
+    build:
+      context: ../circuits/prover
+    volumes:
+      - prover-bin:/shared
+    restart: 'no'
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      RUN_MODE: api
+      PORT: '8080'
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_SIMPLE_PROTOCOL: ${DB_SIMPLE_PROTOCOL:-false}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+      CONTRACT_ID: ${CONTRACT_ID:-}
+      PROVER_BIN: /opt/prover/prova-prover
+      # Transfer relayer: in Docker set RELAYER_KEY to the funded Stellar SECRET seed (S…) so the
+      # bundled `stellar` CLI signs with it directly (no keystore/identity needed).
+      RELAYER_KEY: ${RELAYER_KEY:-}
+      STELLAR_BIN: stellar
+      ANCHOR_SEED: ${ANCHOR_SEED:-}
+      AUTH_MODE: ${AUTH_MODE:-development}
+      DEV_OTP: ${DEV_OTP:-000000}
+    ports:
+      - '${API_PORT:-8080}:8080'
+    volumes:
+      - prover-bin:/opt/prover:ro
+    depends_on:
+      redis:
+        condition: service_started
+      prover-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  indexer:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      RUN_MODE: indexer
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_SIMPLE_PROTOCOL: ${DB_SIMPLE_PROTOCOL:-false}
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+      CONTRACT_ID: ${CONTRACT_ID:-}
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
 
 volumes:
-  pgdata:
+  prover-bin:

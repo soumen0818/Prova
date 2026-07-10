@@ -1,0 +1,41 @@
+name: docker-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      ['backend/**', 'shared/go/**', '.dockerignore', '.github/workflows/docker-ci.yml']
+  pull_request:
+    branches: [main]
+    paths:
+      ['backend/**', 'shared/go/**', '.dockerignore', '.github/workflows/docker-ci.yml']
+
+jobs:
+  image:
+    name: Build backend image & validate compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Build the API/indexer image from the repo root (context includes the replaced ../shared/go).
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: false
+          tags: prova-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Validate both compose paths: dev (local Postgres via override) and prod (external DATABASE_URL).
+      - name: Validate compose config
+        working-directory: backend
+        run: |
+          docker compose config >/dev/null
+          DATABASE_URL="postgres://ci@example/db" docker compose -f docker-compose.yml config >/dev/null
+
+# The ZK prover image (circuits/prover/Dockerfile) is intentionally not built here — the arkworks
+# compile is heavy and the crate itself is already built + tested by circuits-ci. Compose validation
+# above still checks its wiring.

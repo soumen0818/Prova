@@ -1,7 +1,10 @@
 // Package config loads runtime configuration from the environment.
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 // Config holds all backend runtime settings. Secrets come from the environment
 // (see .env.example); never hardcode them.
@@ -13,6 +16,16 @@ type Config struct {
 	StellarNetwork string
 	SorobanRPCURL  string
 	HorizonURL     string
+
+	// RunMode selects what this process runs, so the same image scales as separate roles:
+	//   all      → HTTP API + embedded indexer (single-container / dev default)
+	//   api      → HTTP API only (run N replicas behind a load balancer)
+	//   indexer  → the on-chain indexer only (exactly one replica)
+	RunMode string
+
+	// DBSimpleProtocol disables prepared statements — required behind a transaction-mode pooler
+	// such as Supabase's pooled endpoint. Direct/session connections leave this false.
+	DBSimpleProtocol bool
 
 	// Phase 2 — verifier contract + relayer.
 	ContractID string // deployed Prova verifier contract id
@@ -45,6 +58,9 @@ func Load() Config {
 		SorobanRPCURL:  getenv("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
 		HorizonURL:     getenv("HORIZON_URL", "https://horizon-testnet.stellar.org"),
 
+		RunMode:          getenv("RUN_MODE", "all"),
+		DBSimpleProtocol: getbool("DB_SIMPLE_PROTOCOL", false),
+
 		ContractID: getenv("CONTRACT_ID", "CAM5FO22PLIINNETME2CXFPS2WL7WCYOESYTLNYPQMWVKWDADWD4BTJC"),
 		RelayerKey: getenv("RELAYER_KEY", "prova-test"),
 		StellarBin: getenv("STELLAR_BIN", "stellar"),
@@ -66,4 +82,25 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getbool(key string, fallback bool) bool {
+	switch strings.ToLower(os.Getenv(key)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+// RunsAPI reports whether this process should serve HTTP.
+func (c Config) RunsAPI() bool {
+	return c.RunMode == "all" || c.RunMode == "api"
+}
+
+// RunsIndexer reports whether this process should run the on-chain indexer.
+func (c Config) RunsIndexer() bool {
+	return c.RunMode == "all" || c.RunMode == "indexer"
 }

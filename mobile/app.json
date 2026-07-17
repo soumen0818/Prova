@@ -7,12 +7,14 @@
     "icon": "./assets/images/icon.png",
     "scheme": "provamobile",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0E0E11",
     "ios": {
       "bundleIdentifier": "com.prova.app",
       "supportsTablet": true
     },
     "android": {
       "package": "com.prova.app",
+      "backgroundColor": "#0E0E11",
       "adaptiveIcon": {
         "backgroundColor": "#0E0E11",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,10 +34,12 @@
         {
           "backgroundColor": "#0E0E11",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 120,
+          "imageWidth": 160,
+          "resizeMode": "contain",
           "android": {
             "image": "./assets/images/splash-icon.png",
-            "imageWidth": 120
+            "imageWidth": 160,
+            "resizeMode": "contain"
           }
         }
       ],

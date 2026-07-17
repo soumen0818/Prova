@@ -11,7 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { AnimatedSplashOverlay, BrandedLoading } from '@/components/animated-icon';
 import { AppLock } from '@/components/app-lock';
 import { ConnectionBanner } from '@/components/connection-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -58,8 +58,9 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
-  // Hold the native splash (render nothing) until fonts resolve, to avoid a fallback-font flash.
-  if (!fontsLoaded) return null;
+  // Until fonts resolve, show the dark branded loading screen (never a blank white window). It uses
+  // no brand text, so there is no fallback-font flash; on a JS reload this is what covers the gap.
+  if (!fontsLoaded) return <BrandedLoading />;
 
   return (
     <ErrorBoundary>
@@ -85,6 +86,7 @@ export default function RootLayout() {
                 <Stack.Screen name="otp" options={{ headerShown: false }} />
                 <Stack.Screen name="profile-setup" options={{ headerShown: false }} />
                 {/* Pushed flows get a themed native header + back button. */}
+                <Stack.Screen name="account" options={{ title: 'Account details' }} />
                 <Stack.Screen name="send" options={{ title: 'Send' }} />
                 <Stack.Screen name="deposit" options={{ title: 'Add money' }} />
                 <Stack.Screen name="kyc" options={{ title: 'Verify identity' }} />

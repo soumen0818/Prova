@@ -1,6 +1,8 @@
+import { CheckCircle2, Info, XCircle } from 'lucide-react-native';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
+import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
@@ -30,7 +32,13 @@ const ACCENTS: Record<Variant, string> = {
   info: Palette.lilac,
 };
 
-/** Provides `useToast()` and renders a single auto-dismissing toast at the bottom of the app. */
+const ICONS: Record<Variant, typeof Info> = {
+  success: CheckCircle2,
+  error: XCircle,
+  info: Info,
+};
+
+/** Provides `useToast()` and renders a single auto-dismissing toast at the top of the app. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,14 +59,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [show],
   );
 
+  const Icon = toast ? ICONS[toast.variant] : Info;
+
   return (
     <ToastContext.Provider value={api}>
       {children}
       {toast ? (
-        <SafeAreaView style={styles.host} edges={['bottom']} pointerEvents="none">
-          <View style={[styles.toast, { borderLeftColor: ACCENTS[toast.variant] }]}>
+        <SafeAreaView style={styles.host} edges={['top']} pointerEvents="none">
+          <Animated.View
+            key={toast.id}
+            entering={FadeInDown.springify().damping(18)}
+            exiting={FadeOutUp.duration(200)}
+            style={[styles.toast, { borderLeftColor: ACCENTS[toast.variant] }]}>
+            <Icon color={ACCENTS[toast.variant]} size={18} strokeWidth={2.2} />
             <Text style={styles.text}>{toast.message}</Text>
-          </View>
+          </Animated.View>
         </SafeAreaView>
       ) : null}
     </ToastContext.Provider>
@@ -70,14 +85,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
+    top: 0,
     alignItems: 'center',
     paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.six,
+    paddingTop: Spacing.three,
   },
   toast: {
     maxWidth: 520,
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
     backgroundColor: Palette.bgElevated,
     borderRadius: Radius.input,
     borderLeftWidth: 3,
@@ -85,6 +103,12 @@ const styles = StyleSheet.create({
     borderColor: Palette.glassBorder,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.four,
+    // Subtle lift so it reads above the content it overlays.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  text: { ...Typography.caption, color: Palette.white },
+  text: { ...Typography.caption, color: Palette.white, flex: 1 },
 });

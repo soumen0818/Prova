@@ -14,9 +14,13 @@ import { Platform } from 'react-native';
 
 /** Canonical key registry. Add new secret keys here, never inline strings. */
 export const SecureKey = {
+  /** The single 32-byte master seed the ZK secret + Stellar key are derived from (hex). */
+  masterSeed: 'prova.master_seed',
   zkSecretKey: 'prova.zk_secret_key',
   kycCredential: 'prova.kyc_credential',
   stellarSecret: 'prova.stellar_secret',
+  /** Stellar public `G…` address — not secret, cached for display/receive. */
+  stellarPublic: 'prova.stellar_public',
   /** Signed-in account: phone + display name (JSON). */
   session: 'prova.session',
   /** Spendable balance in minor units — kept on-device because the amount is private. */

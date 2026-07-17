@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import {
   ChevronRight,
   LogOut,
+  QrCode,
   Settings,
   ShieldCheck,
   UsersRound,
@@ -83,6 +84,11 @@ export function ProfileScreen() {
       </View>
 
       <View style={styles.menu}>
+        <MenuRow
+          Icon={QrCode}
+          label="Account details"
+          onPress={() => router.push('/account')}
+        />
         <MenuRow Icon={UsersRound} label="Recipients" onPress={() => router.push('/recipients')} />
         <MenuRow
           Icon={ShieldCheck}

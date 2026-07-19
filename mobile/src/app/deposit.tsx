@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { startDeposit } from '@/lib/api';
 import { credit, formatMinor } from '@/lib/balance';
+import { syncBackup } from '@/lib/cloud-backup';
 import { useBalance, QK } from '@/lib/queries';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -47,6 +48,7 @@ export default function DepositScreen() {
       await credit(amt);
       await queryClient.invalidateQueries({ queryKey: QK.balance });
       toast.success(`Added ${formatMinor(amt * 100)}`);
+      void syncBackup(); // silent, best-effort backup refresh
       router.back();
     } catch (e) {
       captureError(e, { step: 'dev-deposit' });

@@ -50,6 +50,11 @@ export async function addRecipient(input: {
   return recipient;
 }
 
+/** Overwrite the recipient list from a restored backup snapshot (restore flow only). */
+export async function restoreRecipients(list: Recipient[]): Promise<void> {
+  await writeAll(Array.isArray(list) ? list : []);
+}
+
 export async function removeRecipient(id: string): Promise<void> {
   const list = await listRecipients();
   await writeAll(list.filter((r) => r.id !== id));

@@ -91,6 +91,10 @@ export async function resetWallet(): Promise<void> {
   await deleteSecret(SecureKey.kycCredential);
   await deleteSecret(SecureKey.stellarSecret);
   await deleteSecret(SecureKey.stellarPublic);
+  await deleteSecret(SecureKey.pinRecord);
+  await deleteSecret(SecureKey.vaultBox);
+  await deleteSecret(SecureKey.vaultDek);
+  await deleteSecret(SecureKey.backupMeta);
   await deleteSecret(SecureKey.session);
   await deleteSecret(SecureKey.balance);
   await deleteSecret(SecureKey.recipients);

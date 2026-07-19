@@ -52,6 +52,12 @@ export const env = {
   },
   /** Prova backend API base URL (Go service). */
   apiBaseUrl: str(process.env.EXPO_PUBLIC_API_BASE_URL, 'http://localhost:8080'),
+  /**
+   * Google OAuth **web** client ID (from Google Cloud console) — required for Google Drive cloud
+   * backup on Android. Empty disables Drive backup with an in-app "setup required" notice.
+   * iOS uses iCloud and does not need it.
+   */
+  googleWebClientId: str(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, ''),
   /** Optional Sentry DSN; empty disables remote error reporting. */
   sentryDsn: str(process.env.EXPO_PUBLIC_SENTRY_DSN, ''),
   /**

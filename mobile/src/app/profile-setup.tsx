@@ -49,9 +49,9 @@ export default function ProfileSetupScreen() {
       // Write straight into the cache so the root gate sees the session synchronously — avoids a
       // stale-null read that would bounce back to /welcome (the "onboarding twice" bug).
       queryClient.setQueryData(QK.session, session);
-      // Clear the auth screens from the back stack so Home is the root (back exits, not → OTP).
+      // Clear the auth screens from the back stack, then set a PIN before entering the app.
       if (router.canDismiss()) router.dismissAll();
-      router.replace('/');
+      router.replace('/set-pin');
     } catch (e) {
       captureError(e, { step: 'create-account' });
       toast.error('Could not create your account. Please try again.');

@@ -5,13 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { submitTransfer, type KycCredential } from '@/lib/api';
+import { authenticate, canUseBiometrics } from '@/lib/auth';
 import { debit, formatMinor, getBalanceMinor } from '@/lib/balance';
+import { syncBackup } from '@/lib/cloud-backup';
+import { hasPin } from '@/lib/pin';
 import { isProverAvailable, prove } from '@/lib/prover';
 import { useBalance, useRecipients, QK } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { getSecret, SecureKey } from '@/lib/secure-store';
 import { secureRandomU64 } from '@/lib/wallet';
 import { Button, Card, Screen } from '@/components/ui';
+import { PinPromptModal } from '@/components/pin-prompt';
 import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
@@ -36,6 +40,7 @@ export default function SendScreen() {
   const [secret, setSecret] = useState<string | null>(null);
   const [credential, setCredential] = useState<KycCredential | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [txHash, setTxHash] = useState('');
@@ -84,21 +89,9 @@ export default function SendScreen() {
   const amountValid = Number.isInteger(amt) && amt >= 1 && amt <= 9999;
   const canAfford = amountValid && amt * 100 <= (balanceMinor ?? 0);
 
-  const onSend = useCallback(async () => {
-    setError('');
-    if (!amountValid) {
-      setError('Amount must be a whole number between 1 and 9999.');
-      return;
-    }
-    if (!secret || !credential) {
-      setError('Verify your identity first.');
-      return;
-    }
-    // Re-read balance at send time (source of truth) to avoid a stale cached value.
-    if (amt * 100 > (await getBalanceMinor())) {
-      setError('Insufficient balance — add money first.');
-      return;
-    }
+  // The actual prove + relay, run only after the user has authorized the payment (step-up).
+  const runTransfer = useCallback(async () => {
+    if (!secret || !credential) return;
     try {
       setPhase('proving');
       setMessage('Securing your transfer…');
@@ -132,6 +125,7 @@ export default function SendScreen() {
         await queryClient.invalidateQueries({ queryKey: QK.history });
         setPhase('sent');
         toast.success('Sent — no amount on-chain');
+        void syncBackup(); // keep the cloud backup's balance snapshot fresh (silent, best-effort)
       } else {
         setError(`Transfer ${resp.status}.`);
         setPhase('error');
@@ -144,7 +138,39 @@ export default function SendScreen() {
       setPhase('error');
       toast.error(msg);
     }
-  }, [amountValid, amt, secret, credential, queryClient, toast]);
+  }, [amt, secret, credential, queryClient, toast]);
+
+  // Validate, then require a step-up (biometric, or PIN as fallback) before spending.
+  const onSend = useCallback(async () => {
+    setError('');
+    if (!amountValid) {
+      setError('Amount must be a whole number between 1 and 9999.');
+      return;
+    }
+    if (!secret || !credential) {
+      setError('Verify your identity first.');
+      return;
+    }
+    // Re-read balance at send time (source of truth) to avoid a stale cached value.
+    if (amt * 100 > (await getBalanceMinor())) {
+      setError('Insufficient balance — add money first.');
+      return;
+    }
+
+    // Payment step-up: biometric if available, otherwise the PIN; if neither is set up, proceed.
+    if (await canUseBiometrics()) {
+      const ok = await authenticate('Approve this transfer');
+      if (!ok) {
+        setError('Authentication required to send.');
+        return;
+      }
+      await runTransfer();
+    } else if (await hasPin()) {
+      setShowPinPrompt(true);
+    } else {
+      await runTransfer();
+    }
+  }, [amountValid, amt, secret, credential, runTransfer]);
 
   const busy = phase === 'proving' || phase === 'submitting';
   const list = useMemo(() => recipients ?? [], [recipients]);
@@ -297,6 +323,17 @@ export default function SendScreen() {
           enable proving.
         </Text>
       ) : null}
+
+      <PinPromptModal
+        visible={showPinPrompt}
+        title="Approve this transfer"
+        subtitle="Enter your PIN to send."
+        onSuccess={() => {
+          setShowPinPrompt(false);
+          runTransfer();
+        }}
+        onCancel={() => setShowPinPrompt(false)}
+      />
     </Screen>
   );
 }

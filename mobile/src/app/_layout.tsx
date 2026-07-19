@@ -85,8 +85,11 @@ export default function RootLayout() {
                 <Stack.Screen name="phone" options={{ headerShown: false }} />
                 <Stack.Screen name="otp" options={{ headerShown: false }} />
                 <Stack.Screen name="profile-setup" options={{ headerShown: false }} />
+                <Stack.Screen name="set-pin" options={{ headerShown: false }} />
+                <Stack.Screen name="restore" options={{ headerShown: false }} />
                 {/* Pushed flows get a themed native header + back button. */}
                 <Stack.Screen name="account" options={{ title: 'Account details' }} />
+                <Stack.Screen name="backup" options={{ title: 'Cloud backup' }} />
                 <Stack.Screen name="send" options={{ title: 'Send' }} />
                 <Stack.Screen name="deposit" options={{ title: 'Add money' }} />
                 <Stack.Screen name="kyc" options={{ title: 'Verify identity' }} />

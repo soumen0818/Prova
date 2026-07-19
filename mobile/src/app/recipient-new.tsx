@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } fro
 import { Button, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { QK } from '@/lib/queries';
+import { syncBackup } from '@/lib/cloud-backup';
 import { addRecipient } from '@/lib/recipients';
 import { captureError } from '@/lib/reporting';
 import { validateCountry, validateHandle, validateName } from '@/lib/validation';
@@ -42,6 +43,7 @@ export default function NewRecipientScreen() {
       await addRecipient({ name, handle, country });
       await queryClient.invalidateQueries({ queryKey: QK.recipients });
       toast.success('Recipient added');
+      void syncBackup(); // silent, best-effort backup refresh
       router.back();
     } catch (e) {
       captureError(e, { step: 'add-recipient' });

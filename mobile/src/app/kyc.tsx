@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { submitKyc, type KycCredential } from '@/lib/api';
+import { syncBackup } from '@/lib/cloud-backup';
 import { userId as deriveUserId } from '@/lib/prover';
 import { QK } from '@/lib/queries';
 import { getSecret, SecureKey, setSecret } from '@/lib/secure-store';
@@ -55,6 +56,7 @@ export default function KycScreen() {
       await queryClient.invalidateQueries({ queryKey: QK.kyc });
       setCredential(cred);
       toast.success('Verified ✅');
+      void syncBackup(); // carry the fresh credential into the cloud backup (silent)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'verification failed';
       setError(msg);

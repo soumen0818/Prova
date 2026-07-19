@@ -1,12 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
 import { apiBaseUrl } from '@/lib/api';
+import { hasPin } from '@/lib/pin';
 import { QK } from '@/lib/queries';
 import { resetWallet } from '@/lib/wallet';
 import { Palette, Spacing, Typography } from '@/constants/theme';
@@ -15,6 +16,18 @@ export default function SettingsScreen() {
   const toast = useToast();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [pinSet, setPinSet] = useState(false);
+
+  // Refresh the PIN state each time the screen gains focus (e.g. returning from set-pin).
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      hasPin().then((v) => active && setPinSet(v));
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const onReset = useCallback(() => {
     Alert.alert(
@@ -59,6 +72,11 @@ export default function SettingsScreen() {
           Your ZK secret and KYC credential are stored in the device secure enclave and unlocked
           with your biometrics/PIN. They never leave the device.
         </Text>
+        <Button
+          label={pinSet ? 'Change PIN' : 'Set up PIN'}
+          variant="secondary"
+          onPress={() => router.push('/set-pin?mode=change')}
+        />
       </Card>
 
       <Text style={styles.section}>Wallet</Text>

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Lock, Send, ShieldCheck } from 'lucide-react-native';
 import type { ComponentType } from 'react';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui';
@@ -21,8 +21,8 @@ const SLIDES: Slide[] = [
   },
   {
     Icon: Lock,
-    title: 'Your amount never leaves your phone',
-    body: 'A zero-knowledge proof is generated on-device. Only a commitment goes on-chain.',
+    title: 'Only you can unlock it',
+    body: 'Keys stay encrypted on your device, guarded by your PIN and fingerprint — with encrypted cloud backup for a lost phone.',
   },
   {
     Icon: ShieldCheck,
@@ -77,6 +77,9 @@ export default function WelcomeScreen() {
             variant="glass"
             onPress={() => (isLast ? setStep((s) => s - 1) : router.push('/phone'))}
           />
+          <Pressable hitSlop={8} onPress={() => router.push('/restore')}>
+            <Text style={styles.restoreLink}>Already used Prova? Restore your account</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     </View>
@@ -111,4 +114,11 @@ const styles = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 999, backgroundColor: Palette.bgSelected },
   dotActive: { backgroundColor: Palette.accent, width: 20 },
   actions: { gap: Spacing.three, paddingBottom: Spacing.four },
+  restoreLink: {
+    ...Typography.caption,
+    color: Palette.textSecondary,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+    paddingVertical: Spacing.two,
+  },
 });

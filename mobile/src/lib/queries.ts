@@ -6,6 +6,7 @@ import { QueryClient, useQuery } from '@tanstack/react-query';
 
 import { getHealth, getHistory } from './api';
 import { getBalanceMinor } from './balance';
+import { getBackupMeta } from './cloud-backup';
 import { listRecipients } from './recipients';
 import { getSession } from './session';
 import { hasSecret, SecureKey } from './secure-store';
@@ -59,6 +60,11 @@ export function useKycVerified() {
   });
 }
 
+/** Cloud-backup state (enabled, account, last sync). Invalidate `['backup']` after changes. */
+export function useBackupMeta() {
+  return useQuery({ queryKey: ['backup'], queryFn: getBackupMeta, staleTime: 0 });
+}
+
 /** Query keys, so screens invalidate consistently after mutations. */
 export const QK = {
   balance: ['balance'] as const,
@@ -66,4 +72,5 @@ export const QK = {
   session: ['session'] as const,
   kyc: ['kyc-verified'] as const,
   history: ['history'] as const,
+  backup: ['backup'] as const,
 };

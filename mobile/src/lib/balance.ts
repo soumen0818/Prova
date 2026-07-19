@@ -42,6 +42,11 @@ export async function canAfford(units: number): Promise<boolean> {
   return Math.round(units * MINOR) <= (await getBalanceMinor());
 }
 
+/** Overwrite the balance from a restored backup snapshot (restore flow only). */
+export async function restoreBalanceMinor(minor: number): Promise<void> {
+  await setBalanceMinor(minor);
+}
+
 /** Whole currency units from a minor balance. */
 export function toUnits(minor: number): number {
   return minor / MINOR;

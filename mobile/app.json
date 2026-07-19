@@ -43,7 +43,9 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "react-native-cloud-storage",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,

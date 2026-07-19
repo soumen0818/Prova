@@ -21,6 +21,14 @@ export const SecureKey = {
   stellarSecret: 'prova.stellar_secret',
   /** Stellar public `G…` address — not secret, cached for display/receive. */
   stellarPublic: 'prova.stellar_public',
+  /** PIN verifier record (salt + PBKDF2 hash + attempt/lockout state) as JSON. Never the raw PIN. */
+  pinRecord: 'prova.pin_record',
+  /** Encrypted vault "box" (envelope: DEK-sealed data + Argon2id/PIN-wrapped DEK) as JSON. */
+  vaultBox: 'prova.vault_box',
+  /** Cached vault data-encryption key (hex) for fast re-seals; same trust level as masterSeed. */
+  vaultDek: 'prova.vault_dek',
+  /** Cloud-backup state (JSON: enabled, provider, account, lastSyncedAt). Not secret, kept together. */
+  backupMeta: 'prova.backup_meta',
   /** Signed-in account: phone + display name (JSON). */
   session: 'prova.session',
   /** Spendable balance in minor units — kept on-device because the amount is private. */

@@ -1,13 +1,24 @@
 import * as Clipboard from 'expo-clipboard';
-import { Cloud, Copy, Fingerprint, KeyRound, ShieldCheck, UsersRound } from 'lucide-react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import {
+  ChevronRight,
+  Cloud,
+  Copy,
+  Fingerprint,
+  KeyRound,
+  ShieldCheck,
+  UsersRound,
+} from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
 import { Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { useKycVerified } from '@/lib/queries';
+import { canUseBiometrics } from '@/lib/auth';
+import { hasPin } from '@/lib/pin';
+import { useBackupMeta, useKycVerified } from '@/lib/queries';
 import { ensureAccount } from '@/lib/wallet';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
@@ -21,9 +32,14 @@ type Tone = 'ok' | 'muted';
  */
 export default function AccountScreen() {
   const toast = useToast();
+  const router = useRouter();
   const [address, setAddress] = useState<string | null>(null);
+  const [pinSet, setPinSet] = useState(false);
+  const [bioOn, setBioOn] = useState(false);
   const kyc = useKycVerified();
   const verified = kyc.data === true;
+  const { data: backup } = useBackupMeta();
+  const backupOn = backup?.enabled === true;
 
   useEffect(() => {
     let active = true;
@@ -34,6 +50,22 @@ export default function AccountScreen() {
       active = false;
     };
   }, []);
+
+  // Refresh security state on focus (e.g. after setting a PIN).
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all([hasPin(), canUseBiometrics()]).then(([p, b]) => {
+        if (active) {
+          setPinSet(p);
+          setBioOn(b);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const onCopy = async () => {
     if (!address) return;
@@ -70,14 +102,36 @@ export default function AccountScreen() {
 
       <Text style={styles.section}>Backup & recovery</Text>
       <Card style={styles.statusCard}>
-        <StatusRow Icon={Cloud} label="Cloud backup" value="Not set up yet" tone="muted" />
-        <StatusRow Icon={KeyRound} label="Recovery PIN" value="Not set" tone="muted" />
-        <StatusRow Icon={Fingerprint} label="Biometric lock" value="On" tone="ok" />
+        <Pressable onPress={() => router.push('/backup')} style={styles.statusRowPress}>
+          <Cloud color={Palette.textSecondary} size={18} strokeWidth={1.8} />
+          <Text style={styles.statusLabel}>Cloud backup</Text>
+          <Text
+            style={[
+              styles.statusValue,
+              { color: backupOn ? Palette.accent : Palette.textMuted },
+            ]}>
+            {backupOn ? (backup?.account ?? 'On') : 'Set up'}
+          </Text>
+          <ChevronRight color={Palette.textMuted} size={18} />
+        </Pressable>
+        <StatusRow
+          Icon={KeyRound}
+          label="Recovery PIN"
+          value={pinSet ? 'Set' : 'Not set'}
+          tone={pinSet ? 'ok' : 'muted'}
+        />
+        <StatusRow
+          Icon={Fingerprint}
+          label="Biometric lock"
+          value={bioOn ? 'On' : 'Unavailable'}
+          tone={bioOn ? 'ok' : 'muted'}
+        />
         <StatusRow Icon={UsersRound} label="Social recovery" value="Coming soon" tone="muted" />
       </Card>
       <Text style={styles.note}>
-        Cloud backup + a recovery PIN are coming in the next update. Until then your account lives
-        only on this device — don’t reset the app or you’ll lose access.
+        {backupOn
+          ? 'Your account is backed up. On a new phone, choose “Restore account” and enter your PIN.'
+          : 'Turn on cloud backup so your account survives a lost phone. Without it, this device is the only copy.'}
       </Text>
 
       <Text style={styles.section}>Identity</Text>
@@ -149,6 +203,7 @@ const styles = StyleSheet.create({
   },
   statusCard: { gap: Spacing.four, marginBottom: Spacing.three },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  statusRowPress: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   statusLabel: { ...Typography.body, color: Palette.white, flex: 1 },
   statusValue: { ...Typography.caption, fontWeight: '600' },
   note: { ...Typography.micro, color: Palette.textMuted, marginBottom: Spacing.six },

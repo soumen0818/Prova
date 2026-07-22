@@ -105,7 +105,11 @@ async function collectVaultData(): Promise<VaultData> {
 }
 
 /** Encrypt `data` under `dek`, reusing the box's KEK fields (wrap stays untouched). */
-function encryptData(box: Omit<VaultBox, 'nonce' | 'ct' | 'updatedAt'>, dek: Uint8Array, data: VaultData): VaultBox {
+function encryptData(
+  box: Omit<VaultBox, 'nonce' | 'ct' | 'updatedAt'>,
+  dek: Uint8Array,
+  data: VaultData,
+): VaultBox {
   const nonce = Crypto.getRandomBytes(NONCE_LEN);
   const ct = gcm(dek, nonce).encrypt(utf8ToBytes(JSON.stringify(data)));
   return { ...box, nonce: bytesToHex(nonce), ct: bytesToHex(ct), updatedAt: data.updatedAt };
@@ -173,7 +177,10 @@ export async function resealVault(): Promise<VaultBox | null> {
  * plus the recovered DEK, or `null` on a wrong PIN / corrupt box (GCM auth failure). Slow (~seconds
  * — one Argon2id derivation); show progress UI. Used by the Phase B restore flow.
  */
-export function openVaultBox(box: VaultBox, pin: string): { data: VaultData; dekHex: string } | null {
+export function openVaultBox(
+  box: VaultBox,
+  pin: string,
+): { data: VaultData; dekHex: string } | null {
   try {
     const kek = deriveKek(pin, box.salt, box.kdf);
     const dek = gcm(kek, hexToBytes(box.wrapNonce)).decrypt(hexToBytes(box.wrappedKey));
@@ -189,7 +196,12 @@ export function parseVaultBox(raw: string): VaultBox | null {
   try {
     const box = JSON.parse(raw) as VaultBox;
     if (typeof box !== 'object' || box === null) return null;
-    if (typeof box.salt !== 'string' || typeof box.ct !== 'string' || typeof box.wrappedKey !== 'string') return null;
+    if (
+      typeof box.salt !== 'string' ||
+      typeof box.ct !== 'string' ||
+      typeof box.wrappedKey !== 'string'
+    )
+      return null;
     return box;
   } catch {
     return null;

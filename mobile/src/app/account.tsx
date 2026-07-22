@@ -106,10 +106,7 @@ export default function AccountScreen() {
           <Cloud color={Palette.textSecondary} size={18} strokeWidth={1.8} />
           <Text style={styles.statusLabel}>Cloud backup</Text>
           <Text
-            style={[
-              styles.statusValue,
-              { color: backupOn ? Palette.accent : Palette.textMuted },
-            ]}>
+            style={[styles.statusValue, { color: backupOn ? Palette.accent : Palette.textMuted }]}>
             {backupOn ? (backup?.account ?? 'On') : 'Set up'}
           </Text>
           <ChevronRight color={Palette.textMuted} size={18} />
@@ -162,7 +159,8 @@ function StatusRow({
     <View style={styles.statusRow}>
       <Icon color={Palette.textSecondary} size={18} strokeWidth={1.8} />
       <Text style={styles.statusLabel}>{label}</Text>
-      <Text style={[styles.statusValue, { color: tone === 'ok' ? Palette.accent : Palette.textMuted }]}>
+      <Text
+        style={[styles.statusValue, { color: tone === 'ok' ? Palette.accent : Palette.textMuted }]}>
         {value}
       </Text>
     </View>

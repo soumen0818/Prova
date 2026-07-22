@@ -14,12 +14,7 @@ import { CloudStorage, CloudStorageProvider, CloudStorageScope } from 'react-nat
 
 import { env } from '@/config/env';
 import { deleteSecret, getSecret, SecureKey, setSecret } from './secure-store';
-import {
-  parseVaultBox,
-  resealVault,
-  sealVault,
-  type VaultBox,
-} from './vault';
+import { parseVaultBox, resealVault, sealVault, type VaultBox } from './vault';
 
 /** Where the box lives inside the app-private cloud scope. */
 const VAULT_PATH = '/prova-vault.json';
@@ -91,7 +86,10 @@ async function connect(interactive: boolean): Promise<string> {
     CloudStorage.setProvider(CloudStorageProvider.ICloud);
     const available = await CloudStorage.isCloudAvailable();
     if (!available) {
-      throw new BackupError('unavailable', 'iCloud is not available. Sign in to iCloud in Settings.');
+      throw new BackupError(
+        'unavailable',
+        'iCloud is not available. Sign in to iCloud in Settings.',
+      );
     }
     return 'iCloud';
   }
@@ -102,7 +100,10 @@ async function connect(interactive: boolean): Promise<string> {
   }
   const gs = googleSignin();
   if (!gs) {
-    throw new BackupError('rebuild_required', 'This build is missing the Google module — rebuild the app.');
+    throw new BackupError(
+      'rebuild_required',
+      'This build is missing the Google module — rebuild the app.',
+    );
   }
 
   const { GoogleSignin } = gs;

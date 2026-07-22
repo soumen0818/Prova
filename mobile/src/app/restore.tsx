@@ -9,11 +9,7 @@ import { PinPad } from '@/components/pin-pad';
 import { Button, GlassIconButton } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { restoreBalanceMinor } from '@/lib/balance';
-import {
-  adoptBackupMeta,
-  BackupError,
-  fetchCloudBackup,
-} from '@/lib/cloud-backup';
+import { adoptBackupMeta, BackupError, fetchCloudBackup } from '@/lib/cloud-backup';
 import { PIN_LENGTH, setPin as savePin } from '@/lib/pin';
 import { QK } from '@/lib/queries';
 import { restoreRecipients } from '@/lib/recipients';
@@ -75,7 +71,9 @@ export default function RestoreScreen() {
       const now = Date.now();
       if (pausedUntil.current > now) {
         setPin('');
-        setError(`Too many attempts — try again in ${Math.ceil((pausedUntil.current - now) / 1000)}s.`);
+        setError(
+          `Too many attempts — try again in ${Math.ceil((pausedUntil.current - now) / 1000)}s.`,
+        );
         return;
       }
       setBusy(true);
@@ -154,7 +152,11 @@ export default function RestoreScreen() {
             Prova PIN.
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button label={`Find my backup in ${PROVIDER_LABEL}`} onPress={onFetch} style={styles.cta} />
+          <Button
+            label={`Find my backup in ${PROVIDER_LABEL}`}
+            onPress={onFetch}
+            style={styles.cta}
+          />
         </View>
       ) : null}
 
@@ -169,8 +171,7 @@ export default function RestoreScreen() {
         <View style={styles.body}>
           <Text style={styles.title}>Enter your PIN</Text>
           <Text style={styles.subtitle}>
-            Backup found in {account}. Your PIN unlocks it — it was set when you created the
-            backup.
+            Backup found in {account}. Your PIN unlocks it — it was set when you created the backup.
           </Text>
           <View style={styles.padWrap}>
             <PinPad

@@ -1,10 +1,9 @@
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
-  FadeOut,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -81,26 +80,9 @@ export function BrandedLoading({ caption }: { caption?: string }) {
 }
 
 /**
- * AnimatedSplashOverlay — plays the branded loading screen once over the app after the native
- * splash hides, then fades out. A seamless aesthetic bridge while the first screen mounts (the
- * native splash uses the same mark + background, so there is no visual jump).
+ * (An artificial "hold" overlay used to sit here. It cost ~1.5s on every launch and showed the
+ * loader twice, so startup now goes straight from the native splash to the real loading states.)
  */
-export function AnimatedSplashOverlay() {
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 1100);
-    return () => clearTimeout(t);
-  }, []);
-
-  if (!visible) return null;
-
-  return (
-    <Animated.View exiting={FadeOut.duration(420)} style={styles.overlay}>
-      <BrandedLoading />
-    </Animated.View>
-  );
-}
 
 const styles = StyleSheet.create({
   fill: {

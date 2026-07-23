@@ -6,11 +6,12 @@
  * Only ciphertext ever leaves the device: the box is AES-256-GCM sealed and its key is wrapped
  * under Argon2id(PIN). Prova's backend is never involved; Google/Apple cannot read the box.
  *
- * Google Sign-In is loaded lazily so the app still runs on dev builds that predate the native
- * module (backup then reports "rebuild required" instead of crashing the bundle).
+ * **Both native modules are loaded lazily.** This file is reachable from the query layer (and so
+ * from nearly every screen), so a top-level import of a module that isn't in the installed build
+ * would throw at import time and white-screen the whole app. Loading on demand means an older build
+ * simply reports "rebuild required" when backup is used, and the rest of the app runs normally.
  */
 import { Platform } from 'react-native';
-import { CloudStorage, CloudStorageProvider, CloudStorageScope } from 'react-native-cloud-storage';
 
 import { env } from '@/config/env';
 import { deleteSecret, getSecret, SecureKey, setSecret } from './secure-store';
@@ -18,7 +19,6 @@ import { parseVaultBox, resealVault, sealVault, type VaultBox } from './vault';
 
 /** Where the box lives inside the app-private cloud scope. */
 const VAULT_PATH = '/prova-vault.json';
-const SCOPE = CloudStorageScope.AppData;
 
 /** Structured failure reasons the UI can render precisely. */
 export type BackupErrorCode =
@@ -76,12 +76,29 @@ function googleSignin(): typeof import('@react-native-google-signin/google-signi
 }
 
 /**
+ * Lazy-load the cloud-storage module, or fail with a message the UI can explain. Never imported at
+ * module scope — see the file header (a missing native module must not break app startup).
+ */
+function requireCloud(): typeof import('react-native-cloud-storage') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('react-native-cloud-storage');
+  } catch {
+    throw new BackupError(
+      'rebuild_required',
+      'This build is missing the cloud module — rebuild the app.',
+    );
+  }
+}
+
+/**
  * Connect the cloud provider and return the account label.
  * - iOS: verifies iCloud availability (no interaction).
  * - Android: Google sign-in (`interactive` controls whether the account sheet may appear), then
  *   hands the Drive access token to the storage layer.
  */
 async function connect(interactive: boolean): Promise<string> {
+  const { CloudStorage, CloudStorageProvider } = requireCloud();
   if (backupProvider() === 'icloud') {
     CloudStorage.setProvider(CloudStorageProvider.ICloud);
     const available = await CloudStorage.isCloudAvailable();
@@ -136,7 +153,8 @@ async function connect(interactive: boolean): Promise<string> {
 }
 
 async function upload(box: VaultBox): Promise<void> {
-  await CloudStorage.writeFile(VAULT_PATH, JSON.stringify(box), SCOPE);
+  const { CloudStorage, CloudStorageScope } = requireCloud();
+  await CloudStorage.writeFile(VAULT_PATH, JSON.stringify(box), CloudStorageScope.AppData);
 }
 
 /**
@@ -187,11 +205,12 @@ export async function syncBackup(quiet = true): Promise<boolean> {
  */
 export async function fetchCloudBackup(): Promise<{ box: VaultBox; account: string }> {
   const account = await connect(true);
+  const { CloudStorage, CloudStorageScope } = requireCloud();
   let raw: string;
   try {
-    const exists = await CloudStorage.exists(VAULT_PATH, SCOPE);
+    const exists = await CloudStorage.exists(VAULT_PATH, CloudStorageScope.AppData);
     if (!exists) throw new BackupError('not_found', 'No Prova backup found in this account.');
-    raw = await CloudStorage.readFile(VAULT_PATH, SCOPE);
+    raw = await CloudStorage.readFile(VAULT_PATH, CloudStorageScope.AppData);
   } catch (e) {
     throw asBackupError(e);
   }
@@ -214,8 +233,9 @@ export async function adoptBackupMeta(account: string): Promise<void> {
 export async function disableBackup(): Promise<void> {
   try {
     await connect(false);
-    if (await CloudStorage.exists(VAULT_PATH, SCOPE)) {
-      await CloudStorage.unlink(VAULT_PATH, SCOPE);
+    const { CloudStorage, CloudStorageScope } = requireCloud();
+    if (await CloudStorage.exists(VAULT_PATH, CloudStorageScope.AppData)) {
+      await CloudStorage.unlink(VAULT_PATH, CloudStorageScope.AppData);
     }
   } catch {
     // Best-effort: the box is ciphertext; a stale copy is not a security failure.

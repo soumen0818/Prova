@@ -11,7 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
-import { AnimatedSplashOverlay, BrandedLoading } from '@/components/animated-icon';
+import { BrandedLoading } from '@/components/animated-icon';
 import { AppLock } from '@/components/app-lock';
 import { ConnectionBanner } from '@/components/connection-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -68,7 +68,6 @@ export default function RootLayout() {
         <ThemeProvider value={ProvaNavTheme}>
           <ToastProvider>
             <StatusBar style="light" />
-            <AnimatedSplashOverlay />
             <AppLock>
               <Stack
                 screenOptions={{

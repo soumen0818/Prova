@@ -1,19 +1,12 @@
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { env } from '@/config/env';
 import type { TransferRecord } from '@/lib/api';
 import { useHistory } from '@/lib/queries';
+import { Loader } from '@/components/loader';
 import { Button, Card } from '@/components/ui';
 import { BottomTabInset, Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
@@ -33,7 +26,7 @@ export function ActivityScreen() {
 
       {isLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={Palette.accent} />
+          <Loader size={12} />
         </View>
       ) : isError ? (
         <View style={styles.center}>

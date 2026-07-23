@@ -2,8 +2,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Cloud, CloudOff, RefreshCw, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
+import { Loader } from '@/components/loader';
 import { Button, Card, Screen } from '@/components/ui';
 import { PinPromptModal } from '@/components/pin-prompt';
 import { useToast } from '@/components/toast';
@@ -172,7 +173,7 @@ export default function BackupScreen() {
 
       {busy === 'enable' ? (
         <View style={styles.busyRow}>
-          <ActivityIndicator color={Palette.accent} />
+          <Loader />
           <Text style={styles.busyText}>Encrypting and uploading — a few seconds…</Text>
         </View>
       ) : null}

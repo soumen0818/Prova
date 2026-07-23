@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Plus, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { submitTransfer, type KycCredential } from '@/lib/api';
 import { authenticate, canUseBiometrics } from '@/lib/auth';
@@ -14,6 +14,7 @@ import { useBalance, useRecipients, QK } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { getSecret, SecureKey } from '@/lib/secure-store';
 import { secureRandomU64 } from '@/lib/wallet';
+import { Loader } from '@/components/loader';
 import { Button, Card, Screen } from '@/components/ui';
 import { PinPromptModal } from '@/components/pin-prompt';
 import { useToast } from '@/components/toast';
@@ -306,7 +307,7 @@ export default function SendScreen() {
             <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
           </View>
           <View style={styles.progressRow}>
-            <ActivityIndicator color={Palette.accent} />
+            <Loader />
             <Text style={styles.progressText}>{message}</Text>
           </View>
         </View>

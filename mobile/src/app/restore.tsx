@@ -2,9 +2,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, CloudDownload, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Loader } from '@/components/loader';
 import { PinPad } from '@/components/pin-pad';
 import { Button, GlassIconButton } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -162,7 +163,7 @@ export default function RestoreScreen() {
 
       {step === 'fetching' ? (
         <View style={styles.center}>
-          <ActivityIndicator color={Palette.accent} size="large" />
+          <Loader size={12} />
           <Text style={styles.progressText}>Looking for your backup…</Text>
         </View>
       ) : null}
@@ -185,7 +186,7 @@ export default function RestoreScreen() {
           <View style={styles.footer}>
             {busy ? (
               <View style={styles.busyRow}>
-                <ActivityIndicator color={Palette.accent} />
+                <Loader />
                 <Text style={styles.progressText}>Unlocking…</Text>
               </View>
             ) : error ? (
@@ -206,7 +207,7 @@ export default function RestoreScreen() {
               ? 'Your account, balance, and settings are back.'
               : 'Rebuilding your keys and account on this phone.'}
           </Text>
-          {step === 'restoring' ? <ActivityIndicator color={Palette.accent} /> : null}
+          {step === 'restoring' ? <Loader size={12} /> : null}
         </View>
       ) : null}
     </SafeAreaView>

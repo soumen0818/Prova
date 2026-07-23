@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Fingerprint } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Loader } from '@/components/loader';
 import { PinPad } from '@/components/pin-pad';
 import { GlassIconButton } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -153,7 +154,7 @@ export default function SetPinScreen() {
     return (
       <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.loading}>
-          <ActivityIndicator color={Palette.accent} />
+          <Loader size={12} />
         </View>
       </SafeAreaView>
     );
@@ -184,7 +185,7 @@ export default function SetPinScreen() {
         <View style={styles.footer}>
           {busy ? (
             <View style={styles.busyRow}>
-              <ActivityIndicator color={Palette.accent} />
+              <Loader />
               <Text style={styles.busyText}>
                 {step === 'current' ? 'Checking…' : 'Securing your account…'}
               </Text>

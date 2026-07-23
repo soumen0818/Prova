@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { Loader } from '@/components/loader';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'glass';
@@ -58,7 +58,7 @@ export function Button({
       ]}
       {...rest}>
       {loading ? (
-        <ActivityIndicator color={labelColor} />
+        <Loader size={9} color={labelColor} />
       ) : (
         <View style={styles.content}>
           {icon}

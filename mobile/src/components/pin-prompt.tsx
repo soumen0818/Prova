@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Loader } from '@/components/loader';
 import { PinPad } from '@/components/pin-pad';
 import { PIN_LENGTH, verifyPin } from '@/lib/pin';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
@@ -49,6 +50,9 @@ export function PinPromptModal({
   const submit = useCallback(
     async (candidate: string) => {
       setVerifying(true);
+      setError('');
+      // Yield a frame so the "Checking…" state paints before the synchronous PBKDF2 blocks the thread.
+      await new Promise((r) => setTimeout(r, 16));
       try {
         const res = await verifyPin(candidate);
         if (res.ok) {
@@ -100,7 +104,12 @@ export function PinPromptModal({
           </View>
 
           <View style={styles.footer}>
-            {isLockedOut ? (
+            {verifying ? (
+              <View style={styles.busyRow}>
+                <Loader />
+                <Text style={styles.checking}>Checking…</Text>
+              </View>
+            ) : isLockedOut ? (
               <Text style={styles.error}>Try again in {secondsLeft}s</Text>
             ) : error ? (
               <Text style={styles.error}>{error}</Text>
@@ -139,5 +148,7 @@ const styles = StyleSheet.create({
   },
   padWrap: { marginVertical: Spacing.two },
   footer: { height: 24, justifyContent: 'center' },
+  busyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  checking: { ...Typography.caption, color: Palette.textSecondary },
   error: { ...Typography.caption, color: Palette.statusDown },
 });

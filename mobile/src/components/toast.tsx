@@ -1,7 +1,8 @@
+import { BlurView } from 'expo-blur';
 import { CheckCircle2, Info, XCircle } from 'lucide-react-native';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -32,13 +33,20 @@ const ACCENTS: Record<Variant, string> = {
   info: Palette.lilac,
 };
 
+/** Faint variant tint for the icon chip (keeps the glass look, adds a glanceable colour). */
+const CHIP_BG: Record<Variant, string> = {
+  success: 'rgba(63,174,111,0.16)',
+  error: 'rgba(192,71,60,0.18)',
+  info: 'rgba(220,203,247,0.16)',
+};
+
 const ICONS: Record<Variant, typeof Info> = {
   success: CheckCircle2,
   error: XCircle,
   info: Info,
 };
 
-/** Provides `useToast()` and renders a single auto-dismissing toast at the top of the app. */
+/** Provides `useToast()` and renders a single auto-dismissing glass toast at the top of the app. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,9 +78,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={toast.id}
             entering={FadeInDown.springify().damping(18)}
             exiting={FadeOutUp.duration(200)}
-            style={[styles.toast, { borderLeftColor: ACCENTS[toast.variant] }]}>
-            <Icon color={ACCENTS[toast.variant]} size={18} strokeWidth={2.2} />
-            <Text style={styles.text}>{toast.message}</Text>
+            style={styles.shadow}>
+            <View style={styles.clip}>
+              <BlurView
+                intensity={48}
+                tint="dark"
+                experimentalBlurMethod="dimezisBlurView"
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.surface}>
+                <View style={[styles.iconChip, { backgroundColor: CHIP_BG[toast.variant] }]}>
+                  <Icon color={ACCENTS[toast.variant]} size={16} strokeWidth={2.4} />
+                </View>
+                <Text style={styles.text}>{toast.message}</Text>
+              </View>
+            </View>
           </Animated.View>
         </SafeAreaView>
       ) : null}
@@ -90,25 +110,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
   },
-  toast: {
+  shadow: {
     maxWidth: 520,
     width: '100%',
+    borderRadius: Radius.card,
+    // Soft lift so the glass floats above the content it overlays.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  clip: {
+    borderRadius: Radius.card,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Palette.glassBorder,
+    // Tint behind the blur so it stays legible even where the blur is subtle (e.g. Android).
+    backgroundColor: 'rgba(18,18,22,0.62)',
+  },
+  surface: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    backgroundColor: Palette.bgElevated,
-    borderRadius: Radius.input,
-    borderLeftWidth: 3,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Palette.glassBorder,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.four,
-    // Subtle lift so it reads above the content it overlays.
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
+  },
+  iconChip: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   text: { ...Typography.caption, color: Palette.white, flex: 1 },
 });

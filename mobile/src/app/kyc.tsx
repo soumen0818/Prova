@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { Loader } from '@/components/loader';
 import { submitKyc, type KycCredential } from '@/lib/api';
 import { syncBackup } from '@/lib/cloud-backup';
 import { userId as deriveUserId } from '@/lib/prover';
@@ -104,7 +105,7 @@ export default function KycScreen() {
         onPress={onVerify}
         disabled={busy}
       />
-      {busy ? <ActivityIndicator color={Palette.accent} style={styles.spinner} /> : null}
+      {busy ? <Loader style={styles.spinner} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </Screen>
   );

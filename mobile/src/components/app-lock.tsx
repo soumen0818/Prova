@@ -2,6 +2,7 @@ import { Fingerprint, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Loader } from '@/components/loader';
 import { PinPad } from '@/components/pin-pad';
 import { authenticate, canUseBiometrics } from '@/lib/auth';
 import { hasPin, PIN_LENGTH, verifyPin } from '@/lib/pin';
@@ -106,6 +107,9 @@ export function AppLock({ children }: { children: ReactNode }) {
 
   const submitPin = useCallback(async (candidate: string) => {
     setVerifying(true);
+    setError('');
+    // Yield a frame so the "Checking…" state paints before the synchronous PBKDF2 blocks the thread.
+    await new Promise((r) => setTimeout(r, 16));
     try {
       const res = await verifyPin(candidate);
       if (res.ok) {
@@ -166,7 +170,12 @@ export function AppLock({ children }: { children: ReactNode }) {
               )}
 
               <View style={styles.footer}>
-                {isLockedOut ? (
+                {verifying ? (
+                  <View style={styles.busyRow}>
+                    <Loader />
+                    <Text style={styles.checking}>Checking…</Text>
+                  </View>
+                ) : isLockedOut ? (
                   <Text style={styles.error}>Try again in {secondsLeft}s</Text>
                 ) : error ? (
                   <Text style={styles.error}>{error}</Text>
@@ -236,6 +245,8 @@ const styles = StyleSheet.create({
   },
   bioBtnText: { ...Typography.button, color: Palette.onAccent },
   footer: { height: 24, justifyContent: 'center' },
+  busyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  checking: { ...Typography.caption, color: Palette.textSecondary },
   error: { ...Typography.caption, color: '#ff6b6b' },
   bioLink: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   bioLinkText: { ...Typography.caption, color: Palette.accent, fontWeight: '600' },

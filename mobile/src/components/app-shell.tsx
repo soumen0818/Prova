@@ -9,6 +9,7 @@ import { ActivityScreen } from '@/features/activity';
 import { HomeScreen } from '@/features/home';
 import { ProfileScreen } from '@/features/profile';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
+import { useRequireKyc } from '@/hooks/use-require-kyc';
 
 type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
 type TabKey = 'home' | 'activity' | 'profile';
@@ -26,6 +27,7 @@ const TABS: { key: TabKey; label: string; Icon: IconType }[] = [
  */
 export function AppShell() {
   const router = useRouter();
+  const requireKyc = useRequireKyc();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<TabKey>('home');
 
@@ -41,7 +43,7 @@ export function AppShell() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Send money"
-        onPress={() => router.push('/send')}
+        onPress={() => requireKyc(() => router.push('/send'))}
         style={({ pressed }) => [
           styles.fab,
           { bottom: insets.bottom + 74 },

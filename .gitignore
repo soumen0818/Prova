@@ -1,8 +1,6 @@
 # --- Prova monorepo root ignores ---
 # (each subproject also has its own .gitignore for toolchain-specific files)
 
-# Internal planning docs — not tracked in git
-Docs/
 
 # OS / editor
 .DS_Store

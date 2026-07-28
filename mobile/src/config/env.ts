@@ -23,6 +23,15 @@ const appEnv = str(process.env.EXPO_PUBLIC_APP_ENV, 'development') as AppEnv;
 const network = str(process.env.EXPO_PUBLIC_STELLAR_NETWORK, 'testnet') as StellarNetwork;
 const authMode = str(process.env.EXPO_PUBLIC_AUTH_MODE, 'development') as AuthMode;
 
+/**
+ * How adding money works — independent of the login mode (see backend DEPOSIT_MODE):
+ *   "simulated" → credit a local testnet balance instantly (fast dev loop, no chain).
+ *   "anchor"    → real testnet rails: activate the account, add a trustline, read the on-chain
+ *                 balance. Still testnet — no real value.
+ */
+export type DepositMode = 'simulated' | 'anchor';
+const depositMode = str(process.env.EXPO_PUBLIC_DEPOSIT_MODE, 'simulated') as DepositMode;
+
 const STELLAR_DEFAULTS: Record<
   StellarNetwork,
   { horizon: string; soroban: string; passphrase: string }
@@ -75,4 +84,8 @@ export const env = {
   },
   /** Display currency (funding side). */
   currency: str(process.env.EXPO_PUBLIC_CURRENCY, 'AED'),
+  /** How adding money works: 'simulated' (local counter) vs 'anchor' (real testnet rails). */
+  depositMode,
+  /** On-chain deposit asset code (matches the backend's ANCHOR_ASSET). */
+  depositAsset: str(process.env.EXPO_PUBLIC_DEPOSIT_ASSET, 'SRT'),
 } as const;

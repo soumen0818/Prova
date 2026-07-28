@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { Plus, Send, Trash2 } from 'lucide-react-native';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { EmptyMark } from '@/components/illustrations';
+import { StateView } from '@/components/state-view';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useRecipients, QK } from '@/lib/queries';
@@ -36,10 +38,14 @@ export default function RecipientsScreen() {
   return (
     <Screen scroll>
       {isLoading ? null : list.length === 0 ? (
-        <Card style={styles.empty}>
-          <Text style={styles.emptyTitle}>No recipients yet</Text>
-          <Text style={styles.emptyBody}>Add someone to send money to.</Text>
-        </Card>
+        <StateView
+          fullscreen={false}
+          illustration={<EmptyMark />}
+          title="No recipients yet"
+          body="Add the people you send money to. Saving someone once means you can pay them in a couple of taps next time."
+          primaryLabel="Add recipient"
+          onPrimary={() => router.push('/recipient-new')}
+        />
       ) : (
         <View style={styles.list}>
           {list.map((r) => (

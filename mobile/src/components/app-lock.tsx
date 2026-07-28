@@ -12,15 +12,24 @@ import { Palette, Spacing, Typography } from '@/constants/theme';
 type LockState = 'checking' | 'locked' | 'unlocked';
 
 /**
+ * How long the app may sit idle before it re-locks. Standard for banking apps: long enough not to
+ * nag someone mid-task, short enough that a phone left on a table doesn't stay open.
+ */
+const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+
+/**
  * Gates the app behind device authentication. Locks whenever a wallet exists and at least one
- * factor is set up (a PIN or device biometrics), and re-locks when the app returns from background.
- * Unlock with biometrics (auto-prompted) or by entering the PIN; the PIN is rate-limited (see
- * lib/pin). If there's no wallet or no factor at all, it passes through — nothing to protect.
+ * factor is set up (a PIN or device biometrics), and re-locks when the app returns from background
+ * **or after a period of inactivity**. Unlock with biometrics (auto-prompted) or by entering the
+ * PIN; the PIN is rate-limited (see lib/pin). If there's no wallet or no factor at all, it passes
+ * through — nothing to protect.
  */
 export function AppLock({ children }: { children: ReactNode }) {
   const [state, setState] = useState<LockState>('checking');
   const [bioAvailable, setBioAvailable] = useState(false);
   const [pinSet, setPinSet] = useState(false);
+  /** Set when the lock was triggered by the idle timer, so we can explain why. */
+  const [timedOut, setTimedOut] = useState(false);
 
   const [pin, setPin] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -28,6 +37,9 @@ export function AppLock({ children }: { children: ReactNode }) {
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const autoPrompted = useRef(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Bumped on user activity to restart the idle timer without re-rendering the whole tree. */
+  const [idleNonce, setIdleNonce] = useState(0);
 
   const unlockBiometric = useCallback(async () => {
     const ok = await authenticate('Unlock Prova');
@@ -90,11 +102,26 @@ export function AppLock({ children }: { children: ReactNode }) {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
         autoPrompted.current = false;
+        setTimedOut(false);
         evaluate();
       }
     });
     return () => sub.remove();
   }, [evaluate]);
+
+  // Security timeout: re-lock after a period of inactivity, so a phone left unattended on a table
+  // doesn't stay open on someone's money. Any touch anywhere resets the timer (see the wrapper's
+  // onTouchStart below), so it never interrupts an active session.
+  useEffect(() => {
+    if (state !== 'unlocked') return;
+    const id = setTimeout(() => {
+      autoPrompted.current = false;
+      setTimedOut(true);
+      evaluate();
+    }, IDLE_TIMEOUT_MS);
+    idleTimer.current = id;
+    return () => clearTimeout(id);
+  }, [state, idleNonce, evaluate]);
 
   // Tick while locked out so the countdown updates and the pad re-enables on time.
   useEffect(() => {
@@ -138,7 +165,13 @@ export function AppLock({ children }: { children: ReactNode }) {
   const secondsLeft = Math.max(0, Math.ceil((lockedUntil - now) / 1000));
 
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      // Any touch counts as activity and restarts the idle countdown. `onTouchStart` on the
+      // wrapper sees every interaction without interfering with the children's own handlers.
+      onTouchStart={() => {
+        if (state === 'unlocked') setIdleNonce((n) => n + 1);
+      }}>
       {children}
       {state !== 'unlocked' ? (
         <View style={styles.overlay}>
@@ -147,9 +180,13 @@ export function AppLock({ children }: { children: ReactNode }) {
               <View style={styles.badge}>
                 <ShieldCheck color={Palette.accent} size={36} strokeWidth={1.8} />
               </View>
-              <Text style={styles.title}>Prova is locked</Text>
+              <Text style={styles.title}>{timedOut ? 'Session locked' : 'Prova is locked'}</Text>
               <Text style={styles.subtitle}>
-                {pinSet ? 'Enter your PIN to unlock.' : 'Unlock to access your private wallet.'}
+                {timedOut
+                  ? 'We locked your session after a period of inactivity to keep your money safe.'
+                  : pinSet
+                    ? 'Enter your PIN to unlock.'
+                    : 'Unlock to access your private wallet.'}
               </Text>
 
               {pinSet ? (

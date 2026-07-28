@@ -22,6 +22,7 @@ import (
 	"github.com/prova/backend/internal/server"
 	"github.com/prova/backend/internal/store"
 	"github.com/prova/backend/internal/transfers"
+	"github.com/prova/shared/schema"
 )
 
 func main() {
@@ -89,13 +90,16 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 	var deps server.Deps
 	var idx *indexer.Indexer
 
-	// Postgres store + transfer relay.
+	// Postgres store + transfer relay. `pg` is non-nil once migrations succeed, so the KYC
+	// verification state machine (which needs persistence) can be wired below.
+	var pg *store.Store
 	st, err := store.New(ctx, cfg.DatabaseURL, cfg.DBSimpleProtocol)
 	if err != nil {
 		logger.Warn("postgres unavailable — /transfers disabled", "err", err)
 	} else if err := st.Migrate(ctx); err != nil {
 		logger.Error("migration failed — /transfers disabled", "err", err)
 	} else {
+		pg = st
 		rdb := connectRedis(logger, cfg.RedisURL)
 		submitter := chain.CLISubmitter{
 			Bin:        cfg.StellarBin,
@@ -121,6 +125,10 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 		logger.Info("anchor client ready", "home_domain", cfg.AnchorHomeDomain, "account", kp.Address())
 	}
 
+	// On-chain wallet (real testnet deposit flow): funding, trustlines, balance reads from Horizon.
+	deps.Wallet = chain.NewWallet(cfg.HorizonURL, cfg.StellarNetwork)
+	logger.Info("on-chain wallet ready", "horizon", cfg.HorizonURL, "deposit_mode", cfg.DepositMode)
+
 	// KYC credential issuer (anchor side) — signs via the prover CLI.
 	issuer := kyc.CLIIssuer{ProverBin: cfg.ProverBin, AnchorSeed: cfg.AnchorSeed}
 	if pk, perr := issuer.AnchorPublicKey(ctx); perr != nil {
@@ -128,6 +136,27 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 	} else {
 		deps.KYC = issuer
 		logger.Info("kyc issuer ready", "anchor_pk_x", pk.X)
+
+		// KYC verification state machine. Needs persistence: credentials are issued only against a
+		// stored `approved` record (Docs/kyc-verification.md §5), so without Postgres we leave the
+		// routes disabled rather than fall back to issuing unconditionally.
+		if pg == nil {
+			logger.Warn("postgres unavailable — /kyc/verifications disabled (credentials cannot be gated)")
+		} else {
+			provider := kyc.NewMockProvider(cfg.KYCMockDelay)
+			svc := kyc.NewService(pg, provider, issuer, logger)
+			// The mock reports its simulated verdict straight back into the state machine, standing
+			// in for a real provider's webhook.
+			provider.OnVerdict = func(c context.Context, v kyc.Verdict) {
+				if aerr := svc.ApplyVerdict(c, v); aerr != nil {
+					logger.Error("mock verdict failed", "err", aerr)
+				}
+			}
+			deps.Verification = svc
+			deps.VerificationProvider = provider
+			logger.Info("kyc verification ready", "provider", provider.Name(),
+				"credential_ttl_days", schema.CredentialTTLDays)
+		}
 	}
 
 	return deps, idx

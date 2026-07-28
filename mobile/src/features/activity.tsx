@@ -3,16 +3,21 @@ import { useCallback } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useRouter } from 'expo-router';
+
 import { env } from '@/config/env';
 import type { TransferRecord } from '@/lib/api';
 import { useHistory } from '@/lib/queries';
+import { EmptyMark, OfflineMark } from '@/components/illustrations';
 import { Loader } from '@/components/loader';
-import { Button, Card } from '@/components/ui';
+import { StateView } from '@/components/state-view';
+import { Card } from '@/components/ui';
 import { BottomTabInset, Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 /** Activity tab: recent transfers from the backend (relays + on-chain indexer). Commitments only —
  * amounts are never on-chain. */
 export function ActivityScreen() {
+  const router = useRouter();
   const { data, isLoading, isError, refetch, isRefetching } = useHistory();
 
   const openTx = useCallback((txHash?: string) => {
@@ -29,10 +34,15 @@ export function ActivityScreen() {
           <Loader size={12} />
         </View>
       ) : isError ? (
-        <View style={styles.center}>
-          <Text style={styles.muted}>Couldn’t load activity.</Text>
-          <Button label="Retry" variant="secondary" onPress={() => refetch()} fullWidth={false} />
-        </View>
+        <StateView
+          fullscreen={false}
+          illustration={<OfflineMark />}
+          title="Couldn’t load activity"
+          body="We couldn’t reach Prova to fetch your transfers."
+          reassurance="Your funds and history are safe."
+          primaryLabel="Try again"
+          onPrimary={() => refetch()}
+        />
       ) : (
         <FlatList
           data={data ?? []}
@@ -46,10 +56,14 @@ export function ActivityScreen() {
             />
           }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={styles.muted}>No transfers yet.</Text>
-              <Text style={styles.hint}>Your private transfers will appear here.</Text>
-            </View>
+            <StateView
+              fullscreen={false}
+              illustration={<EmptyMark />}
+              title="No transfers yet"
+              body="When you send money, each transfer appears here — with a commitment on-chain and the amount known only to you."
+              primaryLabel="Send money"
+              onPrimary={() => router.push('/send')}
+            />
           }
           renderItem={({ item }) => <Row item={item} onPress={() => openTx(item.txHash)} />}
         />

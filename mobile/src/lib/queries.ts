@@ -7,9 +7,9 @@ import { QueryClient, useQuery } from '@tanstack/react-query';
 import { getHealth, getHistory } from './api';
 import { getBalanceMinor } from './balance';
 import { getBackupMeta } from './cloud-backup';
+import { getStoredCredential, isExpired } from './kyc';
 import { listRecipients } from './recipients';
 import { getSession } from './session';
-import { hasSecret, SecureKey } from './secure-store';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,11 +51,19 @@ export function useSession() {
   return useQuery({ queryKey: ['session'], queryFn: getSession, staleTime: 0 });
 }
 
-/** Whether KYC has been completed (credential in the enclave). */
+/**
+ * Whether the user may transact: a credential is present **and still valid**.
+ *
+ * Expiry matters — an expired credential produces a proof the contract rejects, so treating "a
+ * credential exists" as "verified" would let someone start a payment that could only fail.
+ */
 export function useKycVerified() {
   return useQuery({
     queryKey: ['kyc-verified'],
-    queryFn: () => hasSecret(SecureKey.kycCredential),
+    queryFn: async () => {
+      const cred = await getStoredCredential();
+      return cred !== null && !isExpired(cred);
+    },
     staleTime: 0,
   });
 }

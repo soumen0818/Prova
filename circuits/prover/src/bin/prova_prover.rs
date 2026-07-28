@@ -67,6 +67,7 @@ fn main() {
         "issue-credential" => issue_credential(),
         "anchor-pubkey" => anchor_pubkey(),
         "prove-json" => prove_json_cmd(),
+        "poseidon-params" => poseidon_params(),
         "user-id" => {
             let secret = arg("--secret", &fq_hex(&Fr::from(0u64)));
             println!(
@@ -75,6 +76,51 @@ fn main() {
             );
         }
         _ => setup_and_prove(),
+    }
+}
+
+/// Dump the frozen Poseidon parameters as a flat binary blob, so the Soroban contract can embed the
+/// *exact* constants the circuit uses. The on-chain Merkle tree and the in-circuit hash must agree
+/// bit-for-bit, so these are exported from one source of truth rather than re-derived by hand.
+///
+/// Layout: `ark[rounds][width] ‖ mds[width][width]`, each element 32-byte big-endian.
+/// Writes to `--out FILE` (default: stdout as hex).
+fn poseidon_params() {
+    use ark_ff::{BigInteger, PrimeField};
+    let cfg = prova_prover::poseidon_config::<Fr>();
+    let mut out: Vec<u8> = Vec::new();
+    let mut push = |f: &Fr| {
+        let b = f.into_bigint().to_bytes_be();
+        let mut o = [0u8; 32];
+        o[32 - b.len()..].copy_from_slice(&b);
+        out.extend_from_slice(&o);
+    };
+    for row in &cfg.ark {
+        for f in row {
+            push(f);
+        }
+    }
+    for row in &cfg.mds {
+        for f in row {
+            push(f);
+        }
+    }
+    let path = arg("--out", "");
+    eprintln!(
+        "poseidon params: rounds={} width={} ark={}x{} mds={}x{} bytes={}",
+        cfg.full_rounds + cfg.partial_rounds,
+        cfg.rate + cfg.capacity,
+        cfg.ark.len(),
+        cfg.ark[0].len(),
+        cfg.mds.len(),
+        cfg.mds[0].len(),
+        out.len()
+    );
+    if path.is_empty() {
+        println!("{}", hex::encode(&out));
+    } else {
+        std::fs::write(&path, &out).expect("write params");
+        eprintln!("wrote {}", path);
     }
 }
 

@@ -122,6 +122,63 @@ func (c *Client) Authenticate(ctx context.Context, kp *keypair.Full) (string, er
 	return tok.Token, nil
 }
 
+// UserChallenge fetches a SEP-10 challenge for the USER's account and validates it before returning
+// it, so the phone signs only a genuine challenge (correct server key + home domain + our account).
+// Returns the (server-signed but not yet user-signed) challenge XDR, its network, and the web-auth
+// endpoint the signed challenge is exchanged at.
+func (c *Client) UserChallenge(ctx context.Context, userAddress string) (challengeXDR, passphrase, webAuth string, err error) {
+	ep, err := c.Discover(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	q := url.Values{}
+	q.Set("account", userAddress)
+	q.Set("home_domain", c.HomeDomain)
+	body, err := c.get(ctx, ep.WebAuth+"?"+q.Encode(), "")
+	if err != nil {
+		return "", "", "", fmt.Errorf("sep10 challenge: %w", err)
+	}
+	var chal struct {
+		Transaction       string `json:"transaction"`
+		NetworkPassphrase string `json:"network_passphrase"`
+	}
+	if jerr := json.Unmarshal(body, &chal); jerr != nil || chal.Transaction == "" {
+		return "", "", "", fmt.Errorf("sep10 challenge decode: %w (%s)", jerr, snippet(body))
+	}
+	passphrase = chal.NetworkPassphrase
+	if passphrase == "" {
+		passphrase = ep.NetworkPassphrase
+	}
+
+	// Validate: this must be a real SEP-10 challenge from THIS anchor for THIS account. The backend
+	// checks it so the phone can sign the hash without independently parsing the XDR.
+	_, clientAccount, _, _, verr := txnbuild.ReadChallengeTx(
+		chal.Transaction, ep.SigningKey, passphrase, c.HomeDomain, []string{c.HomeDomain})
+	if verr != nil {
+		return "", "", "", fmt.Errorf("invalid sep10 challenge: %w", verr)
+	}
+	if clientAccount != userAddress {
+		return "", "", "", fmt.Errorf("challenge account mismatch")
+	}
+	return chal.Transaction, passphrase, ep.WebAuth, nil
+}
+
+// TokenForSignedChallenge exchanges a user-signed challenge for a SEP-10 JWT.
+func (c *Client) TokenForSignedChallenge(ctx context.Context, webAuth, signedChallengeXDR string) (string, error) {
+	payload, _ := json.Marshal(map[string]string{"transaction": signedChallengeXDR})
+	respBody, err := c.postJSON(ctx, webAuth, "", payload)
+	if err != nil {
+		return "", fmt.Errorf("sep10 token: %w", err)
+	}
+	var tok struct {
+		Token string `json:"token"`
+	}
+	if jerr := json.Unmarshal(respBody, &tok); jerr != nil || tok.Token == "" {
+		return "", fmt.Errorf("sep10 token decode: %w (%s)", jerr, snippet(respBody))
+	}
+	return tok.Token, nil
+}
+
 // DepositInteractive starts a SEP-24 interactive deposit and returns the popup URL + transaction id.
 func (c *Client) DepositInteractive(ctx context.Context, token, assetCode, account string) (depositURL, id string, err error) {
 	ep, err := c.Discover(ctx)
@@ -144,6 +201,29 @@ func (c *Client) DepositInteractive(ctx context.Context, token, assetCode, accou
 		return "", "", fmt.Errorf("sep24 deposit decode: %w (%s)", err, snippet(body))
 	}
 	return resp.URL, resp.ID, nil
+}
+
+// currencyBlock matches one [[CURRENCIES]] table in the stellar.toml.
+var currencyBlock = regexp.MustCompile(`(?s)\[\[CURRENCIES\]\](.*?)(?:\n\s*\[\[|\z)`)
+
+// AssetIssuer discovers the issuer (G...) for an asset code from the anchor's stellar.toml
+// CURRENCIES section, so a trustline can be built without hardcoding the issuer.
+func (c *Client) AssetIssuer(ctx context.Context, assetCode string) (string, error) {
+	u := "https://" + c.HomeDomain + "/.well-known/stellar.toml"
+	body, err := c.get(ctx, u, "")
+	if err != nil {
+		return "", fmt.Errorf("fetch toml: %w", err)
+	}
+	for _, block := range currencyBlock.FindAllStringSubmatch(string(body), -1) {
+		kv := map[string]string{}
+		for _, m := range tomlKV.FindAllStringSubmatch(block[1], -1) {
+			kv[m[1]] = m[2]
+		}
+		if kv["CODE"] == assetCode && kv["ISSUER"] != "" {
+			return kv["ISSUER"], nil
+		}
+	}
+	return "", fmt.Errorf("asset %s not found in anchor toml", assetCode)
 }
 
 // --- helpers ---

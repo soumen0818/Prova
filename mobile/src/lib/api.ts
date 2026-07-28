@@ -22,6 +22,13 @@ export interface HealthResponse {
   status: string;
   env: string;
   schemaVersion: string;
+  /** Server-announced planned downtime — the app renders its maintenance screen from this. */
+  maintenance?: boolean;
+  maintenanceMessage?: string;
+  /** ISO-8601 estimate of when service returns. */
+  maintenanceUntil?: string;
+  /** Round-trip time we measured for this probe (client-side, not from the server). */
+  latencyMs?: number;
 }
 
 export interface DepositResponse {
@@ -76,9 +83,16 @@ export interface OtpVerifyResponse {
   phone: string;
 }
 
-/** Liveness + shared-schema check against the backend. */
-export function getHealth(): Promise<HealthResponse> {
-  return json<HealthResponse>('/healthz');
+/**
+ * Liveness + shared-schema check, and the carrier for server-announced maintenance.
+ *
+ * Also measures round-trip time so the UI can distinguish "slow connection" from "broken" — a
+ * distinction that matters before someone taps Pay.
+ */
+export async function getHealth(): Promise<HealthResponse> {
+  const started = Date.now();
+  const res = await json<HealthResponse>('/healthz');
+  return { ...res, latencyMs: Date.now() - started };
 }
 
 /** Request an SMS OTP for a phone number (production auth path). */
@@ -97,16 +111,157 @@ export function verifyOtp(phone: string, code: string): Promise<OtpVerifyRespons
   });
 }
 
-/** Start a SEP-24 interactive deposit; returns the anchor popup URL to open. */
-export function startDeposit(): Promise<DepositResponse> {
-  return json<DepositResponse>('/sep24/deposit', { method: 'POST' });
+/** Start a SEP-24 interactive deposit to the user's own Stellar address; returns the anchor URL. */
+export function startDeposit(address?: string): Promise<DepositResponse> {
+  return json<DepositResponse>('/sep24/deposit', {
+    method: 'POST',
+    body: JSON.stringify(address ? { address } : {}),
+  });
 }
 
-/** SEP-12 KYC handoff: the anchor signs a credential for this user id. */
-export function submitKyc(userId: string, kycLevel = 2): Promise<KycCredential> {
+// ---- On-chain wallet (real testnet deposit flow) ----
+
+export interface OnChainBalance {
+  code: string;
+  issuer: string;
+  balance: string;
+}
+export interface AccountState {
+  exists: boolean;
+  balances: OnChainBalance[];
+}
+/** An unsigned Stellar tx the phone must sign (server-prepared; the phone signs only the hash). */
+export interface UnsignedTx {
+  xdr: string;
+  hash: string;
+  network: string;
+  /** Human-readable description of what the tx does — shown before signing (no blind-signing). */
+  summary: string;
+}
+
+/** A SEP-10 challenge the user must sign to authenticate for a deposit. */
+export interface DepositChallenge {
+  xdr: string;
+  hash: string;
+  network: string;
+  webAuth: string;
+  summary: string;
+}
+
+/** Read the account's on-chain existence + balances from Horizon (via the backend). */
+export function getAccountState(address: string): Promise<AccountState> {
+  return json<AccountState>(`/wallet/${encodeURIComponent(address)}`);
+}
+
+/** Activate a new testnet account via Friendbot. */
+export function fundAccount(address: string): Promise<AccountState> {
+  return json<AccountState>('/wallet/fund', {
+    method: 'POST',
+    body: JSON.stringify({ address }),
+  });
+}
+
+/** Ask the backend to build the (unsigned) trustline transaction. */
+export function prepareTrustline(address: string): Promise<UnsignedTx> {
+  return json<UnsignedTx>('/wallet/trustline/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ address }),
+  });
+}
+
+/** Submit the phone-signed trustline transaction; returns the on-chain tx hash. */
+export function submitTrustline(
+  xdr: string,
+  publicKey: string,
+  signature: string,
+): Promise<{ hash: string }> {
+  return json<{ hash: string }>('/wallet/trustline/submit', {
+    method: 'POST',
+    body: JSON.stringify({ xdr, publicKey, signature }),
+  });
+}
+
+/** Fetch a SEP-10 challenge for the user's account (step 1 of the user-authenticated deposit). */
+export function prepareDeposit(address: string): Promise<DepositChallenge> {
+  return json<DepositChallenge>('/sep24/deposit/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ address }),
+  });
+}
+
+/** Submit the user-signed challenge and start the deposit; returns the anchor URL (step 2). */
+export function completeDeposit(args: {
+  address: string;
+  xdr: string;
+  webAuth: string;
+  network: string;
+  publicKey: string;
+  signature: string;
+}): Promise<DepositResponse> {
+  return json<DepositResponse>('/sep24/deposit/complete', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+/** Lifecycle state of a KYC verification (mirrors the backend state machine). */
+export type VerificationStatus =
+  'not_started' | 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';
+
+/** Status view of a verification. Carries no personal data — only status, tier and expiry. */
+export interface VerificationRecord {
+  verificationId?: string;
+  status: VerificationStatus;
+  tier: number;
+  expiry?: number;
+  reasonCode?: string;
+  retryable?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Artefacts captured on-device. The images themselves never leave the phone. */
+export type CapturedArtifact = 'document_front' | 'document_back' | 'selfie' | 'proof_of_address';
+
+/**
+ * Start a KYC verification.
+ *
+ * Sends only the opaque `userId` and the requested tier — **never** documents or personal data.
+ * In a real deployment the captured images go straight from the device to the verification
+ * provider, so Prova's backend has no identity data to store. See Docs/kyc-verification.md §3.
+ */
+export function startVerification(
+  userId: string,
+  tier = 2,
+  captured: CapturedArtifact[] = [],
+): Promise<VerificationRecord> {
+  return json<VerificationRecord>('/kyc/verifications', {
+    method: 'POST',
+    body: JSON.stringify({ userId, tier, captured }),
+  });
+}
+
+/** Current verification status for a wallet. */
+export function getVerification(userId: string): Promise<VerificationRecord> {
+  return json<VerificationRecord>(`/kyc/verifications/${encodeURIComponent(userId)}`);
+}
+
+/**
+ * Fetch the anchor-signed credential. The backend issues it **only** against a stored `approved`
+ * verification — a 403 means verification isn't approved (not a client bug).
+ */
+export function fetchCredential(userId: string): Promise<KycCredential> {
   return json<KycCredential>('/kyc/credential', {
     method: 'POST',
-    body: JSON.stringify({ userId, kycLevel }),
+    body: JSON.stringify({ userId }),
+  });
+}
+
+/** Renew the credential before expiry (re-screens, then re-issues with a fresh window). */
+export function renewCredential(userId: string): Promise<KycCredential> {
+  return json<KycCredential>('/kyc/credential/renew', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
   });
 }
 

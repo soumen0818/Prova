@@ -12,6 +12,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
+import { base64 } from '@scure/base';
 
 import { encodeStellarPublicKey, encodeStellarSecretSeed } from './stellar-strkey';
 
@@ -45,4 +46,18 @@ export function deriveStellarKeypair(masterHex: string): StellarKeypair {
     address: encodeStellarPublicKey(publicKey),
     secret: encodeStellarSecretSeed(seed),
   };
+}
+
+/**
+ * Sign a Stellar transaction hash with the account's ed25519 key, from the master seed.
+ *
+ * Stellar signs the 32-byte transaction hash directly with ed25519 — verified byte-for-byte against
+ * the Go SDK (Docs/deposit-flow). The backend builds the transaction and returns only its hash; the
+ * secret never leaves the device. Returns the base64 signature the backend attaches via
+ * `AddSignatureBase64`.
+ */
+export function signStellarHash(masterHex: string, hashHex: string): string {
+  const seed = derive(hexToBytes(masterHex), INFO_STELLAR);
+  const sig = ed25519.sign(hexToBytes(hashHex), seed);
+  return base64.encode(sig);
 }

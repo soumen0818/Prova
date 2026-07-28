@@ -8,20 +8,23 @@ import { submitTransfer, type KycCredential } from '@/lib/api';
 import { authenticate, canUseBiometrics } from '@/lib/auth';
 import { debit, formatMinor, getBalanceMinor } from '@/lib/balance';
 import { syncBackup } from '@/lib/cloud-backup';
+import { getStoredCredential, isExpired } from '@/lib/kyc';
+import { tierLimit } from '@prova/shared';
 import { hasPin } from '@/lib/pin';
 import { isProverAvailable, prove } from '@/lib/prover';
 import { useBalance, useRecipients, QK } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { getSecret, SecureKey } from '@/lib/secure-store';
 import { secureRandomU64 } from '@/lib/wallet';
+import { ConnectionGate } from '@/components/connection-gate';
 import { Loader } from '@/components/loader';
+import { PaymentResult } from '@/components/payment-result';
 import { Button, Card, Screen } from '@/components/ui';
 import { PinPromptModal } from '@/components/pin-prompt';
-import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
-type Phase = 'idle' | 'proving' | 'submitting' | 'sent' | 'error';
+type Phase = 'idle' | 'proving' | 'submitting' | 'sent' | 'processing' | 'error';
 
 /**
  * Send flow: choose a recipient → enter an amount → prove on-device → relay. The Groth16 proof is
@@ -30,7 +33,6 @@ type Phase = 'idle' | 'proving' | 'submitting' | 'sent' | 'error';
  */
 export default function SendScreen() {
   const router = useRouter();
-  const toast = useToast();
   const queryClient = useQueryClient();
   const { recipientId } = useLocalSearchParams<{ recipientId?: string }>();
   const { data: recipients } = useRecipients();
@@ -46,6 +48,8 @@ export default function SendScreen() {
   const [message, setMessage] = useState('');
   const [txHash, setTxHash] = useState('');
   const [error, setError] = useState('');
+  /** Machine-readable decline/processing reason driving the result screen's explanation. */
+  const [reason, setReason] = useState('');
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // A recipient passed via route params is fixed; otherwise the user picks one below.
@@ -58,16 +62,12 @@ export default function SendScreen() {
     let active = true;
     (async () => {
       const s = await getSecret(SecureKey.zkSecretKey);
-      const c = await getSecret(SecureKey.kycCredential);
+      // Only accept a credential the circuit would still honour: an expired one produces a proof
+      // the contract rejects, so treat it as "not verified" and send the user back to KYC.
+      const stored = await getStoredCredential();
       if (!active) return;
       setSecret(s);
-      if (c) {
-        try {
-          setCredential(JSON.parse(c) as KycCredential);
-        } catch {
-          /* ignore malformed */
-        }
-      }
+      setCredential(stored && !isExpired(stored) ? stored : null);
     })();
     return () => {
       active = false;
@@ -119,27 +119,35 @@ export default function SendScreen() {
       setPhase('submitting');
       setMessage('Submitting to Stellar…');
       const resp = await submitTransfer(blob);
+      setTxHash(resp.txHash ?? '');
       if (resp.status === 'confirmed') {
-        setTxHash(resp.txHash ?? '');
         await debit(amt);
         await queryClient.invalidateQueries({ queryKey: QK.balance });
         await queryClient.invalidateQueries({ queryKey: QK.history });
         setPhase('sent');
-        toast.success('Sent — no amount on-chain');
         void syncBackup(); // keep the cloud backup's balance snapshot fresh (silent, best-effort)
+      } else if (
+        resp.status === 'pending' ||
+        resp.status === 'submitting' ||
+        resp.status === 'submitted'
+      ) {
+        // Accepted but not yet confirmed. Money may still land, so we must NOT say it failed —
+        // the user is told to wait rather than retry, which would risk a double payment.
+        setPhase('processing');
       } else {
-        setError(`Transfer ${resp.status}.`);
+        setReason(resp.status === 'rejected' ? 'rejected' : 'unknown');
         setPhase('error');
-        toast.error(`Transfer ${resp.status}`);
       }
     } catch (e) {
       stopProgress();
+      // A network failure after submitting is ambiguous: the transfer may still be in flight.
+      // Treat it as "processing" rather than "failed" so nobody is nudged into paying twice.
       const msg = e instanceof Error ? e.message : 'send failed';
-      setError(msg);
-      setPhase('error');
-      toast.error(msg);
+      const ambiguous = /network|timeout|fetch|abort/i.test(msg);
+      setReason(ambiguous ? 'timeout' : 'unknown');
+      setPhase(ambiguous ? 'processing' : 'error');
     }
-  }, [amt, secret, credential, queryClient, toast]);
+  }, [amt, secret, credential, queryClient]);
 
   // Validate, then require a step-up (biometric, or PIN as fallback) before spending.
   const onSend = useCallback(async () => {
@@ -154,7 +162,14 @@ export default function SendScreen() {
     }
     // Re-read balance at send time (source of truth) to avoid a stale cached value.
     if (amt * 100 > (await getBalanceMinor())) {
-      setError('Insufficient balance — add money first.');
+      setReason('insufficient_funds');
+      setPhase('error');
+      return;
+    }
+    // Tier limit (see Docs/kyc-verification.md §9 — a product control, enforced here and server-side).
+    if (amt > tierLimit(credential.kycLevel)) {
+      setReason('limit_exceeded');
+      setPhase('error');
       return;
     }
 
@@ -176,23 +191,31 @@ export default function SendScreen() {
   const busy = phase === 'proving' || phase === 'submitting';
   const list = useMemo(() => recipients ?? [], [recipients]);
 
-  // ---- Success state ----
-  if (phase === 'sent') {
+  // ---- Terminal outcomes: success / still-processing / failed ----
+  if (phase === 'sent' || phase === 'processing' || phase === 'error') {
+    const receipt = {
+      amount: formatMinor(amt * 100),
+      recipientName: selected?.name ?? 'your recipient',
+      recipientHandle: selected?.handle,
+      reference: txHash || undefined,
+      dateTime: new Date().toLocaleString(),
+      method: 'Prova private transfer',
+      status:
+        phase === 'sent' ? 'Completed' : phase === 'processing' ? 'Processing' : 'Not completed',
+    };
     return (
-      <Screen scroll>
-        <View style={styles.successWrap}>
-          <View style={styles.successBadge}>
-            <ShieldCheck color={Palette.accent} size={44} strokeWidth={1.8} />
-          </View>
-          <Text style={styles.successTitle}>Sent privately ✅</Text>
-          <Text style={styles.successBody}>
-            {formatMinor(amt * 100)} to {selected?.name ?? 'your recipient'}
-          </Text>
-          {txHash ? <Text style={styles.mono}>tx {txHash.slice(0, 16)}…</Text> : null}
-          <Text style={styles.enclave}>No amount is visible on-chain — only the commitment.</Text>
-          <Button label="Done" onPress={() => router.back()} style={styles.doneBtn} />
-        </View>
-      </Screen>
+      <PaymentResult
+        outcome={phase === 'sent' ? 'success' : phase === 'processing' ? 'processing' : 'failed'}
+        receipt={receipt}
+        reasonCode={reason}
+        onRetry={() => {
+          setReason('');
+          setError('');
+          setProgress(0);
+          setPhase('idle');
+        }}
+        onDone={() => router.back()}
+      />
     );
   }
 
@@ -254,88 +277,92 @@ export default function SendScreen() {
 
   // ---- Amount + confirm ----
   return (
-    <Screen scroll>
-      {/* Selected recipient */}
-      <Card style={styles.recipientCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials(selected.name)}</Text>
-        </View>
-        <View style={styles.flex}>
-          <Text style={styles.name}>{selected.name}</Text>
-          <Text style={styles.handle} numberOfLines={1}>
-            {selected.handle} · {selected.country}
+    // Money-moving screen: block outright while offline / in maintenance rather than let someone
+    // submit a payment we cannot deliver or track.
+    <ConnectionGate>
+      <Screen scroll>
+        {/* Selected recipient */}
+        <Card style={styles.recipientCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials(selected.name)}</Text>
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.name}>{selected.name}</Text>
+            <Text style={styles.handle} numberOfLines={1}>
+              {selected.handle} · {selected.country}
+            </Text>
+          </View>
+          {!recipientId ? (
+            <Pressable hitSlop={8} onPress={() => setPicked(null)} disabled={busy}>
+              <Text style={styles.change}>Change</Text>
+            </Pressable>
+          ) : null}
+        </Card>
+
+        {/* Amount */}
+        <View style={styles.amountWrap}>
+          <Text style={styles.amountLabel}>Amount ({env.currency})</Text>
+          <View style={styles.amountRow}>
+            <Text style={styles.currency}>{env.currency}</Text>
+            <TextInput
+              style={styles.amountInput}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor={Palette.textMuted}
+              editable={!busy}
+              autoFocus
+            />
+          </View>
+          <Text style={styles.balanceHint}>
+            Available: {formatMinor(balanceMinor ?? 0)}
+            {amountValid && !canAfford ? '  ·  Insufficient balance' : ''}
           </Text>
         </View>
-        {!recipientId ? (
-          <Pressable hitSlop={8} onPress={() => setPicked(null)} disabled={busy}>
-            <Text style={styles.change}>Change</Text>
-          </Pressable>
+
+        <Button
+          label={busy ? message : 'Send privately'}
+          onPress={onSend}
+          disabled={busy || !amountValid || !canAfford}
+        />
+
+        {busy ? (
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+            </View>
+            <View style={styles.progressRow}>
+              <Loader />
+              <Text style={styles.progressText}>{message}</Text>
+            </View>
+          </View>
         ) : null}
-      </Card>
 
-      {/* Amount */}
-      <View style={styles.amountWrap}>
-        <Text style={styles.amountLabel}>Amount ({env.currency})</Text>
-        <View style={styles.amountRow}>
-          <Text style={styles.currency}>{env.currency}</Text>
-          <TextInput
-            style={styles.amountInput}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="number-pad"
-            placeholder="0"
-            placeholderTextColor={Palette.textMuted}
-            editable={!busy}
-            autoFocus
-          />
-        </View>
-        <Text style={styles.balanceHint}>
-          Available: {formatMinor(balanceMinor ?? 0)}
-          {amountValid && !canAfford ? '  ·  Insufficient balance' : ''}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Text style={styles.enclave}>
+          The amount is proved compliant on this device and never leaves it — only a commitment goes
+          on-chain.
         </Text>
-      </View>
+        {!isProverAvailable ? (
+          <Text style={styles.hint}>
+            On-device prover not built into this app yet. Rebuild with `npx expo run:android` to
+            enable proving.
+          </Text>
+        ) : null}
 
-      <Button
-        label={busy ? message : 'Send privately'}
-        onPress={onSend}
-        disabled={busy || !amountValid || !canAfford}
-      />
-
-      {busy ? (
-        <View style={styles.progressWrap}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-          </View>
-          <View style={styles.progressRow}>
-            <Loader />
-            <Text style={styles.progressText}>{message}</Text>
-          </View>
-        </View>
-      ) : null}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Text style={styles.enclave}>
-        The amount is proved compliant on this device and never leaves it — only a commitment goes
-        on-chain.
-      </Text>
-      {!isProverAvailable ? (
-        <Text style={styles.hint}>
-          On-device prover not built into this app yet. Rebuild with `npx expo run:android` to
-          enable proving.
-        </Text>
-      ) : null}
-
-      <PinPromptModal
-        visible={showPinPrompt}
-        title="Approve this transfer"
-        subtitle="Enter your PIN to send."
-        onSuccess={() => {
-          setShowPinPrompt(false);
-          runTransfer();
-        }}
-        onCancel={() => setShowPinPrompt(false)}
-      />
-    </Screen>
+        <PinPromptModal
+          visible={showPinPrompt}
+          title="Approve this transfer"
+          subtitle="Enter your PIN to send."
+          onSuccess={() => {
+            setShowPinPrompt(false);
+            runTransfer();
+          }}
+          onCancel={() => setShowPinPrompt(false)}
+        />
+      </Screen>
+    </ConnectionGate>
   );
 }
 

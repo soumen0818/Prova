@@ -13,6 +13,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
 import { formatMinor } from '@/lib/balance';
+import { useRequireKyc } from '@/hooks/use-require-kyc';
 import { useBalance, useHistory, useKycVerified, useRecipients, useSession } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
@@ -22,6 +23,7 @@ type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: num
 /** Home tab: greeting, private balance, quick actions, saved recipients, recent activity. */
 export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity') => void }) {
   const router = useRouter();
+  const requireKyc = useRequireKyc();
   const session = useSession();
   const balance = useBalance();
   const recipients = useRecipients();
@@ -60,9 +62,13 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
           <BalanceButton
             label="Add money"
             Icon={ArrowDownToLine}
-            onPress={() => router.push('/deposit')}
+            onPress={() => requireKyc(() => router.push('/deposit'))}
           />
-          <BalanceButton label="Send" Icon={ArrowUpRight} onPress={() => router.push('/send')} />
+          <BalanceButton
+            label="Send"
+            Icon={ArrowUpRight}
+            onPress={() => requireKyc(() => router.push('/send'))}
+          />
         </View>
       </Card>
 
@@ -98,7 +104,9 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
           <RecipientChip
             key={r.id}
             recipient={r}
-            onPress={() => router.push({ pathname: '/send', params: { recipientId: r.id } })}
+            onPress={() =>
+              requireKyc(() => router.push({ pathname: '/send', params: { recipientId: r.id } }))
+            }
           />
         ))}
       </View>

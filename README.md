@@ -1,38 +1,232 @@
 <p align="center">
-  <img src="mobile/assets/images/brand-symbol.png" alt="Prova" width="420">
+  <img src="mobile/assets/images/brand-symbol.png" alt="Prova" width="140">
 </p>
 
+<h1 align="center">Prova</h1>
 <h3 align="center">Private, compliant cross-border remittance on Stellar.</h3>
-<p align="center"><em>The stamp is a zero-knowledge proof.</em></p>
+<p align="center"><em>A transfer is accepted because it can be <b>proven</b> legal — not because someone saw it.</em></p>
 
 <p align="center">
+  <img alt="Expo" src="https://img.shields.io/badge/Expo_SDK_56-000020?style=for-the-badge&logo=expo&logoColor=white">
+  <img alt="Go" src="https://img.shields.io/badge/Go_1.25-00ADD8?style=for-the-badge&logo=go&logoColor=white">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
+  <img alt="Soroban" src="https://img.shields.io/badge/Soroban-393939?style=for-the-badge&logo=stellar&logoColor=white">
+  <img alt="Stellar" src="https://img.shields.io/badge/Stellar_Testnet-05192E?style=for-the-badge">
+  <img alt="arkworks" src="https://img.shields.io/badge/BLS12--381_Groth16-E6F94E?style=for-the-badge&logoColor=black&color=E6F94E">
+</p>
+
+<p align="center">
+  <a href="#the-problem">The problem</a> ·
+  <a href="#the-solution">The solution</a> ·
+  <a href="#who-this-is-for">Who it's for</a> ·
+  <a href="#key-features">Features</a> ·
+  <a href="#smart-contracts">Contracts</a> ·
+  <a href="#technology-stack">Stack</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="#how-a-transfer-actually-works">How it works</a> ·
-  <a href="#repository-layout">Repo layout</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#documentation-map">Docs</a>
 </p>
 
 ---
 
-## What Prova is
+## Table of contents
 
-**Prova** — from *"proof."* A remittance app where a transfer is accepted because it can be
-**proven** legal, not because a bank, a forex desk, and three correspondent banks all got to see the
-amount and the identity behind it. Think of a sealed letter with a notary stamp: the post office
-never opens the letter, it just trusts the stamp. Here the stamp is a zero-knowledge proof.
+- [Overview](#overview)
+- [The problem](#the-problem)
+- [The solution](#the-solution)
+- [Who this is for](#who-this-is-for)
+- [Key features](#key-features)
+- [Smart contracts](#smart-contracts)
+- [Technology stack](#technology-stack)
+- [Architecture](#architecture)
+- [How a transfer actually works](#how-a-transfer-actually-works)
+- [Testing](#testing)
+- [Repository layout](#repository-layout)
+- [Prerequisites](#prerequisites)
+- [Getting started](#getting-started)
+- [Environment configuration](#environment-configuration)
+- [Security & privacy model](#security--privacy-model)
+- [Troubleshooting](#troubleshooting)
+- [Documentation map](#documentation-map)
+- [CI](#ci)
+- [Roadmap](#roadmap)
 
-The problem it solves: privacy and compliance are normally opposites — every payment system has to
-*see* your data to verify it's legal. Prova's ZK "compliance certificate" proves a transfer is
-KYC'd, within limits, and not a replay, **without revealing the amount or the identity behind it**.
-On-chain, an observer only ever sees commitments, nullifiers, and proofs.
+---
+
+## Overview
+
+**Prova** — from *"proof."* The name is the product: a transfer is accepted because it can be
+**proven** legal, not because a bank, a forex desk, and three correspondent banks all got to look at
+the amount and the identity behind it.
+
+> **The mental model:** a sealed letter with a notary stamp. The post office never opens the letter
+> to know it's valid — it trusts the stamp. Here, the notary is math, it runs on the sender's phone,
+> and the stamp carries zero personal information.
 
 - **First corridor:** UAE → India.
-- **Rails:** Stellar (speed, cost, and an existing anchor/SEP network for fiat on/off-ramps).
-- **What Prova adds:** the one missing layer — privacy in transit, with compliance intact.
+- **Rails:** Stellar — it already solved speed, cost, and fiat on/off-ramps (anchors + SEPs). Prova
+  adds the one layer that was missing: **privacy in transit, with compliance intact.**
+- **Status:** deployed and verified end-to-end on **Stellar testnet** — see
+  [Smart contracts](#smart-contracts) for live contract IDs you can check yourself.
 
-Full product framing, the persona this is built for, and the business case live in
-[`Docs/proposal .md`](Docs/proposal%20.md).
+## The problem
+
+Meet Ravi. He works in Dubai; his mother lives in West Bengal. Every month he sends her ₹15,000 —
+groceries, medicine, the electricity bill. Millions of people do exactly this.
+
+Here's what happens to that ₹15,000 today:
+
+```
+Ravi → UAE bank/exchange → SWIFT correspondent bank → forex desk → Indian bank → Amma
+         (sees amount)        (sees amount)             (sees amount)  (sees amount)
+```
+
+**Five different companies read his exact amount.** He loses 5–7% to fees. It takes 2–5 days. And
+there's nothing he can do about it — that's simply how the system works. This isn't a UX
+inconvenience, it's structural:
+
+- **No privacy** — salary, family budget, spending patterns: all visible to every intermediary, and
+  sellable as data.
+- **Cost** — every intermediary takes a cut. The ~$800B/year global remittance market loses tens of
+  billions of dollars to the middle.
+- **Latency** — correspondent banking settles in days, not seconds.
+
+Crypto solved cost and speed years ago. So why hasn't this been fixed for Ravi? Because of the
+deeper problem: **privacy and compliance are mathematical opposites**, and nobody has made them work
+together on a live payment corridor at consumer scale. Every existing payment system is a
+transparent pipe — every node sees everything, *because seeing is how it verifies*. To check "does
+Ravi have enough money," the system reads his balance. To check "is this legal," it reads the
+amount. To check "is he KYC'd," it reads his identity. **You cannot verify something you cannot
+see** — that single constraint is what makes privacy and compliance enemies in every system that
+exists today.
+
+## The solution
+
+The amount stays **private** while it travels, but a **mathematical proof travels alongside it**
+that says *"trust me, this is legitimate"* — and anyone can verify that proof **without ever
+learning the actual number**. That's what zero-knowledge means: proving a statement is true without
+revealing the secret behind it.
+
+Concretely: when Ravi sends ₹15,000, his phone generates a proof that simultaneously asserts
+**(a)** the amount is within the legal limit, **(b)** he holds a valid KYC credential from a
+licensed anchor, and **(c)** this exact transfer/note has never been spent before. A Soroban smart
+contract on Stellar verifies that proof in milliseconds and accepts or rejects it. If accepted, only
+a **commitment hash** and a **nullifier** are written on-chain. The number ₹15,000 appears nowhere.
+
+> ZK is to Stellar's payment rails what **HTTPS is to the internet.** The internet could already move
+> data; HTTPS added a privacy/security layer on top without replacing the pipes. Prova adds a
+> privacy layer on top of Stellar's existing payment pipes — it doesn't replace them.
+
+The regulator doesn't actually need to *see* the amount — they need to *verify three facts* (in
+range, KYC'd, not replayed), and a Groth16 proof verifies exactly those three facts and nothing
+else. That's the whole trick, and it's why privacy and compliance stop being enemies.
+
+## Who this is for
+
+| Role | What they get | Where in the system |
+| --- | --- | --- |
+| **Sender** (e.g. Ravi) | A wallet that generates its own keys on-device, verifies identity once, and sends privately — the amount never leaves the phone in the clear. | `mobile/` |
+| **Recipient** (e.g. Amma) | Cash-out through a licensed local anchor, same privacy guarantees on the sending leg. | `mobile/` + anchor rails |
+| **Licensed anchors** (UAE deposit-side, India payout-side) | Existing SEP-1/6/10/12/24/31 infrastructure they already run for other Stellar products — Prova adds a privacy layer, not a new integration model. | `backend/internal/anchor/`, `Docs/deposit-flow.md` |
+| **Pool operator** (the folder) | A permissionless, low-trust role: batches queued notes into the Merkle tree. Can stall the queue, can never mint, steal, or spend. | `backend/internal/pool/folder.go` |
+| **Auditor / regulator** | Every accepted transfer emits an on-chain event and every KYC decision is written to an append-only audit log — provable compliance without a data request. | `Docs/kyc-verification.md` |
+
+## Key features
+
+**Privacy**
+- On-device proof generation — the amount never leaves the phone in the clear, not even to Prova's
+  own backend.
+- Shielded-pool note model: on-chain, an observer sees only commitments, nullifiers, and proofs —
+  never balances, never amounts, never who paid whom.
+- Encrypted note discovery — incoming payments are findable only by their owner (Jubjub ECDH +
+  Poseidon-derived masking), not by anyone watching the chain.
+
+**Compliance, without the surveillance**
+- KYC once: an anchor-signed credential, verified *inside* the ZK proof, proves "verified, unexpired,
+  sufficient tier" without ever putting a passport number or a name on-chain.
+- Every accepted transfer is an on-chain event; every KYC decision is an append-only audit record —
+  auditable without being surveillable.
+
+**Wallet & security**
+- One master seed, generated on-device, stored only in the platform secure enclave (iOS Keychain /
+  Android Keystore) — never uploaded anywhere in the clear.
+- PIN + biometric step-up for every money-moving action.
+- Encrypted cloud backup (iCloud / Google Drive) via envelope encryption — a lost phone doesn't mean
+  a lost wallet.
+- Real, rate-limited, hashed email one-time codes for sign-in (no dev-only shortcuts in production).
+
+**Speed & cost**
+- Stellar settlement: seconds, not days.
+- A folded batch of up to 8 notes updates the entire pool's Merkle root in one on-chain transaction.
+
+## Smart contracts
+
+Two Soroban (Rust) contracts, both live and verified on **Stellar testnet** today.
+
+### `prova-pool` — the shielded pool (real token custody)
+
+> **Contract ID:** `CCIKEXCOFG4PLRQEG4OD3QG76LGEWO6RZFX6WGBPRWEZZQ2SJ5UMJ2G5`
+> **Network:** Stellar Testnet · **Explorer:** [view on Stellar Expert ↗](https://stellar.expert/explorer/testnet/contract/CCIKEXCOFG4PLRQEG4OD3QG76LGEWO6RZFX6WGBPRWEZZQ2SJ5UMJ2G5)
+
+Custodies real tokens and moves value privately between notes. Verified on-chain: `admin` matches
+the deployed admin key, `root` matches the circuit's independently-computed empty-tree root,
+`is_paused` is `false`, `queue_depth` is `0`. Full deployment record, transaction hashes, and the
+anchor-key rotation history: [`contracts/DEPLOYMENTS.md`](contracts/DEPLOYMENTS.md).
+
+| Function | Access | Description |
+| --- | --- | --- |
+| `initialize(admin, token, anchor_pk_x, anchor_pk_y)` | one-time | Binds the pool to its custodied token and trusted KYC anchor |
+| `shield(from, amount, note, proof)` | public | Move real tokens in, queue the resulting note |
+| `transact(proof, nullifier, merkle_root, outputs, current_time)` | public | Private transfer — 1 note in, 2 notes out, nothing revealed but a nullifier and two commitments |
+| `unshield(proof, nullifier, merkle_root, outputs, amount, to, current_time)` | public | Withdraw real tokens to a public Stellar address — same circuit as `transact`, so on-chain shape never reveals which one happened |
+| `update_root(proof, new_root, count)` | permissionless | Folds queued notes into the tree — the contract itself never hashes (see why below) |
+| `set_paused(paused)` | admin | Halts deposits/transfers; **withdrawals are never paused** |
+| `set_anchor`, `set_admin`, `upgrade` | admin | Break-glass operations — see `Docs/deployment-and-keys.md` §6 |
+| `root()`, `queue_depth()`, `is_spent(nullifier)`, `is_known_root(root)` | read-only | State queries — `queue_depth` is the number to watch operationally |
+
+**Why the pool never hashes on-chain:** a measured Poseidon permutation costs ~10.97M CPU
+instructions against Soroban's 100M-per-transaction budget — a depth-20 Merkle append needs 20 of
+them and simply cannot fit. So tree maintenance is deferred and batched: `shield`/`transact`/
+`unshield` only ever verify a proof and queue a commitment; a **permissionless** off-chain folder
+periodically proves a batch tree-append and calls `update_root`. The fold proof enforces
+correctness, so a folder can neither mint nor steal — only stall.
+
+### `prova-verifier` — per-transfer proof verifier (circuit v2)
+
+> **Contract ID:** `CBQ2HVIYASMYNRIKWM54JUA3A4OGQOWRP42BLMRRB262YQINAA36GD5U`
+> **Network:** Stellar Testnet · **Explorer:** [view on Stellar Expert ↗](https://stellar.expert/explorer/testnet/contract/CBQ2HVIYASMYNRIKWM54JUA3A4OGQOWRP42BLMRRB262YQINAA36GD5U)
+
+The earlier design: verifies a KYC-inclusive Groth16 proof (range + commitment + nullifier +
+in-circuit anchor signature) without custodying any tokens itself. Verified live on testnet:
+`verify` → `true`, `submit` → success + `transfer` event, ~49.0M CPU per verification.
+
+| Function | Access | Description |
+| --- | --- | --- |
+| `verify(proof_a, proof_b, proof_c, commitment, nullifier, anchor_pk_x, anchor_pk_y, current_time)` | public | Pure Groth16 check — no state change |
+| `submit(...)` | public | Verifies, rejects an already-used nullifier, records + emits a `transfer` event |
+| `is_spent(nullifier)`, `is_committed(commitment)` | read-only | State queries |
+
+Both contracts verify **BLS12-381** Groth16 proofs using Soroban's native `pairing_check` host
+function, against a verifying key embedded at compile time — never computed on-chain, always
+generated by the `prova-prover` CLI in `circuits/`. Full contract-level detail, types, and the
+security model behind every entrypoint: [`contracts/README.md`](contracts/README.md).
+
+## Technology stack
+
+| Layer | Technology | Why |
+| --- | --- | --- |
+| **Mobile app** | React Native + Expo SDK 56, TypeScript, expo-router | One codebase; native module support for the on-device prover and the platform secure enclave |
+| **State / data** | TanStack Query | The sole state/data-fetching library — no Redux/Zustand |
+| **On-device crypto (JS)** | `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@scure/base` | Audited pure-JS primitives for everything that isn't Groth16/Poseidon/Jubjub |
+| **On-device crypto (native)** | Rust, `ark-groth16`, `ark-bls12-381`, `ark-ed-on-bls12-381` | Groth16 proving is infeasible in JS at usable speed; one Rust implementation shared by mobile, backend, and contracts so nothing can silently drift |
+| **Backend** | Go 1.25, `stellar/go` SDK, `net/smtp` | First-class Stellar SDK; goroutines + strong typing fit a money system's concurrent, must-not-lose-it work |
+| **Database** | PostgreSQL | ACID guarantees for financial state — holds no amounts or PII, only commitments/status/timestamps |
+| **Cache / rate limiting** | Redis | Shared OTP + rate-limit state across API replicas (falls back to per-instance counters if unset) |
+| **Smart contracts** | Rust + Soroban SDK 22 | The only language for Soroban; native BLS12-381 pairing host functions |
+| **ZK circuits** | arkworks (Rust): `ark-groth16`, `ark-crypto-primitives` (Poseidon) | An active, audited Rust Groth16 stack over the one curve Soroban actually supports |
+| **Blockchain** | Stellar Testnet · Soroban RPC · Horizon | Settlement, contract calls, existing SEP/anchor network |
+| **Shared contracts** | TypeScript (`shared/src`) + Go (`shared/go/schema`) | Hand-mirrored, not generated — every cross-repo shape has tests on both sides |
+| **CI/CD** | GitHub Actions, one path-filtered workflow per component | Only the changed component's pipeline runs |
 
 ## Architecture
 
@@ -41,24 +235,24 @@ repo a file happens to sit in:
 
 ```mermaid
 flowchart TB
-    subgraph phone["📱 Phone — secrets + proving"]
+    subgraph phone["Phone — secrets + proving"]
         seed["Master seed\n(secure enclave)"]
         prover["Rust prover\n(arkworks, on-device)"]
         wallet["Wallet UI\n(Expo / React Native)"]
     end
 
-    subgraph chain["⛓ Soroban — verification + anti-replay"]
+    subgraph chain["Soroban — verification + anti-replay"]
         verifier["verifier contract\n(circuit v2)"]
         pool["pool contract\n(circuit v3, custodies tokens)"]
     end
 
-    subgraph server["☁ Go backend — coordinator, never a viewer"]
+    subgraph server["Go backend — coordinator, never a viewer"]
         api["API"]
         indexer["indexer / folder"]
         anchors["anchor + KYC orchestration"]
     end
 
-    subgraph anchor["🏦 Licensed anchors"]
+    subgraph anchor["Licensed anchors"]
         uae["UAE anchor"]
         india["India anchor"]
     end
@@ -84,32 +278,62 @@ backend** — which never sees an amount or a raw identity either. It's a coordi
 
 ## How a transfer actually works
 
-1. **Sign up.** The app generates a master seed on-device (secure enclave), creates a backend
+```mermaid
+sequenceDiagram
+    participant Wallet as Phone (wallet + prover)
+    participant Backend as Go backend
+    participant Pool as Soroban pool contract
+    participant Folder as Folder (permissionless)
+
+    Wallet->>Backend: GET /pool/path/{commitment} (Merkle path for my note)
+    Wallet->>Wallet: build Groth16 proof on-device\n(membership + nullifier + conservation + KYC)
+    Wallet->>Backend: POST /pool/spend (proof, nullifier, outputs)
+    Backend->>Pool: transact(proof, nullifier, root, outputs)
+    Pool-->>Backend: verified · nullifier recorded · notes queued
+    Folder->>Pool: update_root(fold proof, new_root, count)
+    Pool-->>Folder: root advanced — notes now spendable
+    Wallet->>Backend: GET /pool/notes (scan + trial-decrypt)
+    Backend-->>Wallet: candidate notes
+    Wallet->>Wallet: trial-decrypt natively — find what's mine
+```
+
+1. **Sign up** — the app generates a master seed on-device (secure enclave), creates a backend
    account keyed by email, and signs in with an emailed one-time code.
-2. **Verify once (KYC).** Identity documents go from the phone to the verification provider —
-   never through Prova's servers. On approval, the anchor **signs a credential**
-   (`sign(userId, kycLevel, expiry)`) that the phone stores and never uploads anywhere.
-3. **Add money.** The app deposits value into the shielded pool via a real anchor rail (SEP-24) or,
-   in dev, a simulated instant credit.
-4. **Send.** The phone selects a note, fetches its Merkle membership path from the backend, and
-   generates a Groth16 proof **on-device** proving: it owns a note in the tree, the nullifier is
-   fresh, value is conserved across the two outputs, and its KYC credential is valid — all without
-   revealing the amount to anyone, including Prova's own servers.
-5. **Submit.** The proof goes to the Soroban pool contract (directly, or relayed by the backend for
-   retry handling). The contract runs one BLS12-381 pairing check, rejects replays, and queues the
-   new notes.
-6. **Fold.** A permissionless off-chain folder batches queued notes into the Merkle tree with its
-   own proof (the contract can't hash — see `contracts/README.md`), making them spendable.
-7. **Payout + Travel Rule.** For a cash-out, the two anchors exchange the required Travel-Rule data
-   as a sealed, encrypted envelope — decryptable only by the receiving anchor, never on-chain.
-8. **History.** The backend's indexer reads on-chain events to build a private history the wallet
+2. **Verify once (KYC)** — identity documents go from the phone to the verification provider,
+   never through Prova's servers. On approval, the anchor signs a credential the phone stores and
+   never uploads anywhere.
+3. **Add money** — deposit into the shielded pool via a real anchor rail (SEP-24) or, in dev, a
+   simulated instant credit.
+4. **Send** — the phone selects a note, fetches its Merkle membership path, and generates a Groth16
+   proof **on-device**: ownership, a fresh nullifier, value conservation across two outputs, and a
+   valid KYC credential — all without revealing the amount to anyone, including Prova's own servers.
+5. **Submit** — the proof goes to the Soroban pool contract (directly, or relayed by the backend).
+   One BLS12-381 pairing check, replay rejection, and the new notes are queued.
+6. **Fold** — a permissionless off-chain folder batches queued notes into the Merkle tree with its
+   own proof, making them spendable.
+7. **Payout + Travel Rule** — for a cash-out, the two anchors exchange the required data as a
+   sealed, encrypted envelope decryptable only by the receiving anchor, never on-chain.
+8. **History** — the backend's indexer reads on-chain events to build a private history the wallet
    can display; nothing PII- or amount-bearing is ever stored server-side.
+
+## Testing
+
+| Component | What's covered |
+| --- | --- |
+| `circuits/prover` | ~45 black-box shield/spend/fold integration tests where the must-fail cases *are* the point — every assertion maps to a way money could be stolen, minted, or lost. Plus unit tests per circuit (v2 transfer, KYC credential, FFI round-trips). |
+| `contracts/pool`, `contracts/verifier` | Contract tests build **real Groth16 proofs** via `prova-prover` as a dev-dependency rather than replaying fixtures, so a circuit/contract disagreement fails a contract test, not just a circuit test. Includes an executable CPU-cost gate proving the on-chain-hashing constraint (`gate_onchain_merkle_does_not_fit_cpu_budget`). |
+| `backend` | Unit + handler tests for OTP (rate limiting, hashing, expiry), the SMTP mailer, rate limiting, KYC provider parsing, pool events, the folder, the prover shell-out, and pool spend handlers. |
+| `mobile` | `tsc --noEmit`, `expo lint`, Prettier — enforced in CI; validation logic mirrors and is tested against the same cases as the backend's Go validators. |
+| `shared` | `validation_test.go` and `validation.test.ts` assert the **same** cases on both sides of the TS/Go mirror. |
+
+Run everything locally: see each component's own README for the exact commands
+(`cargo test`, `go test ./...`, `npm run typecheck && npm run lint && npm run format:check`).
 
 ## Repository layout
 
 A single git repository, one folder per component, each with its own toolchain, tests, and CI
 workflow. Every component below has its own detailed `README.md` — this file is the map, not the
-manual.
+whole manual.
 
 | Folder | Stack | What it is |
 | --- | --- | --- |
@@ -181,30 +405,94 @@ Prova/
 
 ## Getting started
 
-Each folder's own `README.md` has the full setup. Quick map:
+Build order matters: `shared` and `circuits/prover` are dependencies of the others.
 
 ```bash
-# shared — build first; mobile and backend both depend on it
+# 1. shared — build first; mobile and backend both depend on it
 cd shared && npm install && npm run build
 cd shared/go && go build ./...
 
-# circuits — build the prover; backend and contracts both depend on the binary/artifacts it produces
+# 2. circuits — build the prover; backend and contracts both depend on the binary/artifacts it produces
 cd circuits/prover && cargo build --release
 
-# contracts
+# 3. contracts — optional unless you're redeploying or changing contract code
 cd contracts && cargo test && stellar contract build --optimize
 
-# backend
-cd backend && cp .env.example .env && docker compose up -d postgres redis && go run ./cmd/api
+# 4. backend
+cd backend
+cp .env.example .env                          # see .env.example for LOCAL DEV vs PRODUCTION values
+docker compose up -d postgres redis
+set -a && source .env && set +a               # bare `go run` does NOT auto-load .env
+go run ./cmd/api
+curl localhost:8080/healthz
 
-# mobile
-cd mobile && nvm use 22 && npm install && cp .env.example .env && npm start
+# 5. mobile — needs a development build, not Expo Go (the native prover module won't load in Expo Go)
+cd mobile
+nvm use 22 && npm install
+cp .env.example .env
+npm start
 ```
 
-Deploying the contracts to testnet, generating keys, and understanding which secret goes where (and
-which never touches a server at all) is a full step-by-step in
+Deploying the contracts to testnet yourself, generating keys, and understanding which secret goes
+where (and which one never touches a server at all) is a full step-by-step in
 [`Docs/deployment-and-keys.md`](Docs/deployment-and-keys.md) — read §1 first, since two of Prova's
 keys are far more dangerous than the rest and the difference isn't obvious from their names.
+
+## Environment configuration
+
+Every component ships a `.env.example` labeled by **LOCAL DEV** vs **PRODUCTION** value, so there's
+one place to look, not a scavenger hunt across scripts:
+
+| Component | File | Notable values |
+| --- | --- | --- |
+| `backend/` | `.env.example` | `DATABASE_URL`, `REDIS_URL`, `POOL_CONTRACT_ID`, `CONTRACT_ID`, `RELAYER_KEY`, `ANCHOR_SEED`, `SMTP_*` (Gmail App Password compatible), `AUTH_MODE` |
+| `mobile/` | `.env.example` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_STELLAR_NETWORK`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_DEPOSIT_MODE`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (cloud backup) |
+
+No secret is ever required to run the app locally — `AUTH_MODE=development` accepts a fixed dev OTP
+and `DEPOSIT_MODE=simulated` credits a local counter with no chain or anchor involved. The one key
+that must **never** appear in any `.env` file, on any server, or in git is the pool admin secret —
+see the danger-ranked key table in [`Docs/deployment-and-keys.md`](Docs/deployment-and-keys.md) §1.
+
+## Security & privacy model
+
+| Layer | Sees amounts? | Sees identity? | Holds custody? |
+| --- | --- | --- | --- |
+| Phone (secure enclave) | Yes — that's where it's computed | Yes — that's where credentials live | No — never on-chain balances of its own |
+| Soroban contracts | No — only commitments/nullifiers | No | Yes — the pool contract custodies real tokens |
+| Go backend | No | No — only an opaque `userId` hash | No |
+| Licensed anchors | Only their own leg (deposit/payout) | Yes — that's their regulatory role | Only during on/off-ramp |
+
+If you take one thing from this table: **the backend is the least trusted-with-secrets component in
+the whole system, on purpose.** It coordinates a lot and stores none of what would matter if it were
+breached.
+
+**Concretely, on the code level:**
+- The master seed and every key derived from it never leave `expo-secure-store` (iOS Keychain /
+  Android Keystore) in the clear.
+- Postgres holds commitments, nullifiers, status, and timestamps — never an amount, never a name.
+- The KYC pipeline carries no PII across the wire it doesn't have to: documents go device → provider
+  directly; the backend only ever sees an opaque `userId = Poseidon(secret, domain)`.
+- The pool admin key — the one secret that can replace contract code — is never written to a
+  `.env`, a server, or git; only its public address is. See the full danger-ranked key table in
+  `Docs/deployment-and-keys.md` §1.
+- Every unauthenticated endpoint (there's no session before sign-in) sits behind rate limiting, so a
+  script can't burn an SMS/email budget or brute-force a six-digit code.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+| --- | --- |
+| `go run ./cmd/api` ignores your `.env` values | Bare `go run` does **not** auto-load `.env` — `source .env` (with `set -a`/`set +a`) first, or use `docker compose up` which loads it automatically |
+| Postgres/Redis connection refused | Check for a port collision with another local project; `docker-compose.override.yml` supports `POSTGRES_PORT`/`REDIS_PORT` overrides |
+| Every fold rejected | `POOL_SETUP_SEED` doesn't match the seed the contract's embedded verifying keys were built with |
+| Every spend rejected | KYC credential bound to an old identity — re-verify |
+| `queueDepth` climbing and not draining | The folder has stalled, or its relayer key is unfunded — no funds at risk, but nothing new becomes spendable until it resumes |
+| `/pool/*` returns 503 | `POOL_CONTRACT_ID` is unset, or Postgres is unreachable |
+| Mobile app can't find the native prover | You're running Expo Go — the prover is a native module; use a development build (`eas build --profile development`) |
+| `initialize` fails on the pool contract | Already initialized — it's one-shot; redeploy under a new contract ID if the admin address was wrong |
+
+The full, longer list (with exact commands) lives in
+[`Docs/deployment-and-keys.md`](Docs/deployment-and-keys.md) §9.
 
 ## Documentation map
 
@@ -246,16 +534,3 @@ one runs only when its component changes (`mobile-ci.yml`, `backend-ci.yml`, `co
 | 6 — Extraordinary | Selective disclosure, proof aggregation, compliance-proof-as-an-API | Not started |
 
 Full detail, exit criteria, and risks per phase: [`Docs/implementation-guide.md`](Docs/implementation-guide.md).
-
-## Privacy & security model, in one table
-
-| Layer | Sees amounts? | Sees identity? | Holds custody? |
-| --- | --- | --- | --- |
-| Phone (secure enclave) | Yes — that's where it's computed | Yes — that's where credentials live | No — never on-chain balances of its own |
-| Soroban contracts | No — only commitments/nullifiers | No | Yes — the pool contract custodies real tokens |
-| Go backend | No | No — only an opaque `userId` hash | No |
-| Licensed anchors | Only their own leg (deposit/payout) | Yes — that's their regulatory role | Only during on/off-ramp |
-
-If you take one thing from this table: **the backend is the least trusted-with-secrets component in
-the whole system, on purpose.** It coordinates a lot and stores none of what would matter if it were
-breached.

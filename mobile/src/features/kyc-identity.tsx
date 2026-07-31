@@ -139,18 +139,11 @@ export function KycIdentityStep({ onCaptured }: Props) {
             editable={!busy}
           />
         </View>
-        <Text style={styles.hint}>
-          {country.nationalDigits} digits, without the leading 0
-        </Text>
+        <Text style={styles.hint}>{country.nationalDigits} digits, without the leading 0</Text>
         {phoneError ? <Text style={styles.error}>{phoneError}</Text> : null}
       </View>
 
-      <Button
-        label="Continue"
-        onPress={onContinue}
-        loading={busy}
-        style={styles.action}
-      />
+      <Button label="Continue" onPress={onContinue} loading={busy} style={styles.action} />
 
       <CountryPicker
         open={pickerOpen}

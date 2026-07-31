@@ -72,7 +72,10 @@ mod gate_measurements {
         let (env, client) = setup();
         let ab = client.hash2(&u64_fr(&env, 1), &u64_fr(&env, 2));
         let ba = client.hash2(&u64_fr(&env, 2), &u64_fr(&env, 1));
-        assert_ne!(ab, ba, "left/right ordering must matter, or paths are forgeable");
+        assert_ne!(
+            ab, ba,
+            "left/right ordering must matter, or paths are forgeable"
+        );
     }
 
     /// Where the CPU actually goes. `fr_add`, `fr_mul` and `fr_pow` costing the same is the tell:
@@ -212,10 +215,10 @@ mod harness {
     use std::vec::Vec as StdVec;
 
     use ark_bls12_381::{Bls12_381, Fr};
+    use ark_ed_on_bls12_381::Fr as JubjubFr;
     use ark_groth16::{Groth16, ProvingKey};
     use ark_snark::SNARK;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
-    use ark_ed_on_bls12_381::Fr as JubjubFr;
     use prova_prover::pool::{
         encryption::EncKey,
         fold::FoldCircuit,
@@ -410,7 +413,9 @@ fn fixture() -> Fixture {
     let token_admin = Address::generate(&env);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract_v2(token_admin).address();
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin)
+        .address();
     token::StellarAssetClient::new(&env, &token_id).mint(&user, &START_BALANCE);
 
     let wallet = Wallet::new();
@@ -477,10 +482,13 @@ fn shield_fold_transact_fold_unshield_end_to_end() {
     // 1. Shield 1000. Tokens really move; the note is queued, not yet spendable.
     let note0 = w.note(1000, 1001);
     let (p, note_data) = w.shield(&f.env, &note0);
-    f.pool
-        .shield(&f.user, &1000, &note_data, &p);
+    f.pool.shield(&f.user, &1000, &note_data, &p);
     assert_eq!(f.token.balance(&f.user), START_BALANCE - 1000);
-    assert_eq!(f.token.balance(&pool_addr), 1000, "pool custodies the deposit");
+    assert_eq!(
+        f.token.balance(&pool_addr),
+        1000,
+        "pool custodies the deposit"
+    );
     assert_eq!(f.pool.queue_depth(), 1);
     assert_eq!(f.pool.next_index(), 0, "queued, not yet folded");
 
@@ -495,13 +503,7 @@ fn shield_fold_transact_fold_unshield_end_to_end() {
     let out1 = w.note(600, 2001);
     let out2 = w.note(400, 2002);
     let (p, pi) = w.spend(&f.env, 0, &note0, out1, out2, 0, zero_fr());
-    f.pool.transact(
-        &p,
-        &pi[0],
-        &pi[1],
-        &outputs(&pi),
-        &NOW,
-    );
+    f.pool.transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
     assert!(f.pool.is_spent(&pi[1]), "the input note is now nullified");
     assert_eq!(f.pool.queue_depth(), 2);
     assert_eq!(
@@ -511,24 +513,24 @@ fn shield_fold_transact_fold_unshield_end_to_end() {
     );
 
     // 4. Fold both outputs.
-    let (p, new_root, count) =
-        w.fold(&f.env, &[out1.commitment(&w.cfg), out2.commitment(&w.cfg)]);
+    let (p, new_root, count) = w.fold(&f.env, &[out1.commitment(&w.cfg), out2.commitment(&w.cfg)]);
     f.pool.update_root(&p, &new_root, &count);
     assert_eq!(f.pool.next_index(), 3);
 
     // 5. Unshield the 600 note to a public destination.
     let payout = Address::generate(&f.env);
     let dest = w.destination(&f.pool.destination_field(&payout));
-    let (p, pi) = w.spend(&f.env, 1, &out1, w.note(0, 3001), w.note(0, 3002), 600, dest);
-    f.pool.unshield(
-        &p,
-        &pi[0],
-        &pi[1],
-        &outputs(&pi),
-        &600,
-        &payout,
-        &NOW,
+    let (p, pi) = w.spend(
+        &f.env,
+        1,
+        &out1,
+        w.note(0, 3001),
+        w.note(0, 3002),
+        600,
+        dest,
     );
+    f.pool
+        .unshield(&p, &pi[0], &pi[1], &outputs(&pi), &600, &payout, &NOW);
 
     assert_eq!(f.token.balance(&payout), 600, "the payout landed");
     assert_eq!(
@@ -575,8 +577,7 @@ fn spending_before_the_fold_is_rejected() {
 
     let note0 = w.note(1000, 1001);
     let (p, note_data) = w.shield(&f.env, &note0);
-    f.pool
-        .shield(&f.user, &1000, &note_data, &p);
+    f.pool.shield(&f.user, &1000, &note_data, &p);
 
     // Build a spend against the root the note *would* produce, without folding it in.
     let mut speculative = Wallet::new();
@@ -622,20 +623,15 @@ fn stale_but_in_window_root_is_accepted() {
     for i in 0..3u64 {
         let other = w.note(10 + i, 5000 + i);
         let (sp, other_data) = w.shield(&f.env, &other);
-        f.pool.shield(&f.user, &(other.amount as i128), &other_data, &sp);
+        f.pool
+            .shield(&f.user, &(other.amount as i128), &other_data, &sp);
         let (fp, new_root, count) = w.fold(&f.env, &[other.commitment(&w.cfg)]);
         f.pool.update_root(&fp, &new_root, &count);
     }
     assert_ne!(f.pool.root().unwrap(), root_at_build, "the root moved on");
 
     // The in-flight spend still verifies against its now-stale root.
-    f.pool.transact(
-        &p,
-        &pi[0],
-        &pi[1],
-        &outputs(&pi),
-        &NOW,
-    );
+    f.pool.transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
     assert!(f.pool.is_spent(&pi[1]));
 }
 
@@ -663,7 +659,8 @@ fn evicted_root_is_rejected() {
     for i in 0..(ROOT_HISTORY as u64 + 1) {
         let other = w.note(10 + i, 6000 + i);
         let (sp, other_data) = w.shield(&f.env, &other);
-        f.pool.shield(&f.user, &(other.amount as i128), &other_data, &sp);
+        f.pool
+            .shield(&f.user, &(other.amount as i128), &other_data, &sp);
         let (fp, new_root, count) = w.fold(&f.env, &[other.commitment(&w.cfg)]);
         f.pool.update_root(&fp, &new_root, &count);
     }
@@ -688,8 +685,7 @@ fn folding_more_than_the_queue_holds_is_rejected() {
 
     let note0 = w.note(1000, 1001);
     let (p, note_data) = w.shield(&f.env, &note0);
-    f.pool
-        .shield(&f.user, &1000, &note_data, &p);
+    f.pool.shield(&f.user, &1000, &note_data, &p);
 
     let (p, new_root, _) = w.fold(&f.env, &[note0.commitment(&w.cfg)]);
     let err = f
@@ -727,8 +723,7 @@ fn fold_with_a_forged_root_is_rejected() {
 
     let note0 = w.note(1000, 1001);
     let (p, note_data) = w.shield(&f.env, &note0);
-    f.pool
-        .shield(&f.user, &1000, &note_data, &p);
+    f.pool.shield(&f.user, &1000, &note_data, &p);
 
     let (p, _real_root, count) = w.fold(&f.env, &[note0.commitment(&w.cfg)]);
     let forged = BytesN::from_array(&f.env, &[0x11; 32]);
@@ -797,29 +792,14 @@ fn unshield_to_a_substituted_destination_is_rejected() {
     let attacker = Address::generate(&f.env);
     let err = f
         .pool
-        .try_unshield(
-            &p,
-            &pi[0],
-            &pi[1],
-            &outputs(&pi),
-            &600,
-            &attacker,
-            &NOW,
-        )
+        .try_unshield(&p, &pi[0], &pi[1], &outputs(&pi), &600, &attacker, &NOW)
         .expect_err("redirecting an unshield must fail");
     assert_eq!(err, Ok(Error::InvalidProof));
     assert_eq!(f.token.balance(&attacker), 0, "nothing was stolen");
 
     // The legitimate destination still works, so the rejection was specific, not incidental.
-    f.pool.unshield(
-        &p,
-        &pi[0],
-        &pi[1],
-        &outputs(&pi),
-        &600,
-        &payout,
-        &NOW,
-    );
+    f.pool
+        .unshield(&p, &pi[0], &pi[1], &outputs(&pi), &600, &payout, &NOW);
     assert_eq!(f.token.balance(&payout), 600);
 }
 
@@ -878,15 +858,7 @@ fn a_private_transfer_proof_cannot_be_used_to_withdraw() {
     let attacker = Address::generate(&f.env);
     let err = f
         .pool
-        .try_unshield(
-            &p,
-            &pi[0],
-            &pi[1],
-            &outputs(&pi),
-            &1000,
-            &attacker,
-            &NOW,
-        )
+        .try_unshield(&p, &pi[0], &pi[1], &outputs(&pi), &1000, &attacker, &NOW)
         .expect_err("a private-transfer proof must not authorise a withdrawal");
     assert_eq!(err, Ok(Error::InvalidProof));
     assert_eq!(f.token.balance(&attacker), 0);
@@ -915,7 +887,8 @@ fn empty_tree_root_is_seeded_into_history() {
         "the first fold proves against the empty root, so it must be accepted"
     );
     assert!(
-        !f.pool.is_known_root(&BytesN::from_array(&f.env, &[0u8; 32])),
+        !f.pool
+            .is_known_root(&BytesN::from_array(&f.env, &[0u8; 32])),
         "the all-zero root must never be accepted"
     );
 }
@@ -929,8 +902,7 @@ fn all_operations_fit_the_cpu_budget() {
     let note0 = w.note(1000, 1001);
     let (p, note_data) = w.shield(&f.env, &note0);
     f.env.cost_estimate().budget().reset_default();
-    f.pool
-        .shield(&f.user, &1000, &note_data, &p);
+    f.pool.shield(&f.user, &1000, &note_data, &p);
     let shield_cpu = f.env.cost_estimate().budget().cpu_instruction_cost();
 
     let (p, new_root, count) = w.fold(&f.env, &[note0.commitment(&w.cfg)]);
@@ -948,13 +920,7 @@ fn all_operations_fit_the_cpu_budget() {
         zero_fr(),
     );
     f.env.cost_estimate().budget().reset_default();
-    f.pool.transact(
-        &p,
-        &pi[0],
-        &pi[1],
-        &outputs(&pi),
-        &NOW,
-    );
+    f.pool.transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
     let transact_cpu = f.env.cost_estimate().budget().cpu_instruction_cost();
 
     std::println!(
@@ -1004,7 +970,8 @@ fn fold_cost_by_batch_size() {
         for i in 0..n {
             let note = w.note(100 + i as u64, 4000 + i as u64);
             let (p, note_data) = w.shield(&f.env, &note);
-            f.pool.shield(&f.user, &(note.amount as i128), &note_data, &p);
+            f.pool
+                .shield(&f.user, &(note.amount as i128), &note_data, &p);
             leaves.push(note.commitment(&w.cfg));
         }
 
@@ -1037,7 +1004,10 @@ fn fold_cost_by_batch_size() {
 fn admin_is_recorded_and_pool_starts_unpaused() {
     let f = fixture();
     assert_eq!(f.pool.admin(), Some(f.admin.clone()));
-    assert!(!f.pool.is_paused(), "a fresh pool must be open for business");
+    assert!(
+        !f.pool.is_paused(),
+        "a fresh pool must be open for business"
+    );
 }
 
 /// Every admin power must actually demand the admin's signature. Without `mock_all_auths`, an
@@ -1049,7 +1019,9 @@ fn admin_powers_require_authorisation() {
     let admin = Address::generate(&env);
 
     env.mock_all_auths();
-    let token_id = env.register_stellar_asset_contract_v2(token_admin).address();
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin)
+        .address();
     let w = Wallet::new();
     let pool = PoolClient::new(&env, &env.register(Pool, ()));
     pool.initialize(
@@ -1125,8 +1097,7 @@ fn pause_halts_deposits_and_private_transfers() {
     // ...and resuming restores normal service.
     f.pool.set_paused(&false);
     assert!(!f.pool.is_paused());
-    f.pool
-        .transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
+    f.pool.transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
     assert!(f.pool.is_spent(&pi[1]));
 }
 
@@ -1146,32 +1117,35 @@ fn withdrawals_and_folding_still_work_while_paused() {
     let out1 = w.note(600, 2001);
     let out2 = w.note(400, 2002);
     let (p, pi) = w.spend(&f.env, 0, &note0, out1, out2, 0, zero_fr());
-    f.pool
-        .transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
+    f.pool.transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
     assert_eq!(f.pool.queue_depth(), 2);
 
     // ...and *then* the emergency pause hits.
     f.pool.set_paused(&true);
 
     // Folding continues, so the stranded notes become spendable.
-    let (fp, new_root, count) =
-        w.fold(&f.env, &[out1.commitment(&w.cfg), out2.commitment(&w.cfg)]);
+    let (fp, new_root, count) = w.fold(&f.env, &[out1.commitment(&w.cfg), out2.commitment(&w.cfg)]);
     f.pool.update_root(&fp, &new_root, &count);
-    assert_eq!(f.pool.next_index(), 3, "folding must not be blocked by a pause");
+    assert_eq!(
+        f.pool.next_index(),
+        3,
+        "folding must not be blocked by a pause"
+    );
 
     // And the user can get their money out.
     let payout = Address::generate(&f.env);
     let dest = w.destination(&f.pool.destination_field(&payout));
-    let (p, pi) = w.spend(&f.env, 1, &out1, w.note(0, 3001), w.note(0, 3002), 600, dest);
-    f.pool.unshield(
-        &p,
-        &pi[0],
-        &pi[1],
-        &outputs(&pi),
-        &600,
-        &payout,
-        &NOW,
+    let (p, pi) = w.spend(
+        &f.env,
+        1,
+        &out1,
+        w.note(0, 3001),
+        w.note(0, 3002),
+        600,
+        dest,
     );
+    f.pool
+        .unshield(&p, &pi[0], &pi[1], &outputs(&pi), &600, &payout, &NOW);
 
     assert_eq!(
         f.token.balance(&payout),
@@ -1227,13 +1201,7 @@ fn rotating_the_anchor_key_invalidates_old_credentials() {
         0,
         zero_fr(),
     );
-    f.pool.transact(
-        &p2,
-        &pi2[0],
-        &pi2[1],
-        &outputs(&pi2),
-        &NOW,
-    );
+    f.pool.transact(&p2, &pi2[0], &pi2[1], &outputs(&pi2), &NOW);
     assert!(f.pool.is_spent(&pi2[1]), "the rotated key is live");
 }
 
@@ -1315,8 +1283,7 @@ fn corrupting_a_recipients_encrypted_note_is_rejected() {
     }
 
     // The untouched payload still works, so the rejection is specific rather than incidental.
-    f.pool
-        .transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
+    f.pool.transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW);
     assert!(f.pool.is_spent(&pi[1]));
 }
 

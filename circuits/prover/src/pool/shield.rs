@@ -27,9 +27,7 @@
 use ark_bls12_381::Fr;
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsAffine, Fr as JubjubFr};
-use ark_r1cs_std::{
-    alloc::AllocVar, convert::ToBitsGadget, eq::EqGadget, fields::fp::FpVar,
-};
+use ark_r1cs_std::{alloc::AllocVar, convert::ToBitsGadget, eq::EqGadget, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 use super::encryption::{self, EncryptedNote};
@@ -98,7 +96,9 @@ impl ConstraintSynthesizer<Fr> for ShieldCircuit {
             self.commitment.ok_or(SynthesisError::AssignmentMissing)
         })?;
         let amount = FpVar::new_input(cs.clone(), || {
-            Ok(Fr::from(self.amount.ok_or(SynthesisError::AssignmentMissing)?))
+            Ok(Fr::from(
+                self.amount.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
         })?;
         let owner_pk = FpVar::new_input(cs.clone(), || {
             self.owner_pk.ok_or(SynthesisError::AssignmentMissing)
@@ -137,15 +137,8 @@ impl ConstraintSynthesizer<Fr> for ShieldCircuit {
         // from seed alone can find this deposit, and nobody can corrupt it in transit.
         let esk_bits = esk.to_bits_le()?;
         gadgets::ephemeral_pk(cs.clone(), &esk_bits)?.enforce_equal(&epk)?;
-        let (c_amount, c_rho) = gadgets::encrypt_note(
-            cs,
-            &self.cfg,
-            &esk_bits,
-            &owner_enc_pk,
-            &amount,
-            &rho,
-            0,
-        )?;
+        let (c_amount, c_rho) =
+            gadgets::encrypt_note(cs, &self.cfg, &esk_bits, &owner_enc_pk, &amount, &rho, 0)?;
         c_amount.enforce_equal(&enc_amount)?;
         c_rho.enforce_equal(&enc_rho)?;
         Ok(())

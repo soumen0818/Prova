@@ -224,14 +224,7 @@ mod tests {
         let note_amount = 500u64;
         let rho = Fq::from(777u64);
 
-        let enc = encrypt(
-            &cfg,
-            esk,
-            &recipient.pk,
-            Fq::from(note_amount),
-            rho,
-            0,
-        );
+        let enc = encrypt(&cfg, esk, &recipient.pk, Fq::from(note_amount), rho, 0);
         let commitment = super::super::note_commitment(&cfg, Fq::from(note_amount), owner_pk, rho);
 
         assert!(

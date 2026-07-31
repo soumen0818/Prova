@@ -52,7 +52,11 @@ export async function verifyOtp(email: string, code: string): Promise<void> {
   } catch (e) {
     if (env.auth.isDev && isOffline(e)) {
       if (normalized !== env.auth.devOtp) {
-        throw new ApiError('That code isn’t right. Please check and try again.', 'unauthenticated', 401);
+        throw new ApiError(
+          'That code isn’t right. Please check and try again.',
+          'unauthenticated',
+          401,
+        );
       }
       return;
     }

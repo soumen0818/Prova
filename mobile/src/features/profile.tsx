@@ -54,7 +54,9 @@ export function ProfileScreen() {
 
       <Card style={styles.identityCard}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials(session.data?.name ?? session.data?.email ?? '?')}</Text>
+          <Text style={styles.avatarText}>
+            {initials(session.data?.name ?? session.data?.email ?? '?')}
+          </Text>
         </View>
         <View style={styles.identityText}>
           {/*

@@ -29,10 +29,10 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 pub mod credential;
-pub mod pool;
 pub mod ffi;
 #[cfg(target_os = "android")]
 pub mod jni_bridge;
+pub mod pool;
 
 /// Seed for the deterministic (testnet-grade) trusted setup. Mainnet uses the public ceremony.
 pub const SETUP_SEED: u64 = 42;
@@ -556,7 +556,11 @@ mod bench_v2 {
         let cfg = poseidon_config::<Fr>();
         let cs = ConstraintSystem::<Fr>::new_ref();
         dummy_circuit(cfg).generate_constraints(cs.clone()).unwrap();
-        std::println!("PROVA_V2_CONSTRAINTS num_constraints={} num_witness={} num_instance={}",
-            cs.num_constraints(), cs.num_witness_variables(), cs.num_instance_variables());
+        std::println!(
+            "PROVA_V2_CONSTRAINTS num_constraints={} num_witness={} num_instance={}",
+            cs.num_constraints(),
+            cs.num_witness_variables(),
+            cs.num_instance_variables()
+        );
     }
 }

@@ -161,15 +161,9 @@ mod tests {
             rho,
             0,
         );
-        let found = super::super::encryption::try_open(
-            &cfg,
-            k.enc.sk,
-            addr.owner_pk,
-            commitment,
-            &enc,
-            0,
-        )
-        .expect("the recipient must find a note paid to their address");
+        let found =
+            super::super::encryption::try_open(&cfg, k.enc.sk, addr.owner_pk, commitment, &enc, 0)
+                .expect("the recipient must find a note paid to their address");
         assert_eq!(found.amount, 500);
     }
 }

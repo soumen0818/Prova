@@ -12,13 +12,12 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_snark::SNARK;
 use ark_std::rand::{rngs::StdRng, SeedableRng};
 
-use prova_prover::credential;
 use ark_ed_on_bls12_381::Fr as JubjubFr;
+use prova_prover::credential;
 use prova_prover::pool::{
     encryption::{self, EncKey},
     fold::FoldCircuit,
-    gadgets,
-    owner_pk,
+    gadgets, owner_pk,
     shield::ShieldCircuit,
     spend::{SpendCircuit, SpendOutput},
     tree::{root_from_path, MerkleTree},
@@ -97,8 +96,14 @@ impl Scenario {
             self.rho,
             self.owner_sk,
             &path,
-            SpendOutput::new(Note::new(out1, self.owner_pk, Fr::from(101u64)), self.enc.pk),
-            SpendOutput::new(Note::new(out2, self.owner_pk, Fr::from(202u64)), self.enc.pk),
+            SpendOutput::new(
+                Note::new(out1, self.owner_pk, Fr::from(101u64)),
+                self.enc.pk,
+            ),
+            SpendOutput::new(
+                Note::new(out2, self.owner_pk, Fr::from(202u64)),
+                self.enc.pk,
+            ),
             JubjubFr::from(0xE55u64),
             public_amount,
             destination,
@@ -522,7 +527,10 @@ fn credential_issued_to_another_user_fails() {
         anchor.pk,
         NOW,
     );
-    assert!(!satisfied(c), "a credential bound to another user must fail");
+    assert!(
+        !satisfied(c),
+        "a credential bound to another user must fail"
+    );
 }
 
 /// The range check is what makes value conservation sound: amounts live in a ~255-bit field, so
@@ -590,7 +598,14 @@ fn groth16_verifies_and_rejects_a_substituted_destination() {
 #[test]
 fn valid_shield_satisfies() {
     let cfg = poseidon_config::<Fr>();
-    assert!(satisfied(ShieldCircuit::new(cfg, 5_000, Fr::from(11u64), Fr::from(22u64), enc_pk(), JubjubFr::from(3u64))));
+    assert!(satisfied(ShieldCircuit::new(
+        cfg,
+        5_000,
+        Fr::from(11u64),
+        Fr::from(22u64),
+        enc_pk(),
+        JubjubFr::from(3u64)
+    )));
 }
 
 /// The whole reason the shield circuit exists: a commitment claiming more than was deposited must
@@ -598,7 +613,14 @@ fn valid_shield_satisfies() {
 #[test]
 fn shield_commitment_must_match_the_deposited_amount() {
     let cfg = poseidon_config::<Fr>();
-    let mut c = ShieldCircuit::new(cfg, 100, Fr::from(11u64), Fr::from(22u64), enc_pk(), JubjubFr::from(3u64));
+    let mut c = ShieldCircuit::new(
+        cfg,
+        100,
+        Fr::from(11u64),
+        Fr::from(22u64),
+        enc_pk(),
+        JubjubFr::from(3u64),
+    );
     c.amount = Some(1_000_000); // contract will pass the *actual* transferred amount
     assert!(
         !satisfied(c),
@@ -609,7 +631,14 @@ fn shield_commitment_must_match_the_deposited_amount() {
 #[test]
 fn shield_commitment_must_match_the_owner() {
     let cfg = poseidon_config::<Fr>();
-    let mut c = ShieldCircuit::new(cfg, 100, Fr::from(11u64), Fr::from(22u64), enc_pk(), JubjubFr::from(3u64));
+    let mut c = ShieldCircuit::new(
+        cfg,
+        100,
+        Fr::from(11u64),
+        Fr::from(22u64),
+        enc_pk(),
+        JubjubFr::from(3u64),
+    );
     c.owner_pk = Some(Fr::from(99u64));
     assert!(!satisfied(c), "a commitment must bind its stated owner");
 }
@@ -617,7 +646,14 @@ fn shield_commitment_must_match_the_owner() {
 #[test]
 fn shield_public_inputs_are_in_the_frozen_order() {
     let cfg = poseidon_config::<Fr>();
-    let c = ShieldCircuit::new(cfg.clone(), 777, Fr::from(11u64), Fr::from(22u64), enc_pk(), JubjubFr::from(3u64));
+    let c = ShieldCircuit::new(
+        cfg.clone(),
+        777,
+        Fr::from(11u64),
+        Fr::from(22u64),
+        enc_pk(),
+        JubjubFr::from(3u64),
+    );
     let pi = c.public_inputs().unwrap();
     assert_eq!(pi.len(), 7, "SHIELD_PUBLIC_INPUT_COUNT is 7");
     assert_eq!(pi[1], Fr::from(777u64), "[1] amount");
@@ -682,7 +718,10 @@ fn successive_folds_track_the_native_tree() {
     }
     // Every folded leaf is provably in the tree afterwards.
     for (i, leaf) in all.iter().enumerate() {
-        assert_eq!(root_from_path(&cfg, *leaf, &tree.path(i as u64)), tree.root());
+        assert_eq!(
+            root_from_path(&cfg, *leaf, &tree.path(i as u64)),
+            tree.root()
+        );
     }
 }
 
@@ -764,7 +803,10 @@ fn fold_with_an_inflated_count_fails() {
     let tree = MerkleTree::new(&cfg);
     let (mut c, _) = FoldCircuit::from_tree(&cfg, &tree, &leaves(3));
     c.count = Some(5); // claims more leaves than were folded
-    assert!(!satisfied(c), "count must match the leaves actually inserted");
+    assert!(
+        !satisfied(c),
+        "count must match the leaves actually inserted"
+    );
 }
 
 #[test]
@@ -841,9 +883,16 @@ fn report_constraint_counts() {
     );
 
     let cs = ConstraintSystem::<Fr>::new_ref();
-    ShieldCircuit::new(cfg.clone(), 1, Fr::from(1u64), Fr::from(2u64), enc_pk(), JubjubFr::from(3u64))
-        .generate_constraints(cs.clone())
-        .unwrap();
+    ShieldCircuit::new(
+        cfg.clone(),
+        1,
+        Fr::from(1u64),
+        Fr::from(2u64),
+        enc_pk(),
+        JubjubFr::from(3u64),
+    )
+    .generate_constraints(cs.clone())
+    .unwrap();
     println!("PROVA_V3_CONSTRAINTS shield={}", cs.num_constraints());
 
     let cs = ConstraintSystem::<Fr>::new_ref();
@@ -870,9 +919,11 @@ fn report_proving_times() {
 
     let s = Scenario::new(60, 1000);
     let t = Instant::now();
-    let (pk, vk) =
-        Groth16::<Bls12_381>::circuit_specific_setup(s.spend(600, 400, 0, Fr::from(0u64)), &mut rng)
-            .unwrap();
+    let (pk, vk) = Groth16::<Bls12_381>::circuit_specific_setup(
+        s.spend(600, 400, 0, Fr::from(0u64)),
+        &mut rng,
+    )
+    .unwrap();
     let setup_ms = t.elapsed().as_millis();
 
     let circuit = s.spend(600, 400, 0, Fr::from(0u64));
@@ -885,12 +936,26 @@ fn report_proving_times() {
 
     let t = Instant::now();
     let (spk, svk) = Groth16::<Bls12_381>::circuit_specific_setup(
-        ShieldCircuit::new(cfg.clone(), 1, Fr::from(1u64), Fr::from(2u64), enc_pk(), JubjubFr::from(3u64)),
+        ShieldCircuit::new(
+            cfg.clone(),
+            1,
+            Fr::from(1u64),
+            Fr::from(2u64),
+            enc_pk(),
+            JubjubFr::from(3u64),
+        ),
         &mut rng,
     )
     .unwrap();
     let setup_ms = t.elapsed().as_millis();
-    let sc = ShieldCircuit::new(cfg.clone(), 5000, Fr::from(11u64), Fr::from(22u64), enc_pk(), JubjubFr::from(3u64));
+    let sc = ShieldCircuit::new(
+        cfg.clone(),
+        5000,
+        Fr::from(11u64),
+        Fr::from(22u64),
+        enc_pk(),
+        JubjubFr::from(3u64),
+    );
     let spub = sc.public_inputs().unwrap();
     let t = Instant::now();
     let sproof = Groth16::<Bls12_381>::prove(&spk, sc, &mut rng).unwrap();

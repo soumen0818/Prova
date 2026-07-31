@@ -30,8 +30,8 @@
 //! working, which delays new notes becoming spendable and puts no custodied funds at risk.
 
 use ark_bls12_381::Fr;
-use ark_ff::Field;
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
+use ark_ff::Field;
 use ark_r1cs_std::{
     alloc::AllocVar, boolean::Boolean, eq::EqGadget, fields::fp::FpVar, fields::FieldVar,
     select::CondSelectGadget, R1CSVar,
@@ -150,7 +150,9 @@ impl ConstraintSynthesizer<Fr> for FoldCircuit {
             ))
         })?;
         let count = FpVar::new_input(cs.clone(), || {
-            Ok(Fr::from(self.count.ok_or(SynthesisError::AssignmentMissing)?))
+            Ok(Fr::from(
+                self.count.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
         })?;
         let mut leaves = Vec::with_capacity(BATCH);
         for i in 0..BATCH {

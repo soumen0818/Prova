@@ -418,7 +418,8 @@ fn spend(
     }
 
     // 2. Verify, in the circuit's frozen public-input order.
-    let anchor: (BytesN<32>, BytesN<32>) = get(env, &DataKey::AnchorPk).ok_or(Error::NotInitialized)?;
+    let anchor: (BytesN<32>, BytesN<32>) =
+        get(env, &DataKey::AnchorPk).ok_or(Error::NotInitialized)?;
     let inputs = Vec::from_array(
         env,
         [
@@ -721,7 +722,11 @@ impl Pool {
         anchor_pk_y: BytesN<32>,
     ) -> Result<(), Error> {
         require_admin(&env)?;
-        put(&env, &DataKey::AnchorPk, &(anchor_pk_x.clone(), anchor_pk_y.clone()));
+        put(
+            &env,
+            &DataKey::AnchorPk,
+            &(anchor_pk_x.clone(), anchor_pk_y.clone()),
+        );
         env.events().publish(
             (soroban_sdk::symbol_short!("anchor"),),
             (anchor_pk_x, anchor_pk_y),

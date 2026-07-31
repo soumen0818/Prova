@@ -620,7 +620,8 @@ mod end_to_end {
         let mut rng = StdRng::seed_from_u64(4242);
 
         // A wallet, from a seed alone.
-        let out = keys_json(&json!({"seed": "00112233445566778899aabbccddeeff"}).to_string()).unwrap();
+        let out =
+            keys_json(&json!({"seed": "00112233445566778899aabbccddeeff"}).to_string()).unwrap();
         let k: serde_json::Value = serde_json::from_str(&out).unwrap();
         let owner_sk = fr_from_hex(k["owner_sk"].as_str().unwrap()).unwrap();
         let owner_pk = fr_from_hex(k["owner_pk"].as_str().unwrap()).unwrap();
@@ -771,7 +772,8 @@ mod end_to_end {
         println!("PROVA_DEVICE warm_up_ms={}", t.elapsed().as_millis());
 
         let t = Instant::now();
-        let out = keys_json(&json!({"seed": "00112233445566778899aabbccddeeff"}).to_string()).unwrap();
+        let out =
+            keys_json(&json!({"seed": "00112233445566778899aabbccddeeff"}).to_string()).unwrap();
         println!("PROVA_DEVICE keys_ms={}", t.elapsed().as_millis());
         let k: serde_json::Value = serde_json::from_str(&out).unwrap();
 
@@ -816,7 +818,10 @@ mod end_to_end {
         )
         .unwrap();
         let ms = t.elapsed().as_millis();
-        println!("PROVA_DEVICE scan_200_notes_ms={ms} per_note_us={}", ms * 1000 / 200);
+        println!(
+            "PROVA_DEVICE scan_200_notes_ms={ms} per_note_us={}",
+            ms * 1000 / 200
+        );
         assert_eq!(found, "[]", "none of those notes are ours");
     }
 }

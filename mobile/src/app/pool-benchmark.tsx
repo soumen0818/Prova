@@ -170,11 +170,15 @@ function verdict(ms: number): string {
     return 'Comfortable. A simple "Sending…" spinner is enough.';
   }
   if (ms < 20_000) {
-    return 'Noticeable. The send screen needs staged progress and some reassurance, but the user ' +
-      'can still wait for it.';
+    return (
+      'Noticeable. The send screen needs staged progress and some reassurance, but the user ' +
+      'can still wait for it.'
+    );
   }
-  return 'Too slow to wait on. Sending should become a background job that notifies the user when ' +
-    'it completes — a different flow, and much cheaper to design now than to retrofit.';
+  return (
+    'Too slow to wait on. Sending should become a background job that notifies the user when ' +
+    'it completes — a different flow, and much cheaper to design now than to retrofit.'
+  );
 }
 
 const styles = StyleSheet.create({

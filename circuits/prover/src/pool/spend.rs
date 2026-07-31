@@ -195,17 +195,11 @@ impl SpendCircuit {
     }
 }
 
-fn witness_fr(
-    cs: &ConstraintSystemRef<Fr>,
-    v: Option<Fr>,
-) -> Result<FpVar<Fr>, SynthesisError> {
+fn witness_fr(cs: &ConstraintSystemRef<Fr>, v: Option<Fr>) -> Result<FpVar<Fr>, SynthesisError> {
     FpVar::new_witness(cs.clone(), || v.ok_or(SynthesisError::AssignmentMissing))
 }
 
-fn witness_u64(
-    cs: &ConstraintSystemRef<Fr>,
-    v: Option<u64>,
-) -> Result<FpVar<Fr>, SynthesisError> {
+fn witness_u64(cs: &ConstraintSystemRef<Fr>, v: Option<u64>) -> Result<FpVar<Fr>, SynthesisError> {
     FpVar::new_witness(cs.clone(), || {
         Ok(Fr::from(v.ok_or(SynthesisError::AssignmentMissing)?))
     })
@@ -230,7 +224,8 @@ impl ConstraintSynthesizer<Fr> for SpendCircuit {
         })?;
         let public_amount = FpVar::new_input(cs.clone(), || {
             Ok(Fr::from(
-                self.public_amount.ok_or(SynthesisError::AssignmentMissing)?,
+                self.public_amount
+                    .ok_or(SynthesisError::AssignmentMissing)?,
             ))
         })?;
         let destination = FpVar::new_input(cs.clone(), || {
@@ -274,10 +269,7 @@ impl ConstraintSynthesizer<Fr> for SpendCircuit {
         let siblings_val = self.siblings.clone();
         let mut siblings = Vec::with_capacity(DEPTH);
         for level in 0..DEPTH {
-            siblings.push(witness_fr(
-                &cs,
-                siblings_val.as_ref().map(|s| s[level]),
-            )?);
+            siblings.push(witness_fr(&cs, siblings_val.as_ref().map(|s| s[level]))?);
         }
 
         let out1_amount = witness_u64(&cs, self.out1.map(|n| n.amount))?;

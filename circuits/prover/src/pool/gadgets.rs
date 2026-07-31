@@ -7,13 +7,12 @@
 
 use ark_bls12_381::Fr;
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
-use ark_r1cs_std::{
-    boolean::Boolean, eq::EqGadget, fields::fp::FpVar, fields::FieldVar,
-    select::CondSelectGadget,
-};
 use ark_ec::AffineRepr;
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsAffine};
 use ark_r1cs_std::{alloc::AllocVar, groups::CurveVar};
+use ark_r1cs_std::{
+    boolean::Boolean, eq::EqGadget, fields::fp::FpVar, fields::FieldVar, select::CondSelectGadget,
+};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
 use super::encryption::{MASK_AMOUNT, MASK_RHO};

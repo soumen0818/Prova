@@ -283,8 +283,8 @@ fn setup_and_prove() {
 ///
 ///   prova-prover pool-artifacts --out contracts/pool/src/artifacts [--seed 42]
 fn pool_artifacts() {
-    use ark_ff::Zero;
     use ark_ed_on_bls12_381::Fr as JubjubScalar;
+    use ark_ff::Zero;
     use prova_prover::pool::{
         encryption::EncKey,
         fold::FoldCircuit,
@@ -366,7 +366,14 @@ fn pool_artifacts() {
         "shield_proof.bin",
         shield_pk,
         shield_vk,
-        ShieldCircuit::new(cfg.clone(), deposit, pk, rho0, enc.pk, JubjubScalar::from(0xE0u64))
+        ShieldCircuit::new(
+            cfg.clone(),
+            deposit,
+            pk,
+            rho0,
+            enc.pk,
+            JubjubScalar::from(0xE0u64)
+        )
     );
 
     // 2. Fold it in — only now is it spendable.
@@ -400,7 +407,8 @@ fn pool_artifacts() {
     );
 
     // 4. Fold both outputs in.
-    let (f2, tree2) = FoldCircuit::from_tree(&cfg, &tree, &[out1.commitment(&cfg), out2.commitment(&cfg)]);
+    let (f2, tree2) =
+        FoldCircuit::from_tree(&cfg, &tree, &[out1.commitment(&cfg), out2.commitment(&cfg)]);
     prove!("fold2_proof.bin", fold_pk, fold_vk, f2);
     let root_after_fold2 = tree2.root();
     tree = tree2;
@@ -554,7 +562,10 @@ fn fold_prove_cmd() {
 
     let input: Input = serde_json::from_str(&read_input()).expect("parse fold-prove input");
     if input.new.is_empty() || input.new.len() > BATCH {
-        eprintln!("error: a fold carries 1..={BATCH} leaves, got {}", input.new.len());
+        eprintln!(
+            "error: a fold carries 1..={BATCH} leaves, got {}",
+            input.new.len()
+        );
         std::process::exit(1);
     }
 

@@ -29,6 +29,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 pub mod credential;
+pub mod pool;
 pub mod ffi;
 #[cfg(target_os = "android")]
 pub mod jni_bridge;
@@ -37,9 +38,9 @@ pub mod jni_bridge;
 pub const SETUP_SEED: u64 = 42;
 
 /// Bit width for timestamp differences in the expiry check (unix seconds fit well under 2^40).
-const TIME_BITS: usize = 40;
+pub const TIME_BITS: usize = 40;
 /// Bit width for the kyc-level margin (levels are tiny).
-const KYC_BITS: usize = 8;
+pub const KYC_BITS: usize = 8;
 
 /// UAE within-limit ceiling (FEMA/UAE placeholder). Frozen for circuit v1.
 pub const MAX_AMOUNT: u64 = 9999;
@@ -281,7 +282,7 @@ pub fn setup_keys(
 }
 
 /// Poseidon sponge over field-var inputs (absorb all, squeeze one) — the in-circuit hash.
-fn poseidon_sponge(
+pub fn poseidon_sponge(
     cs: ConstraintSystemRef<Fr>,
     cfg: &PoseidonConfig<Fr>,
     inputs: &[&FpVar<Fr>],
@@ -295,7 +296,7 @@ fn poseidon_sponge(
 
 /// In-circuit Schnorr/EdDSA verification over Jubjub: enforces `s·G == R + e·pk`, where
 /// `e = Poseidon(R.x, R.y, pk.x, pk.y, m)`. Native counterpart: `credential::verify`.
-fn verify_signature(
+pub fn verify_signature(
     cs: ConstraintSystemRef<Fr>,
     cfg: &PoseidonConfig<Fr>,
     pk: &EdwardsVar,
@@ -543,5 +544,19 @@ mod tests {
         let mut tampered = public.clone();
         tampered[0] += Fr::from(1u64);
         assert!(!Groth16::<Bls12_381>::verify(&vk, &tampered, &proof).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod bench_v2 {
+    use super::*;
+    use ark_relations::r1cs::ConstraintSystem;
+    #[test]
+    fn constraint_count() {
+        let cfg = poseidon_config::<Fr>();
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        dummy_circuit(cfg).generate_constraints(cs.clone()).unwrap();
+        std::println!("PROVA_V2_CONSTRAINTS num_constraints={} num_witness={} num_instance={}",
+            cs.num_constraints(), cs.num_witness_variables(), cs.num_instance_variables());
     }
 }

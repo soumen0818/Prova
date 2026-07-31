@@ -17,10 +17,11 @@ import {
 } from '@/lib/api';
 import { syncBackup } from '@/lib/cloud-backup';
 import { collectCredential, daysRemaining, getStoredCredential } from '@/lib/kyc';
-import { userId as deriveUserId } from '@/lib/prover';
+import { poolUserId } from '@/lib/pool';
+import { KycIdentityStep, type CapturedIdentity } from '@/features/kyc-identity';
+import { patchSession } from '@/lib/session';
 import { QK } from '@/lib/queries';
 import { captureError } from '@/lib/reporting';
-import { getOrCreateSecret } from '@/lib/wallet';
 import { Palette, Spacing, Typography } from '@/constants/theme';
 
 /** Capture steps for a Tier-2 (standard) verification. */
@@ -48,7 +49,7 @@ const STEPS: { key: CapturedArtifact; title: string; hint: string; facing: 'fron
 /** How often to re-check status while a verification is being processed. */
 const POLL_MS = 3000;
 
-type Phase = 'loading' | 'intro' | 'capture' | 'status' | 'verified';
+type Phase = 'loading' | 'identity' | 'intro' | 'capture' | 'status' | 'verified';
 
 /**
  * Identity verification (Docs/kyc-verification.md).
@@ -116,8 +117,10 @@ export default function KycScreen() {
     let active = true;
     (async () => {
       try {
-        const secret = await getOrCreateSecret();
-        const uid = await deriveUserId(secret);
+        // Bound to the POOL spending key, not the older v2 transfer secret: the spend circuit
+        // derives `user_id = Poseidon(ownerSk, domain)`, so a credential issued against anything
+        // else produces a proof the contract rejects with no explanation.
+        const uid = await poolUserId();
         if (!active) return;
         setUserId(uid);
 
@@ -191,6 +194,30 @@ export default function KycScreen() {
 
   // ---------- Render ----------
 
+  /**
+   * Identity captured: keep the name and number on-device, then move on to documents.
+   *
+   * Stored in the session rather than sent anywhere — the backend deliberately holds no PII (see
+   * Docs/kyc-verification.md §3), and the anchor receives identity data through its own vendor. The
+   * app keeps them to prefill later steps and to show what has been provided.
+   *
+   * The number is **user-asserted**: phone OTP verification is planned but not yet wired, so nothing
+   * should treat it as proved. The account's verified channel is the email from sign-in.
+   */
+  const onIdentityCaptured = useCallback(
+    async (identity: CapturedIdentity) => {
+      try {
+        await patchSession({ name: identity.name, phone: identity.phone });
+        await queryClient.invalidateQueries({ queryKey: QK.session });
+      } catch (e) {
+        captureError(e, { step: 'kyc-identity-save' });
+        // Not fatal: verification can continue, and the details are re-collected if needed.
+      }
+      setPhase('capture');
+    },
+    [queryClient],
+  );
+
   if (phase === 'loading') {
     return (
       <Screen>
@@ -248,7 +275,17 @@ export default function KycScreen() {
           <Bullet text="Checks usually finish in under a minute; sometimes a person reviews them." />
           <Bullet text="Once verified, every transfer proves compliance without revealing you." />
         </Card>
-        <Button label="Start verification" onPress={() => setPhase('capture')} />
+        <Button label="Start verification" onPress={() => setPhase('identity')} />
+      </Screen>
+    );
+  }
+
+  if (phase === 'identity') {
+    return (
+      <Screen scroll>
+        <Stack.Screen options={{ title: 'Verify identity' }} />
+        <Text style={styles.progress}>Step 1 of {STEPS.length + 1}</Text>
+        <KycIdentityStep onCaptured={onIdentityCaptured} />
       </Screen>
     );
   }
@@ -259,7 +296,7 @@ export default function KycScreen() {
       <Screen scroll>
         <Stack.Screen options={{ title: 'Verify identity' }} />
         <Text style={styles.progress}>
-          Step {step + 1} of {STEPS.length}
+          Step {step + 2} of {STEPS.length + 1}
         </Text>
         <DocumentCapture
           key={s.key}

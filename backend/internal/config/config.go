@@ -25,6 +25,14 @@ type Config struct {
 	//   indexer  → the on-chain indexer only (exactly one replica)
 	RunMode string
 
+	// TrustProxyHeaders controls whether X-Forwarded-For / X-Real-IP are believed when identifying a
+	// caller for rate limiting.
+	//
+	// Default FALSE, deliberately. Trusting these unconditionally makes every per-IP limit
+	// bypassable with a single header — the standard way IP rate limiting is defeated. Set it only
+	// when the service genuinely sits behind a proxy you control.
+	TrustProxyHeaders bool
+
 	// DBSimpleProtocol disables prepared statements — required behind a transaction-mode pooler
 	// such as Supabase's pooled endpoint. Direct/session connections leave this false.
 	DBSimpleProtocol bool
@@ -47,6 +55,25 @@ type Config struct {
 	//                 balance from Horizon. Still testnet — the asset has no real value.
 	DepositMode string
 
+	// Phase 4 — the shielded pool (Docs/shielded-pool.md). A SEPARATE contract from ContractID.
+	//
+	// Empty disables the /pool routes entirely. That is not a degraded feature: without the indexer
+	// a wallet has no Merkle path and therefore cannot spend at all.
+	PoolContractID string
+	// PoolFoldKeyCache is where the fold proving key is cached. Generating it costs ~1.5 s and the
+	// folder runs every few seconds, so this is a meaningful latency win; it is a pure cache, safe
+	// to delete.
+	PoolFoldKeyCache string
+	// PoolSetupSeed must match the seed the contract's embedded verifying keys were generated with,
+	// or every fold proof this backend produces will be rejected on-chain.
+	PoolSetupSeed uint64
+	// PoolFoldInterval is how often queued commitments are folded into the tree.
+	//
+	// This IS the "how long until my money is spendable" delay users feel, so shorter is better for
+	// UX. The floor is proving time (~1.5 s) plus a ledger close (~5 s on testnet); below that, folds
+	// simply queue behind each other.
+	PoolFoldInterval time.Duration
+
 	// Phase 3 — KYC credential issuance (anchor side).
 	ProverBin  string // path to the prova-prover CLI (signs credentials, matches the circuit)
 	AnchorSeed string // hex Jubjub anchor secret seed; empty → the CLI's built-in dev key
@@ -56,8 +83,26 @@ type Config struct {
 	KYCWebhookSecret string        // shared secret for X-Prova-Signature; empty → checks skipped (local dev only)
 	KYCMockDelay     time.Duration // simulated provider latency for the Stage A mock provider
 
-	// Phone-login OTP. "development" bypasses SMS with a fixed code; "production" wires a real
-	// SMS provider (Twilio, not yet configured — returns 501). Flip via AUTH_MODE.
+	// SMTP — sending the sign-in code by email.
+	//
+	// Unset means nothing is sent: development falls back to the fixed DevOTP, and production
+	// refuses to sign anyone in rather than accepting sign-ups whose codes go nowhere.
+	//
+	// For Gmail use an App Password (Security → 2-Step Verification → App passwords). The ordinary
+	// account password has been refused since Google removed "less secure app access" in 2022.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPFromName string
+
+	// AuthMode selects how one-time codes behave:
+	//
+	//   development — if SMTP is configured, a REAL random code is sent; otherwise DevOTP is
+	//                 accepted so the flow works offline.
+	//   production  — SMTP must be configured. Without it, sign-in is refused rather than
+	//                 silently accepting a fixed code.
 	AuthMode string
 	DevOTP   string // the accepted code in development mode
 
@@ -79,6 +124,8 @@ func Load() Config {
 		SorobanRPCURL:  getenv("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
 		HorizonURL:     getenv("HORIZON_URL", "https://horizon-testnet.stellar.org"),
 
+		TrustProxyHeaders: getbool("TRUST_PROXY_HEADERS", false),
+
 		RunMode:          getenv("RUN_MODE", "all"),
 		DBSimpleProtocol: getbool("DB_SIMPLE_PROTOCOL", false),
 
@@ -92,11 +139,23 @@ func Load() Config {
 		SEP10Seed:         getenv("SEP10_SEED", ""), // empty → an ephemeral key is generated
 		DepositMode:       getenv("DEPOSIT_MODE", "simulated"),
 
+		PoolContractID:   getenv("POOL_CONTRACT_ID", ""),
+		PoolFoldKeyCache: getenv("POOL_FOLD_KEY_CACHE", ""),
+		PoolSetupSeed:    getuint("POOL_SETUP_SEED", 42),
+		PoolFoldInterval: getdur("POOL_FOLD_INTERVAL_SECONDS", 8*time.Second),
+
 		ProverBin:  getenv("PROVER_BIN", "prova-prover"),
 		AnchorSeed: getenv("ANCHOR_SEED", ""), // empty → the CLI's built-in dev anchor key
 
 		KYCWebhookSecret: getenv("KYC_WEBHOOK_SECRET", ""), // empty → signature check skipped (dev)
 		KYCMockDelay:     getdur("KYC_MOCK_DELAY_SECONDS", 4*time.Second),
+
+		SMTPHost:     getenv("SMTP_HOST", ""),
+		SMTPPort:     int(getuint("SMTP_PORT", 587)),
+		SMTPUsername: getenv("SMTP_USERNAME", ""),
+		SMTPPassword: getenv("SMTP_PASSWORD", ""),
+		SMTPFrom:     getenv("SMTP_FROM", ""),
+		SMTPFromName: getenv("SMTP_FROM_NAME", "Prova"),
 
 		AuthMode: getenv("AUTH_MODE", "development"),
 		DevOTP:   getenv("DEV_OTP", "000000"),
@@ -142,4 +201,14 @@ func (c Config) RunsAPI() bool {
 // RunsIndexer reports whether this process should run the on-chain indexer.
 func (c Config) RunsIndexer() bool {
 	return c.RunMode == "all" || c.RunMode == "indexer"
+}
+
+// getuint reads an unsigned integer env var, falling back to `def` when unset or unparseable.
+func getuint(key string, def uint64) uint64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return def
 }

@@ -54,11 +54,20 @@ export function ProfileScreen() {
 
       <Card style={styles.identityCard}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials(session.data?.name ?? '?')}</Text>
+          <Text style={styles.avatarText}>{initials(session.data?.name ?? session.data?.email ?? '?')}</Text>
         </View>
         <View style={styles.identityText}>
-          <Text style={styles.name}>{session.data?.name ?? '—'}</Text>
-          <Text style={styles.phone}>{session.data?.phone ?? '—'}</Text>
+          {/*
+            The email is always present — it is the account. Name and phone appear only after
+            identity verification supplies them, so they are shown as "not yet added" rather than an
+            empty dash that looks like a bug.
+          */}
+          <Text style={styles.name}>{session.data?.email ?? '—'}</Text>
+          <Text style={styles.phone}>
+            {session.data?.name
+              ? `${session.data.name}${session.data.phone ? ` · ${session.data.phone}` : ''}`
+              : 'Verify your identity to add your name'}
+          </Text>
         </View>
       </Card>
 

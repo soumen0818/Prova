@@ -32,8 +32,18 @@ func (h *handler) startVerification(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, schema.ErrInternal, "invalid JSON body")
 		return
 	}
-	if req.UserID == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrKYCRequired, "userId is required")
+	// The identifier has a known shape — Poseidon(ownerSk, domain) as 32-byte hex — so insist on it.
+	// Free text here would let anything become a row in the verification table, polluting the KYC
+	// audit trail, which is the one record a regulator will actually ask to see.
+	if !schema.IsValidUserID(string(req.UserID)) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			"userId must be a 32-byte hex wallet identifier")
+		return
+	}
+	// A tier outside the defined set would map to an undefined limit in TierLimit.
+	if !schema.IsValidTier(req.Tier) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			"tier must be 1, 2 or 3")
 		return
 	}
 
@@ -58,8 +68,9 @@ func (h *handler) getVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := r.PathValue("userId")
-	if userID == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrKYCRequired, "userId is required")
+	if !schema.IsValidUserID(userID) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			"userId must be a 32-byte hex wallet identifier")
 		return
 	}
 	v, err := h.verification.Get(r.Context(), userID)
@@ -115,9 +126,21 @@ func (h *handler) decideVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := r.PathValue("userId")
+	if !schema.IsValidUserID(userID) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			"userId must be a 32-byte hex wallet identifier")
+		return
+	}
 	var req schema.DecideRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "invalid JSON body")
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
+		return
+	}
+	// An unrecognised decision must not silently mean "reject" — it means the caller sent something
+	// this endpoint does not define, and a compliance decision is not a field to guess at.
+	if req.Decision != "approved" && req.Decision != "rejected" {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			`decision must be "approved" or "rejected"`)
 		return
 	}
 	approve := req.Decision == "approved"
@@ -145,11 +168,12 @@ func (h *handler) issueCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	var req schema.StartVerificationRequest // reuse: only userId is read
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "invalid JSON body")
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
 		return
 	}
-	if req.UserID == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrKYCRequired, "userId is required")
+	if !schema.IsValidUserID(string(req.UserID)) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			"userId must be a 32-byte hex wallet identifier")
 		return
 	}
 
@@ -175,7 +199,14 @@ func (h *handler) renewCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	var req schema.StartVerificationRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "invalid JSON body")
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
+		return
+	}
+	// Was previously unchecked entirely — renewal signs a fresh credential, so an unvalidated
+	// identifier here is the same exposure as on issuance.
+	if !schema.IsValidUserID(string(req.UserID)) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
+			"userId must be a 32-byte hex wallet identifier")
 		return
 	}
 	cred, err := h.verification.Renew(r.Context(), string(req.UserID))

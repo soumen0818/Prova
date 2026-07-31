@@ -9,39 +9,54 @@ import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
 import { requestOtp } from '@/lib/auth-otp';
 import { captureError } from '@/lib/reporting';
-import { validatePhone } from '@/lib/validation';
+import { validateEmail } from '@/lib/validation';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
-/** Step 1 of sign-in: enter a phone number and request an OTP. */
-export default function PhoneScreen() {
+/**
+ * Step 1 of sign-in: enter an email address and request a one-time code.
+ *
+ * The email is the **account identifier**. The phone number is collected separately during identity
+ * verification, because it is an attribute the anchor needs rather than who the account is — so
+ * someone changing their number never risks losing access.
+ */
+export default function EmailScreen() {
   const router = useRouter();
   const toast = useToast();
-  const [phone, setPhone] = useState(env.auth.isDev ? env.auth.devPhone : '');
+  const [email, setEmail] = useState(env.auth.isDev ? env.auth.devEmail : '');
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const check = validatePhone(phone);
+  const check = validateEmail(email);
   const showError = submitted && !check.ok ? check.error : '';
 
   const onContinue = useCallback(async () => {
     setSubmitted(true);
-    const v = validatePhone(phone);
+    const v = validateEmail(email);
     if (!v.ok) {
       toast.error(v.error);
       return;
     }
-    const trimmed = phone.trim();
+    // Normalised before it travels, so "User@Example.com" and "user@example.com" cannot become two
+    // accounts. The server normalises again — it cannot trust the client to have done it.
+    const normalized = email.trim().toLowerCase();
     setBusy(true);
     try {
-      await requestOtp(trimmed);
-      router.push({ pathname: '/otp', params: { phone: trimmed } });
+      const challenge = await requestOtp(normalized);
+      router.push({
+        pathname: '/otp',
+        // Carried only when the server had no mail sender and handed one back. With SMTP configured
+        // this is absent and the user types the code they were emailed.
+        params: { email: normalized, ...(challenge.devCode ? { devCode: challenge.devCode } : {}) },
+      });
     } catch (e) {
       captureError(e, { step: 'request-otp' });
+      // The server's message says what actually happened — rate limited, address rejected, provider
+      // unavailable — and what to do about it.
       toast.error(e instanceof Error ? e.message : 'Could not send code');
     } finally {
       setBusy(false);
     }
-  }, [phone, router, toast]);
+  }, [email, router, toast]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
@@ -53,29 +68,37 @@ export default function PhoneScreen() {
         </GlassIconButton>
 
         <View style={styles.body}>
-          <Text style={styles.title}>What’s your number?</Text>
+          <Text style={styles.title}>What’s your email?</Text>
           <Text style={styles.subtitle}>
-            We’ll text you a one-time code to confirm it’s you. Your number is your account.
+            We’ll email you a one-time code to confirm it’s you. Your email is your account.
           </Text>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Phone number</Text>
+            <Text style={styles.label}>Email address</Text>
             <TextInput
               style={[styles.input, showError ? styles.inputError : null]}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="+971 50 000 0000"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              // Autocorrect and auto-capitalisation are the usual cause of a "wrong" address that
+              // looks right to the user, so both are off.
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              placeholder="you@example.com"
               placeholderTextColor={Palette.textMuted}
               autoFocus
               editable={!busy}
+              onSubmitEditing={onContinue}
+              returnKeyType="go"
             />
             {showError ? <Text style={styles.error}>{showError}</Text> : null}
           </View>
 
           {env.auth.isDev ? (
             <Text style={styles.devHint}>
-              Dev mode — any number works and the code is {env.auth.devOtp}.
+              Dev mode — any valid address works and the code is {env.auth.devOtp}.
             </Text>
           ) : null}
         </View>

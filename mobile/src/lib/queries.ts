@@ -81,4 +81,8 @@ export const QK = {
   kyc: ['kyc-verified'] as const,
   history: ['history'] as const,
   backup: ['backup'] as const,
+  /** Shielded-pool balance: spendable vs still-confirming. */
+  poolBalance: ['pool-balance'] as const,
+  /** Pool health — tree size and folder queue depth. */
+  poolStatus: ['pool-status'] as const,
 };

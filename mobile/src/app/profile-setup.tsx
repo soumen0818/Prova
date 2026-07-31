@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, GlassIconButton } from '@/components/ui';
@@ -11,38 +11,32 @@ import { canUseBiometrics } from '@/lib/auth';
 import { QK } from '@/lib/queries';
 import { captureError } from '@/lib/reporting';
 import { saveSession, type Session } from '@/lib/session';
-import { validateName } from '@/lib/validation';
 import { getOrCreateSecret } from '@/lib/wallet';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
-/** Step 3 of sign-in: pick a display name, then create the on-device wallet + account. */
+/**
+ * Step 3 of sign-in: create the on-device wallet.
+ *
+ * No name is asked for here. The legal name and phone number are collected during identity
+ * verification instead, because they are compliance data the anchor requires rather than things the
+ * app needs to let someone in — and asking for them up front adds friction to a screen whose real
+ * job is explaining that a private key is being created on this device.
+ */
 export default function ProfileSetupScreen() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { phone } = useLocalSearchParams<{ phone: string }>();
-  const [name, setName] = useState('');
+  const { email } = useLocalSearchParams<{ email: string }>();
   const [busy, setBusy] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-
-  const check = validateName(name);
-  const showError = submitted && !check.ok ? check.error : '';
 
   const onCreate = useCallback(async () => {
-    setSubmitted(true);
-    const v = validateName(name);
-    if (!v.ok) {
-      toast.error(v.error);
-      return;
-    }
     setBusy(true);
     try {
       // Generate the on-device ZK wallet secret (secure RNG, secure enclave) — never leaves phone.
       await getOrCreateSecret();
       await canUseBiometrics().catch(() => false); // warm up; AppLock enforces it next launch
       const session: Session = {
-        phone: phone ?? '',
-        name: name.trim(),
+        email: (email ?? '').trim().toLowerCase(),
         createdAt: Math.floor(Date.now() / 1000),
       };
       await saveSession(session);
@@ -58,7 +52,7 @@ export default function ProfileSetupScreen() {
     } finally {
       setBusy(false);
     }
-  }, [name, phone, queryClient, router, toast]);
+  }, [email, queryClient, router, toast]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
@@ -70,31 +64,18 @@ export default function ProfileSetupScreen() {
         </GlassIconButton>
 
         <View style={styles.body}>
-          <Text style={styles.title}>Set up your profile</Text>
+          <Text style={styles.title}>Create your wallet</Text>
           <Text style={styles.subtitle}>
             We’ll create a private key on this device, secured by your biometrics. It never leaves
-            your phone.
+            your phone — not even we can see it.
           </Text>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Your name</Text>
-            <TextInput
-              style={[styles.input, showError ? styles.inputError : null]}
-              value={name}
-              onChangeText={setName}
-              placeholder="Ravi Kumar"
-              placeholderTextColor={Palette.textMuted}
-              autoFocus
-              autoCapitalize="words"
-              maxLength={60}
-              editable={!busy}
-            />
-            {showError ? <Text style={styles.error}>{showError}</Text> : null}
-          </View>
+          <Text style={styles.subtitle}>
+            You’ll add your name and phone number later, when you verify your identity.
+          </Text>
         </View>
 
         <Button
-          label={busy ? 'Creating your account…' : 'Create account'}
+          label={busy ? 'Creating your wallet…' : 'Create wallet'}
           onPress={onCreate}
           loading={busy}
         />

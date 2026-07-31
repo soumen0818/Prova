@@ -19,6 +19,8 @@ import (
 	"github.com/prova/backend/internal/config"
 	"github.com/prova/backend/internal/indexer"
 	"github.com/prova/backend/internal/kyc"
+	"github.com/prova/backend/internal/mailer"
+	poolpkg "github.com/prova/backend/internal/pool"
 	"github.com/prova/backend/internal/server"
 	"github.com/prova/backend/internal/store"
 	"github.com/prova/backend/internal/transfers"
@@ -31,7 +33,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	deps, idx := buildDeps(ctx, logger, cfg)
+	deps, idx, poolIdx, folder := buildDeps(ctx, logger, cfg)
 
 	// Indexer role — reconcile on-chain events into history. Run exactly one of these across the
 	// fleet (RUN_MODE=indexer), so scaling the API doesn't spawn duplicate indexers.
@@ -41,6 +43,18 @@ func main() {
 			logger.Info("indexer started", "rpc", cfg.SorobanRPCURL)
 		} else {
 			logger.Warn("indexer role selected but store unavailable — indexer not started")
+		}
+		// The pool indexer runs alongside it. Exactly one replica: leaf indices are assigned in
+		// queue order, and two writers racing on the same range would corrupt that ordering.
+		if poolIdx != nil {
+			go poolIdx.Run(ctx)
+			logger.Info("pool indexer started", "contract", cfg.PoolContractID)
+		}
+		// Exactly one folder too. A second would race for the same queue head: the loser's proof is
+		// rejected because the root moved, so nothing breaks — but each wasted race costs a proof.
+		if folder != nil {
+			go folder.Run(ctx)
+			logger.Info("pool folder started", "interval", cfg.PoolFoldInterval)
 		}
 	}
 
@@ -86,9 +100,11 @@ func main() {
 
 // buildDeps wires the Phase 2 services. Infra that is unavailable degrades gracefully: the
 // corresponding routes return 503 instead of crashing the process.
-func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (server.Deps, *indexer.Indexer) {
+func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (server.Deps, *indexer.Indexer, *poolpkg.Indexer, *poolpkg.Folder) {
 	var deps server.Deps
 	var idx *indexer.Indexer
+	var poolIdx *poolpkg.Indexer
+	var folder *poolpkg.Folder
 
 	// Postgres store + transfer relay. `pg` is non-nil once migrations succeed, so the KYC
 	// verification state machine (which needs persistence) can be wired below.
@@ -101,6 +117,8 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 	} else {
 		pg = st
 		rdb := connectRedis(logger, cfg.RedisURL)
+		// Backs the rate limiter too, so limits hold across replicas rather than per-instance.
+		deps.Redis = rdb
 		submitter := chain.CLISubmitter{
 			Bin:        cfg.StellarBin,
 			ContractID: cfg.ContractID,
@@ -113,6 +131,62 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 		// Indexer is constructed here (needs the store); main starts it only in the indexer role.
 		events := chain.NewEventsClient(cfg.SorobanRPCURL, cfg.ContractID)
 		idx = indexer.New(events, st, logger, 15*time.Second, 20_000)
+
+		// Shielded pool. Without POOL_CONTRACT_ID there is no pool to index, and the /pool routes
+		// answer 503 — which is honest: a wallet cannot build a spend proof without these.
+		if cfg.PoolContractID == "" {
+			logger.Warn("POOL_CONTRACT_ID unset — /pool routes disabled (wallets cannot spend)")
+		} else {
+			prover := poolpkg.Prover{
+				Bin:          cfg.ProverBin,
+				FoldKeyCache: cfg.PoolFoldKeyCache,
+				Seed:         cfg.PoolSetupSeed,
+			}
+			// Relaying keeps the user's Stellar account off their spend. Only transact/unshield are
+			// relayed: shield needs the user's own authorisation to move their tokens, and it is
+			// public by design anyway, so relaying it would buy no privacy.
+			relayer := &poolpkg.Relayer{
+				Bin:        cfg.StellarBin,
+				ContractID: cfg.PoolContractID,
+				Source:     cfg.RelayerKey,
+				Network:    cfg.StellarNetwork,
+			}
+			deps.Pool = poolpkg.NewService(st, prover, relayer)
+			poolEvents := chain.NewPoolEventsClient(cfg.SorobanRPCURL, cfg.PoolContractID)
+			poolIdx = poolpkg.NewIndexer(poolEvents, st, logger, 5*time.Second, 20_000)
+
+			// The folder is what makes queued notes spendable. It is trusted with nothing — the
+			// proof enforces correctness and the contract supplies the leaves from its own queue —
+			// so running it here is an availability decision, not a trust one.
+			folder = poolpkg.NewFolder(st, prover, poolpkg.CLIRootSubmitter{
+				Bin:        cfg.StellarBin,
+				ContractID: cfg.PoolContractID,
+				Source:     cfg.RelayerKey,
+				Network:    cfg.StellarNetwork,
+			}, logger, cfg.PoolFoldInterval)
+
+			logger.Info("shielded pool ready",
+				"contract", cfg.PoolContractID, "fold_interval", cfg.PoolFoldInterval)
+		}
+	}
+
+	// Email sender for sign-in codes. Unconfigured leaves it nil, and the server substitutes a Noop
+	// that reports itself unavailable — so a missing SMTP setup surfaces as a clear message rather
+	// than sign-ups whose codes go nowhere.
+	if cfg.SMTPHost != "" && cfg.SMTPUsername != "" && cfg.SMTPPassword != "" {
+		deps.Mailer = mailer.SMTP{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			FromName: cfg.SMTPFromName,
+		}
+		logger.Info("email sign-in ready", "smtp_host", cfg.SMTPHost, "from", cfg.SMTPUsername)
+	} else if cfg.AuthMode == "production" {
+		logger.Error("SMTP is not configured and AUTH_MODE=production — sign-in will be refused")
+	} else {
+		logger.Warn("SMTP not configured — sign-in uses the fixed dev code", "dev_otp", cfg.DevOTP)
 	}
 
 	// Anchor (SEP-10 / SEP-24) with a dev key.
@@ -159,7 +233,7 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 		}
 	}
 
-	return deps, idx
+	return deps, idx, poolIdx, folder
 }
 
 func connectRedis(logger *slog.Logger, redisURL string) *redis.Client {

@@ -79,7 +79,7 @@ export const env = {
   auth: {
     mode: authMode,
     isDev: authMode === 'development',
-    devPhone: str(process.env.EXPO_PUBLIC_DEV_PHONE, '+971 50 123 4567'),
+    devEmail: str(process.env.EXPO_PUBLIC_DEV_EMAIL, 'you@example.com'),
     devOtp: str(process.env.EXPO_PUBLIC_DEV_OTP, '000000'),
   },
   /** Display currency (funding side). */

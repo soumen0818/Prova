@@ -11,3 +11,4 @@ export * from './credential.js';
 export * from './kyc.js';
 export * from './pool.js';
 export * from './errors.js';
+export * from './validation.js';

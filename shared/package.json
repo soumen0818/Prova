@@ -11,15 +11,19 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "tsc -p tsconfig.json && node --test dist/*.test.js"
   },
   "license": "UNLICENSED",
   "private": true,
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "typescript": "~5.6.0"
   }
 }

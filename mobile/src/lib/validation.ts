@@ -1,45 +1,91 @@
 /**
- * Shared input validation — the single source of truth used by every form (and mirrored on the
- * server where relevant). Each validator returns `{ ok }` or `{ ok: false, error }` so screens can
- * show one consistent inline message and gate their primary action.
+ * Form validation — the app's half of the rules.
+ *
+ * The rules themselves live in `@prova/shared` (`validation.ts`, mirrored in Go as `validation.go`)
+ * and are enforced by the backend, which is the actual control since anything can post to the API.
+ * This module only wraps them with the user-facing messages screens display, so a rule can never be
+ * tightened here without the server agreeing — and a drift would fail the shared parity tests.
+ *
+ * Each validator returns `{ ok }` or `{ ok: false, error }` so screens can show one consistent
+ * inline message and gate their primary action.
  */
+
+import {
+  NAME_MAX,
+  NAME_MIN,
+  OTP_LENGTH,
+  digitsOf as sharedDigitsOf,
+  findCountry,
+  isValidEmail,
+  isValidName,
+  isValidNationalNumber,
+} from '@prova/shared';
 
 export type Valid = { ok: true } | { ok: false; error: string };
 
 const ok: Valid = { ok: true };
 const bad = (error: string): Valid => ({ ok: false, error });
 
-/** Digits only, for length checks / normalization. */
-export function digitsOf(input: string): string {
-  return input.replace(/\D/g, '');
-}
+/** Digits only, for length checks / normalization. Re-exported from the shared spec. */
+export const digitsOf = sharedDigitsOf;
 
-/** Phone: required, 8–15 digits (E.164 range), optional leading '+'. */
-export function validatePhone(input: string): Valid {
-  const raw = input.trim();
-  if (raw.length === 0) return bad('Phone number is required');
-  if (!/^\+?[\d\s()-]+$/.test(raw)) return bad('Phone can only contain digits');
-  const d = digitsOf(raw);
-  if (d.length < 8) return bad('Phone number is too short');
-  if (d.length > 15) return bad('Phone number is too long');
+/**
+ * Email — the account identifier.
+ *
+ * The address is only *proved* to exist when its one-time code arrives, so this catches obvious
+ * mistakes before one is sent rather than trying to be exhaustive.
+ */
+export function validateEmail(input: string): Valid {
+  const t = input.trim();
+  if (t.length === 0) return bad('Email is required');
+  if (!isValidEmail(t)) return bad('Enter a valid email address');
   return ok;
 }
 
-/** OTP: required, exactly `length` digits. */
-export function validateOtp(input: string, length = 6): Valid {
+/**
+ * The national part of a phone number, for the chosen country.
+ *
+ * The expected length comes from the country itself — India is 10 digits, the UAE is 9 — so the
+ * message can say exactly how many are needed instead of a vague "invalid number".
+ */
+export function validateNationalPhone(input: string, countryCode: string): Valid {
+  const country = findCountry(countryCode);
+  if (!country) return bad('Choose a country');
+
+  const d = digitsOf(input);
+  if (d.length === 0) return bad('Phone number is required');
+  if (d.startsWith('0')) return bad('Drop the leading 0');
+  if (d.length < country.nationalDigits) {
+    return bad(`${country.name} numbers are ${country.nationalDigits} digits`);
+  }
+  if (d.length > country.nationalDigits) {
+    return bad(`That is too long — ${country.nationalDigits} digits`);
+  }
+  if (!isValidNationalNumber(input, countryCode)) return bad('Enter a valid phone number');
+  return ok;
+}
+
+/** OTP: required, exactly OTP_LENGTH digits. */
+export function validateOtp(input: string, length = OTP_LENGTH): Valid {
   const d = digitsOf(input);
   if (d.length === 0) return bad('Enter the code');
   if (d.length !== length) return bad(`Code must be ${length} digits`);
   return ok;
 }
 
-/** Person / recipient name: required, 2–60 chars, letters + common separators. */
+/**
+ * Person / recipient name.
+ *
+ * Accepts Unicode letters and combining marks: in Bengali, Devanagari and most Indic scripts the
+ * vowel signs are marks, not letters, so a letters-only rule would silently reject names like
+ * `সৌমেন` — a large share of this corridor.
+ */
 export function validateName(input: string): Valid {
   const t = input.trim();
   if (t.length === 0) return bad('Name is required');
-  if (t.length < 2) return bad('Name is too short');
-  if (t.length > 60) return bad('Name is too long');
-  if (!/^[\p{L}][\p{L}\s.'-]*$/u.test(t)) return bad('Use letters only');
+  if ([...t].length < NAME_MIN) return bad('Name is too short');
+  if ([...t].length > NAME_MAX) return bad('Name is too long');
+  if (!isValidName(t)) return bad('Use letters only');
   return ok;
 }
 

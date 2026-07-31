@@ -1,0 +1,25 @@
+[package]
+name = "prova-pool"
+version = { workspace = true }
+edition = { workspace = true }
+description = "Prova shielded pool: token custody, incremental Merkle tree, nullifier set, Groth16 verifier."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { version = "22", features = ["alloc"] }
+
+[dev-dependencies]
+soroban-sdk = { version = "22", features = ["testutils", "alloc"] }
+# Tests generate their proofs from the real circuits rather than replaying fixtures, so a change that
+# breaks circuit/contract agreement fails here instead of on testnet. Native-only (tests run on the
+# host), so this never reaches the wasm.
+prova-prover = { path = "../../circuits/prover" }
+ark-bls12-381 = "0.5"
+ark-ed-on-bls12-381 = "0.5"
+ark-groth16 = "0.5"
+ark-snark = "0.5"
+ark-std = "0.5"
+ark-ff = "0.5"
+ark-crypto-primitives = { version = "0.5", features = ["sponge"] }

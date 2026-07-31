@@ -31,7 +31,7 @@ const SLIDES: Slide[] = [
   },
 ];
 
-/** First screen for a signed-out user: value-prop slides, then "Get started" → phone sign-in. */
+/** First screen for a signed-out user: value-prop slides, then "Get started" → email sign-in. */
 export default function WelcomeScreen() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -68,14 +68,14 @@ export default function WelcomeScreen() {
 
         <View style={styles.actions}>
           {isLast ? (
-            <Button label="Get started" onPress={() => router.push('/phone')} />
+            <Button label="Get started" onPress={() => router.push('/email')} />
           ) : (
             <Button label="Continue" onPress={() => setStep((s) => s + 1)} />
           )}
           <Button
             label={isLast ? 'Back' : 'Skip'}
             variant="glass"
-            onPress={() => (isLast ? setStep((s) => s - 1) : router.push('/phone'))}
+            onPress={() => (isLast ? setStep((s) => s - 1) : router.push('/email'))}
           />
           <Pressable hitSlop={8} onPress={() => router.push('/restore')}>
             <Text style={styles.restoreLink}>Already used Prova? Restore your account</Text>

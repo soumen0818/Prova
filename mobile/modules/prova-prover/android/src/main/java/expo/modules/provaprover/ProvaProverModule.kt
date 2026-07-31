@@ -21,10 +21,41 @@ class ProvaProverModule : Module() {
     AsyncFunction("userId") { secret: String ->
       nativeUserId(secret)
     }
+
+    // --- Shielded pool (Phase 4) ---
+    //
+    // All async, so proving (hundreds of ms) and scanning never block the UI thread. Secrets go in
+    // and stay in: the seed, the spending key and the note contents never leave the device.
+
+    AsyncFunction("poolKeys") { input: String ->
+      nativePoolKeys(input)
+    }
+
+    AsyncFunction("poolShieldProve") { input: String ->
+      nativePoolShieldProve(input)
+    }
+
+    AsyncFunction("poolSpendProve") { input: String ->
+      nativePoolSpendProve(input)
+    }
+
+    AsyncFunction("poolScan") { input: String ->
+      nativePoolScan(input)
+    }
+
+    // Derives the proving keys (~1s) so a user's first send doesn't pay for it. Fire at app start.
+    AsyncFunction("poolWarmUp") {
+      nativePoolWarmUp("")
+    }
   }
 
   private external fun nativeProve(input: String): String
   private external fun nativeUserId(secret: String): String
+  private external fun nativePoolKeys(input: String): String
+  private external fun nativePoolShieldProve(input: String): String
+  private external fun nativePoolSpendProve(input: String): String
+  private external fun nativePoolScan(input: String): String
+  private external fun nativePoolWarmUp(input: String): String
 
   companion object {
     init {

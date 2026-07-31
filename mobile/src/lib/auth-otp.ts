@@ -1,35 +1,61 @@
 /**
- * Phone-login OTP client. Branches on `env.auth.mode` so the same UI works for dev and prod:
+ * Sign-in one-time codes, by EMAIL.
  *
- *  - development: verified on-device against a fixed dev code (no SMS, works offline). The dev phone
- *    and code are pre-filled by the auth screens. Flip to production via `EXPO_PUBLIC_AUTH_MODE`.
- *  - production: OTP is requested + verified through the backend (real SMS provider).
+ * **Always goes through the backend**, so development exercises the same path that ships. What the
+ * server does depends on its own configuration:
+ *
+ *  - SMTP configured → a real random code is emailed, and no `devCode` comes back.
+ *  - SMTP absent, dev → the fixed dev code is returned so the screen can pre-fill it.
+ *  - SMTP absent, production → sign-in is refused with a clear message.
+ *
+ * Previously this short-circuited on the client in dev and never called the API at all, which meant
+ * real email, rate limiting and the code store were untestable without flipping the app into
+ * production mode. The only remaining local fallback is for an unreachable backend, so an offline
+ * dev loop still works.
+ *
+ * The email is the account identifier. The phone number collected during KYC is separate — see
+ * `requestPhoneOtp` in `api.ts`.
  */
-import { requestOtp as apiRequestOtp, verifyOtp as apiVerifyOtp } from './api';
+import { ApiError, requestOtp as apiRequestOtp, verifyOtp as apiVerifyOtp } from './api';
 import { env } from '@/config/env';
 
 export interface OtpChallenge {
-  /** In development, the code the user should type (pre-fillable). Undefined in production. */
+  /** The code to pre-fill, when the server is running without a mail sender. */
   devCode?: string;
 }
 
-/** Kick off an OTP challenge for a phone number. */
-export async function requestOtp(phone: string): Promise<OtpChallenge> {
-  if (env.auth.isDev) {
-    return { devCode: env.auth.devOtp };
-  }
-  const res = await apiRequestOtp(phone);
-  return { devCode: res.devCode };
+/** True when the failure was "couldn't reach the server" rather than a rejection. */
+function isOffline(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 0;
 }
 
-/** Verify the code. Resolves on success, throws on an invalid code. */
-export async function verifyOtp(phone: string, code: string): Promise<void> {
-  const normalized = code.replace(/\D/g, '');
-  if (env.auth.isDev) {
-    if (normalized !== env.auth.devOtp) {
-      throw new Error('Incorrect code');
+/** Kick off a sign-in challenge for an email address. */
+export async function requestOtp(email: string): Promise<OtpChallenge> {
+  try {
+    const res = await apiRequestOtp(email);
+    return { devCode: res.devCode };
+  } catch (e) {
+    // Only an unreachable backend falls back, and only in development. Every real rejection —
+    // rate limited, invalid address, provider down — is surfaced with the server's own message.
+    if (env.auth.isDev && isOffline(e)) {
+      return { devCode: env.auth.devOtp };
     }
-    return;
+    throw e;
   }
-  await apiVerifyOtp(phone, normalized);
+}
+
+/** Verify the code. Resolves on success; throws an ApiError carrying the server's message. */
+export async function verifyOtp(email: string, code: string): Promise<void> {
+  const normalized = code.replace(/\D/g, '');
+  try {
+    await apiVerifyOtp(email, normalized);
+  } catch (e) {
+    if (env.auth.isDev && isOffline(e)) {
+      if (normalized !== env.auth.devOtp) {
+        throw new ApiError('That code isn’t right. Please check and try again.', 'unauthenticated', 401);
+      }
+      return;
+    }
+    throw e;
+  }
 }

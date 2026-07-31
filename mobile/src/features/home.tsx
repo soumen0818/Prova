@@ -14,7 +14,7 @@ import { Card, GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
 import { formatMinor } from '@/lib/balance';
 import { useRequireKyc } from '@/hooks/use-require-kyc';
-import { useBalance, useHistory, useKycVerified, useRecipients, useSession } from '@/lib/queries';
+import { useBalance, useHistory, useKycVerified, useRecipients } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
@@ -24,13 +24,11 @@ type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: num
 export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity') => void }) {
   const router = useRouter();
   const requireKyc = useRequireKyc();
-  const session = useSession();
   const balance = useBalance();
   const recipients = useRecipients();
   const kyc = useKycVerified();
   const history = useHistory();
 
-  const firstName = (session.data?.name ?? '').split(' ')[0] || 'there';
   const verified = kyc.data === true;
   const recent = (history.data ?? []).slice(0, 3);
 
@@ -38,8 +36,13 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
     <Screen scroll>
       {/* Greeting + settings */}
       <View style={styles.header}>
+        {/*
+          No name here, deliberately. The legal name is compliance data the anchor requires — it is
+          not a display preference, and putting a real name on the home screen of a privacy product
+          is the wrong signal. The product promise leads instead.
+        */}
         <View>
-          <Text style={styles.greeting}>Hi, {firstName}</Text>
+          <Text style={styles.greeting}>Prova</Text>
           <Text style={styles.subGreeting}>Send money home, privately</Text>
         </View>
         <GlassIconButton accessibilityLabel="Settings" onPress={() => router.push('/settings')}>

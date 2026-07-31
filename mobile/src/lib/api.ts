@@ -61,14 +61,82 @@ export interface KycCredential {
   anchor: { x: string; y: string };
 }
 
-async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${baseUrl()}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
-  if (!res.ok) {
-    throw new Error(`${path} → ${res.status}`);
+/**
+ * An API failure, carrying what the server actually said.
+ *
+ * The previous behaviour threw `Error('/auth/otp/request → 429')` and screens rendered that straight
+ * into a toast — so a rate-limited user was shown a URL and a status code. Every message the backend
+ * returns is written to be read by a person, so the job here is simply to surface it.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    /** Stable machine code (schema.ErrorCode) — branch on this, never on the message. */
+    readonly code: string,
+    readonly status: number,
+    /** Seconds to wait, from Retry-After on a 429. */
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
   }
+
+  /** True when waiting will fix it. */
+  get isRateLimited(): boolean {
+    return this.status === 429;
+  }
+}
+
+/** Fallbacks for the cases where the server said nothing useful, keyed by what the user can do. */
+function fallbackMessage(status: number): string {
+  if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
+  if (status === 401) return 'That didn’t work. Please check and try again.';
+  if (status === 404) return 'Not found.';
+  if (status === 503 || status === 501) return 'This isn’t available right now. Please try later.';
+  if (status >= 500) return 'Something went wrong on our side. Please try again.';
+  return 'Something went wrong. Please try again.';
+}
+
+async function json<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...init,
+    });
+  } catch {
+    // fetch only rejects on a transport failure, which is nearly always connectivity. Saying so is
+    // far more useful than surfacing "Network request failed".
+    throw new ApiError(
+      'Can’t reach Prova. Check your connection and try again.',
+      'network_error',
+      0,
+    );
+  }
+
+  if (!res.ok) {
+    // The backend returns { code, message } and the message is written for a person to read.
+    let message = '';
+    let code = 'internal';
+    try {
+      const body = (await res.json()) as { code?: string; message?: string };
+      if (body?.message) message = body.message;
+      if (body?.code) code = body.code;
+    } catch {
+      // Not JSON (a proxy error page, say) — fall through to the status-based message.
+    }
+
+    const retryAfter = Number(res.headers.get('Retry-After'));
+    throw new ApiError(
+      message || fallbackMessage(res.status),
+      code,
+      res.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    );
+  }
+
+  // 204 and friends carry no body; parsing one would throw on an otherwise successful call.
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -80,6 +148,12 @@ export interface OtpRequestResponse {
 
 export interface OtpVerifyResponse {
   token: string;
+  /** Normalised (trimmed + lowercased), so case differences cannot create two accounts. */
+  email: string;
+}
+
+export interface PhoneVerifyResponse {
+  status: string;
   phone: string;
 }
 
@@ -96,18 +170,39 @@ export async function getHealth(): Promise<HealthResponse> {
 }
 
 /** Request an SMS OTP for a phone number (production auth path). */
-export function requestOtp(phone: string): Promise<OtpRequestResponse> {
+/** Sign-in: request a one-time code by email. The email is the account identifier. */
+export function requestOtp(email: string): Promise<OtpRequestResponse> {
   return json<OtpRequestResponse>('/auth/otp/request', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * KYC step 1: request a code for a contact phone number (full E.164).
+ *
+ * Separate from sign-in on purpose — the phone is an attribute the anchor needs for compliance and
+ * payout contact, not the account identity, so changing it must never cost someone their account.
+ */
+export function requestPhoneOtp(phone: string): Promise<OtpRequestResponse> {
+  return json<OtpRequestResponse>('/kyc/phone/request', {
     method: 'POST',
     body: JSON.stringify({ phone }),
   });
 }
 
-/** Verify an OTP code, returning a session token (production auth path). */
-export function verifyOtp(phone: string, code: string): Promise<OtpVerifyResponse> {
-  return json<OtpVerifyResponse>('/auth/otp/verify', {
+export function verifyPhoneOtp(phone: string, code: string): Promise<PhoneVerifyResponse> {
+  return json<PhoneVerifyResponse>('/kyc/phone/verify', {
     method: 'POST',
     body: JSON.stringify({ phone, code }),
+  });
+}
+
+/** Verify a sign-in code, returning a session token and the normalised email. */
+export function verifyOtp(email: string, code: string): Promise<OtpVerifyResponse> {
+  return json<OtpVerifyResponse>('/auth/otp/verify', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
   });
 }
 
@@ -280,3 +375,115 @@ export function getHistory(): Promise<TransferRecord[]> {
 
 /** The resolved backend base URL (for display/debugging). */
 export const apiBaseUrl = baseUrl();
+
+// ---------------------------------------------------------------------------
+// Shielded pool (Phase 4) — Docs/shielded-pool.md §10.7
+//
+// The wallet holds its own note secrets but has no view of the Merkle tree, because the contract
+// stores only a root. These endpoints are what let it spend at all: where is my note, how do I prove
+// it, and what arrived for me.
+//
+// Nothing sensitive is sent. The scan feed is deliberately unfiltered — asking the server for "my
+// notes" would tell it who is being paid — so the wallet downloads everything and trial-decrypts
+// locally.
+// ---------------------------------------------------------------------------
+
+/** One note from the scan feed, as served by the indexer. */
+export interface PoolNoteRecord {
+  queueIndex: number;
+  commitment: string;
+  encrypted: {
+    epkX: string;
+    epkY: string;
+    encAmount: string;
+    encRho: string;
+    slot: number;
+  };
+  /** Present only once folded. Absent means real money that is not yet spendable. */
+  leafIndex?: number;
+  ledger: number;
+}
+
+export interface PoolScanResponse {
+  notes: PoolNoteRecord[];
+  /** Resume cursor for the next poll. */
+  next: number;
+}
+
+export interface PoolMerklePath {
+  leafIndex: number;
+  /** Exactly MerkleDepth siblings, leaf level upward. */
+  siblings: string[];
+  root: string;
+}
+
+export interface PoolStatus {
+  root?: string;
+  treeSize: number;
+  ledger?: number;
+  /** Commitments waiting to be folded. A rising number means the folder has stalled. */
+  queueDepth: number;
+  batch: number;
+}
+
+export interface PoolSpendBody {
+  proof: string;
+  root: string;
+  nullifier: string;
+  outputs: {
+    c1: string;
+    c2: string;
+    epkX: string;
+    epkY: string;
+    enc1Amount: string;
+    enc1Rho: string;
+    enc2Amount: string;
+    enc2Rho: string;
+  };
+  currentTime: number;
+  /** Unshield only; omitted for a private transfer. */
+  amount?: number;
+  destination?: string;
+}
+
+/** Pool health: tree size, current root, and whether the folder is keeping up. */
+export function getPoolStatus(): Promise<PoolStatus> {
+  return json<PoolStatus>('/pool/status');
+}
+
+/** One page of the scan feed, from `after` onward. */
+export function getPoolNotes(after: number, limit = 200): Promise<PoolScanResponse> {
+  return json<PoolScanResponse>(`/pool/notes?after=${after}&limit=${limit}`);
+}
+
+/**
+ * Membership path for one note — the private witness of its spend proof.
+ *
+ * 409 means the note is queued but not yet folded: real money, not yet movable. The caller should
+ * wait and retry rather than treat it as missing.
+ */
+export function getPoolPath(commitment: string): Promise<PoolMerklePath> {
+  return json<PoolMerklePath>(`/pool/path/${commitment}`);
+}
+
+/** Which of these nullifiers are already spent on-chain. */
+export function getSpentNullifiers(nullifiers: string[]): Promise<{ spent: string[] }> {
+  return json<{ spent: string[] }>('/pool/spent', {
+    method: 'POST',
+    body: JSON.stringify({ nullifiers }),
+  });
+}
+
+/**
+ * Relay a spend, so this user's own Stellar account is never recorded next to it.
+ *
+ * The relayer cannot alter anything — the amount, both output notes, the destination and the
+ * encrypted payloads are all bound inside the proof. It can only refuse, and the contract is
+ * permissionless, so a user could always submit their own transaction instead.
+ */
+export function relayPoolSpend(body: PoolSpendBody): Promise<{ txHash: string }> {
+  return json<{ txHash: string }>('/pool/spend', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

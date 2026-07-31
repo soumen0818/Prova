@@ -1,27 +1,51 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, GlassIconButton } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
-import { verifyOtp } from '@/lib/auth-otp';
+import { requestOtp, verifyOtp } from '@/lib/auth-otp';
+import { ApiError } from '@/lib/api';
 import { captureError } from '@/lib/reporting';
 import { validateOtp } from '@/lib/validation';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 const CODE_LENGTH = 6;
 
-/** Step 2 of sign-in: verify the OTP code. */
+/** Step 2 of sign-in: verify the emailed one-time code. */
 export default function OtpScreen() {
   const router = useRouter();
   const toast = useToast();
-  const { phone } = useLocalSearchParams<{ phone: string }>();
-  const [code, setCode] = useState(env.auth.isDev ? env.auth.devOtp : '');
+  const { email } = useLocalSearchParams<{ email: string }>();
+  const { devCode } = useLocalSearchParams<{ devCode?: string }>();
+  // Pre-filled only when the server had no mail sender and handed one back — never invented here.
+  const [code, setCode] = useState(devCode ?? '');
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Seconds until another code may be requested. The server owns the real limit; this mirrors it so
+  // the button explains itself instead of failing when tapped.
+  const [cooldown, setCooldown] = useState(0);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    timer.current = setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
+  }, [cooldown]);
 
   const check = validateOtp(code, CODE_LENGTH);
   const showError = submitted && !check.ok ? check.error : '';
@@ -36,15 +60,43 @@ export default function OtpScreen() {
     const clean = code.replace(/\D/g, '');
     setBusy(true);
     try {
-      await verifyOtp(phone ?? '', clean);
-      router.push({ pathname: '/profile-setup', params: { phone: phone ?? '' } });
+      await verifyOtp(email ?? '', clean);
+      router.push({ pathname: '/profile-setup', params: { email: email ?? '' } });
     } catch (e) {
       captureError(e, { step: 'verify-otp' });
-      toast.error(e instanceof Error ? e.message : 'Incorrect code');
+      // The server's message is written for a person and says what to do next — how many attempts
+      // remain, or that a new code is needed. Showing it verbatim is the point.
+      toast.error(e instanceof Error ? e.message : 'That code isn’t right.');
+      if (e instanceof ApiError && e.isRateLimited && e.retryAfterSeconds) {
+        setCooldown(e.retryAfterSeconds);
+      }
+      // A rejected code is almost always mistyped, so clear it rather than making them delete it.
+      setCode('');
     } finally {
       setBusy(false);
     }
-  }, [code, phone, router, toast]);
+  }, [code, email, router, toast]);
+
+  /** Ask for a fresh code. Disabled while the server's cooldown is running. */
+  const onResend = useCallback(async () => {
+    if (cooldown > 0 || busy) return;
+    setBusy(true);
+    try {
+      const challenge = await requestOtp(email ?? '');
+      setCode(challenge.devCode ?? '');
+      toast.success('New code sent');
+      // Mirrors the server's 60s cooldown so the button disables itself rather than 429-ing.
+      setCooldown(60);
+    } catch (e) {
+      captureError(e, { step: 'resend-otp' });
+      toast.error(e instanceof Error ? e.message : 'Could not send a new code');
+      if (e instanceof ApiError && e.retryAfterSeconds) {
+        setCooldown(e.retryAfterSeconds);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, cooldown, email, toast]);
 
   const boxes = Array.from({ length: CODE_LENGTH }, (_, i) => code[i] ?? '');
 
@@ -60,7 +112,7 @@ export default function OtpScreen() {
         <View style={styles.body}>
           <Text style={styles.title}>Enter the code</Text>
           <Text style={styles.subtitle}>
-            Sent to {phone || 'your phone'}. It may take a moment to arrive.
+            Sent to {email || 'your email'}. It may take a moment to arrive.
           </Text>
 
           {/* Visual boxes over a single hidden input for reliable native keyboard handling. */}
@@ -90,6 +142,12 @@ export default function OtpScreen() {
           ) : null}
         </View>
 
+        <Pressable onPress={onResend} disabled={cooldown > 0 || busy} hitSlop={8}>
+          <Text style={[styles.resend, cooldown > 0 && styles.resendDisabled]}>
+            {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Didn’t get it? Resend code'}
+          </Text>
+        </Pressable>
+
         <Button label={busy ? 'Verifying…' : 'Verify'} onPress={onVerify} loading={busy} />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -97,6 +155,13 @@ export default function OtpScreen() {
 }
 
 const styles = StyleSheet.create({
+  resend: {
+    ...Typography.caption,
+    color: Palette.accent,
+    textAlign: 'center',
+    marginBottom: Spacing.four,
+  },
+  resendDisabled: { color: Palette.textMuted },
   root: { flex: 1, backgroundColor: Palette.bgBase, paddingHorizontal: Spacing.six },
   flex: { flex: 1 },
   body: { flex: 1, gap: Spacing.four, paddingTop: Spacing.seven },

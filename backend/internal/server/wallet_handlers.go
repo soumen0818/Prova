@@ -27,8 +27,9 @@ func (h *handler) walletState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := r.PathValue("address")
-	if address == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "address is required")
+	// Shape-checked so a typo fails here rather than as an opaque Horizon error.
+	if !schema.IsValidStellarAddress(address) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "not a valid Stellar address")
 		return
 	}
 	state, err := h.wallet.Load(r.Context(), address)
@@ -47,8 +48,12 @@ func (h *handler) walletFund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req addressBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWalletBody)).Decode(&req); err != nil || req.Address == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "address is required")
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWalletBody)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
+		return
+	}
+	if !schema.IsValidStellarAddress(req.Address) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "not a valid Stellar address")
 		return
 	}
 	if err := h.wallet.Fund(r.Context(), req.Address); err != nil {
@@ -67,8 +72,12 @@ func (h *handler) prepareTrustline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req addressBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWalletBody)).Decode(&req); err != nil || req.Address == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "address is required")
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWalletBody)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
+		return
+	}
+	if !schema.IsValidStellarAddress(req.Address) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "not a valid Stellar address")
 		return
 	}
 	issuer, err := h.anchorAssetIssuer(r.Context())
@@ -103,8 +112,12 @@ func (h *handler) submitTrustline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, schema.ErrInternal, "invalid JSON body")
 		return
 	}
-	if req.XDR == "" || req.PublicKey == "" || req.Signature == "" {
-		writeError(w, http.StatusBadRequest, schema.ErrInternal, "xdr, publicKey and signature are required")
+	if req.XDR == "" || req.Signature == "" {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "xdr and signature are required")
+		return
+	}
+	if !schema.IsValidStellarAddress(req.PublicKey) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "not a valid Stellar address")
 		return
 	}
 	hash, err := h.wallet.SubmitSigned(r.Context(), req.XDR, req.PublicKey, req.Signature)

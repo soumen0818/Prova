@@ -35,6 +35,16 @@ export const SecureKey = {
   balance: 'prova.balance',
   /** Saved beneficiaries (JSON array). */
   recipients: 'prova.recipients',
+  /**
+   * AES key for the encrypted note file (hex).
+   *
+   * Deliberately NOT derived from the master seed: it only protects a rebuildable cache, so it is
+   * never backed up. Losing it costs a rescan, not money — every note is also published on-chain
+   * encrypted to its owner, so a wallet restores from the seed alone.
+   */
+  noteStoreKey: 'prova.note_store_key',
+  /** Pool keys (JSON: ownerPk + encPk). The secrets stay derived, never persisted here. */
+  poolAddress: 'prova.pool_address',
 } as const;
 
 export type SecureKeyId = (typeof SecureKey)[keyof typeof SecureKey];

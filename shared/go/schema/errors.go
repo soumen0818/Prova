@@ -20,7 +20,17 @@ const (
 	ErrDepositFailed     ErrorCode = "deposit_failed"
 	ErrPayoutFailed      ErrorCode = "payout_failed"
 
+	// Shielded pool.
+	//
+	// ErrNoteNotFolded is deliberately distinct from ErrNoteNotFound: the note exists and is the
+	// caller's, it is simply not a tree leaf yet, so the wallet should retry rather than treat the
+	// money as lost.
+	ErrPoolUnavailable ErrorCode = "pool_unavailable"
+	ErrNoteNotFound    ErrorCode = "note_not_found"
+	ErrNoteNotFolded   ErrorCode = "note_not_folded"
+
 	// Generic.
+	ErrBadRequest      ErrorCode = "bad_request"
 	ErrUnauthenticated ErrorCode = "unauthenticated"
 	ErrRateLimited     ErrorCode = "rate_limited"
 	ErrInternal        ErrorCode = "internal"

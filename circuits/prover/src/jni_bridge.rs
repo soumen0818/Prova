@@ -36,3 +36,61 @@ pub extern "system" fn Java_expo_modules_provaprover_ProvaProverModule_nativeUse
 ) -> jstring {
     run(env, secret, ffi::user_id_hex)
 }
+
+// --- Shielded pool (Phase 4) ---
+//
+// Each mirrors an `external fun` on the Kotlin module. All are AsyncFunctions there, so Expo runs
+// them off the JS thread — proving takes hundreds of milliseconds and must never block the UI.
+
+/// `nativePoolKeys(String): String` — derive the wallet's pool keys from its master seed.
+#[no_mangle]
+pub extern "system" fn Java_expo_modules_provaprover_ProvaProverModule_nativePoolKeys(
+    env: JNIEnv,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    run(env, input, crate::pool::ffi::keys_json)
+}
+
+/// `nativePoolShieldProve(String): String` — prove a deposit's commitment binds its amount.
+#[no_mangle]
+pub extern "system" fn Java_expo_modules_provaprover_ProvaProverModule_nativePoolShieldProve(
+    env: JNIEnv,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    run(env, input, crate::pool::ffi::shield_prove_json)
+}
+
+/// `nativePoolSpendProve(String): String` — the private-transfer proof. The heaviest call.
+#[no_mangle]
+pub extern "system" fn Java_expo_modules_provaprover_ProvaProverModule_nativePoolSpendProve(
+    env: JNIEnv,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    run(env, input, crate::pool::ffi::spend_prove_json)
+}
+
+/// `nativePoolScan(String): String` — trial-decrypt a batch of notes; returns those that opened.
+#[no_mangle]
+pub extern "system" fn Java_expo_modules_provaprover_ProvaProverModule_nativePoolScan(
+    env: JNIEnv,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    run(env, input, crate::pool::ffi::scan_json)
+}
+
+/// `nativePoolWarmUp(String): String` — derive the proving keys ahead of time.
+///
+/// Costs ~1 s. Called on a background thread at app start so a user's first send does not pay for
+/// it; the argument is ignored.
+#[no_mangle]
+pub extern "system" fn Java_expo_modules_provaprover_ProvaProverModule_nativePoolWarmUp(
+    env: JNIEnv,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    run(env, input, |_| crate::pool::ffi::warm_up())
+}

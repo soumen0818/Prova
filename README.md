@@ -55,7 +55,7 @@
 
 ## Overview
 
-**Prova** — from *"proof."* The name is the product: a transfer is accepted because it can be
+**Prova** — from _"proof."_ The name is the product: a transfer is accepted because it can be
 **proven** legal, not because a bank, a forex desk, and three correspondent banks all got to look at
 the amount and the identity behind it.
 
@@ -94,7 +94,7 @@ inconvenience, it's structural:
 Crypto solved cost and speed years ago. So why hasn't this been fixed for Ravi? Because of the
 deeper problem: **privacy and compliance are mathematical opposites**, and nobody has made them work
 together on a live payment corridor at consumer scale. Every existing payment system is a
-transparent pipe — every node sees everything, *because seeing is how it verifies*. To check "does
+transparent pipe — every node sees everything, _because seeing is how it verifies_. To check "does
 Ravi have enough money," the system reads his balance. To check "is this legal," it reads the
 amount. To check "is he KYC'd," it reads his identity. **You cannot verify something you cannot
 see** — that single constraint is what makes privacy and compliance enemies in every system that
@@ -103,7 +103,7 @@ exists today.
 ## The solution
 
 The amount stays **private** while it travels, but a **mathematical proof travels alongside it**
-that says *"trust me, this is legitimate"* — and anyone can verify that proof **without ever
+that says _"trust me, this is legitimate"_ — and anyone can verify that proof **without ever
 learning the actual number**. That's what zero-knowledge means: proving a statement is true without
 revealing the secret behind it.
 
@@ -117,23 +117,24 @@ a **commitment hash** and a **nullifier** are written on-chain. The number ₹15
 > data; HTTPS added a privacy/security layer on top without replacing the pipes. Prova adds a
 > privacy layer on top of Stellar's existing payment pipes — it doesn't replace them.
 
-The regulator doesn't actually need to *see* the amount — they need to *verify three facts* (in
+The regulator doesn't actually need to _see_ the amount — they need to _verify three facts_ (in
 range, KYC'd, not replayed), and a Groth16 proof verifies exactly those three facts and nothing
 else. That's the whole trick, and it's why privacy and compliance stop being enemies.
 
 ## Who this is for
 
-| Role | What they get | Where in the system |
-| --- | --- | --- |
-| **Sender** (e.g. Ravi) | A wallet that generates its own keys on-device, verifies identity once, and sends privately — the amount never leaves the phone in the clear. | `mobile/` |
-| **Recipient** (e.g. Amma) | Cash-out through a licensed local anchor, same privacy guarantees on the sending leg. | `mobile/` + anchor rails |
-| **Licensed anchors** (UAE deposit-side, India payout-side) | Existing SEP-1/6/10/12/24/31 infrastructure they already run for other Stellar products — Prova adds a privacy layer, not a new integration model. | `backend/internal/anchor/`, `Docs/deposit-flow.md` |
-| **Pool operator** (the folder) | A permissionless, low-trust role: batches queued notes into the Merkle tree. Can stall the queue, can never mint, steal, or spend. | `backend/internal/pool/folder.go` |
-| **Auditor / regulator** | Every accepted transfer emits an on-chain event and every KYC decision is written to an append-only audit log — provable compliance without a data request. | `Docs/kyc-verification.md` |
+| Role                                                       | What they get                                                                                                                                               | Where in the system                                |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **Sender** (e.g. Ravi)                                     | A wallet that generates its own keys on-device, verifies identity once, and sends privately — the amount never leaves the phone in the clear.               | `mobile/`                                          |
+| **Recipient** (e.g. Amma)                                  | Cash-out through a licensed local anchor, same privacy guarantees on the sending leg.                                                                       | `mobile/` + anchor rails                           |
+| **Licensed anchors** (UAE deposit-side, India payout-side) | Existing SEP-1/6/10/12/24/31 infrastructure they already run for other Stellar products — Prova adds a privacy layer, not a new integration model.          | `backend/internal/anchor/`, `Docs/deposit-flow.md` |
+| **Pool operator** (the folder)                             | A permissionless, low-trust role: batches queued notes into the Merkle tree. Can stall the queue, can never mint, steal, or spend.                          | `backend/internal/pool/folder.go`                  |
+| **Auditor / regulator**                                    | Every accepted transfer emits an on-chain event and every KYC decision is written to an append-only audit log — provable compliance without a data request. | `Docs/kyc-verification.md`                         |
 
 ## Key features
 
 **Privacy**
+
 - On-device proof generation — the amount never leaves the phone in the clear, not even to Prova's
   own backend.
 - Shielded-pool note model: on-chain, an observer sees only commitments, nullifiers, and proofs —
@@ -142,12 +143,14 @@ else. That's the whole trick, and it's why privacy and compliance stop being ene
   Poseidon-derived masking), not by anyone watching the chain.
 
 **Compliance, without the surveillance**
-- KYC once: an anchor-signed credential, verified *inside* the ZK proof, proves "verified, unexpired,
+
+- KYC once: an anchor-signed credential, verified _inside_ the ZK proof, proves "verified, unexpired,
   sufficient tier" without ever putting a passport number or a name on-chain.
 - Every accepted transfer is an on-chain event; every KYC decision is an append-only audit record —
   auditable without being surveillable.
 
 **Wallet & security**
+
 - One master seed, generated on-device, stored only in the platform secure enclave (iOS Keychain /
   Android Keystore) — never uploaded anywhere in the clear.
 - PIN + biometric step-up for every money-moving action.
@@ -156,6 +159,7 @@ else. That's the whole trick, and it's why privacy and compliance stop being ene
 - Real, rate-limited, hashed email one-time codes for sign-in (no dev-only shortcuts in production).
 
 **Speed & cost**
+
 - Stellar settlement: seconds, not days.
 - A folded batch of up to 8 notes updates the entire pool's Merkle root in one on-chain transaction.
 
@@ -173,16 +177,16 @@ the deployed admin key, `root` matches the circuit's independently-computed empt
 `is_paused` is `false`, `queue_depth` is `0`. Full deployment record, transaction hashes, and the
 anchor-key rotation history: [`contracts/DEPLOYMENTS.md`](contracts/DEPLOYMENTS.md).
 
-| Function | Access | Description |
-| --- | --- | --- |
-| `initialize(admin, token, anchor_pk_x, anchor_pk_y)` | one-time | Binds the pool to its custodied token and trusted KYC anchor |
-| `shield(from, amount, note, proof)` | public | Move real tokens in, queue the resulting note |
-| `transact(proof, nullifier, merkle_root, outputs, current_time)` | public | Private transfer — 1 note in, 2 notes out, nothing revealed but a nullifier and two commitments |
-| `unshield(proof, nullifier, merkle_root, outputs, amount, to, current_time)` | public | Withdraw real tokens to a public Stellar address — same circuit as `transact`, so on-chain shape never reveals which one happened |
-| `update_root(proof, new_root, count)` | permissionless | Folds queued notes into the tree — the contract itself never hashes (see why below) |
-| `set_paused(paused)` | admin | Halts deposits/transfers; **withdrawals are never paused** |
-| `set_anchor`, `set_admin`, `upgrade` | admin | Break-glass operations — see `Docs/deployment-and-keys.md` §6 |
-| `root()`, `queue_depth()`, `is_spent(nullifier)`, `is_known_root(root)` | read-only | State queries — `queue_depth` is the number to watch operationally |
+| Function                                                                     | Access         | Description                                                                                                                       |
+| ---------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize(admin, token, anchor_pk_x, anchor_pk_y)`                         | one-time       | Binds the pool to its custodied token and trusted KYC anchor                                                                      |
+| `shield(from, amount, note, proof)`                                          | public         | Move real tokens in, queue the resulting note                                                                                     |
+| `transact(proof, nullifier, merkle_root, outputs, current_time)`             | public         | Private transfer — 1 note in, 2 notes out, nothing revealed but a nullifier and two commitments                                   |
+| `unshield(proof, nullifier, merkle_root, outputs, amount, to, current_time)` | public         | Withdraw real tokens to a public Stellar address — same circuit as `transact`, so on-chain shape never reveals which one happened |
+| `update_root(proof, new_root, count)`                                        | permissionless | Folds queued notes into the tree — the contract itself never hashes (see why below)                                               |
+| `set_paused(paused)`                                                         | admin          | Halts deposits/transfers; **withdrawals are never paused**                                                                        |
+| `set_anchor`, `set_admin`, `upgrade`                                         | admin          | Break-glass operations — see `Docs/deployment-and-keys.md` §6                                                                     |
+| `root()`, `queue_depth()`, `is_spent(nullifier)`, `is_known_root(root)`      | read-only      | State queries — `queue_depth` is the number to watch operationally                                                                |
 
 **Why the pool never hashes on-chain:** a measured Poseidon permutation costs ~10.97M CPU
 instructions against Soroban's 100M-per-transaction budget — a depth-20 Merkle append needs 20 of
@@ -200,11 +204,11 @@ The earlier design: verifies a KYC-inclusive Groth16 proof (range + commitment +
 in-circuit anchor signature) without custodying any tokens itself. Verified live on testnet:
 `verify` → `true`, `submit` → success + `transfer` event, ~49.0M CPU per verification.
 
-| Function | Access | Description |
-| --- | --- | --- |
-| `verify(proof_a, proof_b, proof_c, commitment, nullifier, anchor_pk_x, anchor_pk_y, current_time)` | public | Pure Groth16 check — no state change |
-| `submit(...)` | public | Verifies, rejects an already-used nullifier, records + emits a `transfer` event |
-| `is_spent(nullifier)`, `is_committed(commitment)` | read-only | State queries |
+| Function                                                                                           | Access    | Description                                                                     |
+| -------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------- |
+| `verify(proof_a, proof_b, proof_c, commitment, nullifier, anchor_pk_x, anchor_pk_y, current_time)` | public    | Pure Groth16 check — no state change                                            |
+| `submit(...)`                                                                                      | public    | Verifies, rejects an already-used nullifier, records + emits a `transfer` event |
+| `is_spent(nullifier)`, `is_committed(commitment)`                                                  | read-only | State queries                                                                   |
 
 Both contracts verify **BLS12-381** Groth16 proofs using Soroban's native `pairing_check` host
 function, against a verifying key embedded at compile time — never computed on-chain, always
@@ -213,20 +217,20 @@ security model behind every entrypoint: [`contracts/README.md`](contracts/README
 
 ## Technology stack
 
-| Layer | Technology | Why |
-| --- | --- | --- |
-| **Mobile app** | React Native + Expo SDK 56, TypeScript, expo-router | One codebase; native module support for the on-device prover and the platform secure enclave |
-| **State / data** | TanStack Query | The sole state/data-fetching library — no Redux/Zustand |
-| **On-device crypto (JS)** | `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@scure/base` | Audited pure-JS primitives for everything that isn't Groth16/Poseidon/Jubjub |
-| **On-device crypto (native)** | Rust, `ark-groth16`, `ark-bls12-381`, `ark-ed-on-bls12-381` | Groth16 proving is infeasible in JS at usable speed; one Rust implementation shared by mobile, backend, and contracts so nothing can silently drift |
-| **Backend** | Go 1.25, `stellar/go` SDK, `net/smtp` | First-class Stellar SDK; goroutines + strong typing fit a money system's concurrent, must-not-lose-it work |
-| **Database** | PostgreSQL | ACID guarantees for financial state — holds no amounts or PII, only commitments/status/timestamps |
-| **Cache / rate limiting** | Redis | Shared OTP + rate-limit state across API replicas (falls back to per-instance counters if unset) |
-| **Smart contracts** | Rust + Soroban SDK 22 | The only language for Soroban; native BLS12-381 pairing host functions |
-| **ZK circuits** | arkworks (Rust): `ark-groth16`, `ark-crypto-primitives` (Poseidon) | An active, audited Rust Groth16 stack over the one curve Soroban actually supports |
-| **Blockchain** | Stellar Testnet · Soroban RPC · Horizon | Settlement, contract calls, existing SEP/anchor network |
-| **Shared contracts** | TypeScript (`shared/src`) + Go (`shared/go/schema`) | Hand-mirrored, not generated — every cross-repo shape has tests on both sides |
-| **CI/CD** | GitHub Actions, one path-filtered workflow per component | Only the changed component's pipeline runs |
+| Layer                         | Technology                                                         | Why                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mobile app**                | React Native + Expo SDK 56, TypeScript, expo-router                | One codebase; native module support for the on-device prover and the platform secure enclave                                                        |
+| **State / data**              | TanStack Query                                                     | The sole state/data-fetching library — no Redux/Zustand                                                                                             |
+| **On-device crypto (JS)**     | `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@scure/base`  | Audited pure-JS primitives for everything that isn't Groth16/Poseidon/Jubjub                                                                        |
+| **On-device crypto (native)** | Rust, `ark-groth16`, `ark-bls12-381`, `ark-ed-on-bls12-381`        | Groth16 proving is infeasible in JS at usable speed; one Rust implementation shared by mobile, backend, and contracts so nothing can silently drift |
+| **Backend**                   | Go 1.25, `stellar/go` SDK, `net/smtp`                              | First-class Stellar SDK; goroutines + strong typing fit a money system's concurrent, must-not-lose-it work                                          |
+| **Database**                  | PostgreSQL                                                         | ACID guarantees for financial state — holds no amounts or PII, only commitments/status/timestamps                                                   |
+| **Cache / rate limiting**     | Redis                                                              | Shared OTP + rate-limit state across API replicas (falls back to per-instance counters if unset)                                                    |
+| **Smart contracts**           | Rust + Soroban SDK 22                                              | The only language for Soroban; native BLS12-381 pairing host functions                                                                              |
+| **ZK circuits**               | arkworks (Rust): `ark-groth16`, `ark-crypto-primitives` (Poseidon) | An active, audited Rust Groth16 stack over the one curve Soroban actually supports                                                                  |
+| **Blockchain**                | Stellar Testnet · Soroban RPC · Horizon                            | Settlement, contract calls, existing SEP/anchor network                                                                                             |
+| **Shared contracts**          | TypeScript (`shared/src`) + Go (`shared/go/schema`)                | Hand-mirrored, not generated — every cross-repo shape has tests on both sides                                                                       |
+| **CI/CD**                     | GitHub Actions, one path-filtered workflow per component           | Only the changed component's pipeline runs                                                                                                          |
 
 ## Architecture
 
@@ -318,13 +322,13 @@ sequenceDiagram
 
 ## Testing
 
-| Component | What's covered |
-| --- | --- |
-| `circuits/prover` | ~45 black-box shield/spend/fold integration tests where the must-fail cases *are* the point — every assertion maps to a way money could be stolen, minted, or lost. Plus unit tests per circuit (v2 transfer, KYC credential, FFI round-trips). |
+| Component                              | What's covered                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `circuits/prover`                      | ~45 black-box shield/spend/fold integration tests where the must-fail cases _are_ the point — every assertion maps to a way money could be stolen, minted, or lost. Plus unit tests per circuit (v2 transfer, KYC credential, FFI round-trips).                                                                                      |
 | `contracts/pool`, `contracts/verifier` | Contract tests build **real Groth16 proofs** via `prova-prover` as a dev-dependency rather than replaying fixtures, so a circuit/contract disagreement fails a contract test, not just a circuit test. Includes an executable CPU-cost gate proving the on-chain-hashing constraint (`gate_onchain_merkle_does_not_fit_cpu_budget`). |
-| `backend` | Unit + handler tests for OTP (rate limiting, hashing, expiry), the SMTP mailer, rate limiting, KYC provider parsing, pool events, the folder, the prover shell-out, and pool spend handlers. |
-| `mobile` | `tsc --noEmit`, `expo lint`, Prettier — enforced in CI; validation logic mirrors and is tested against the same cases as the backend's Go validators. |
-| `shared` | `validation_test.go` and `validation.test.ts` assert the **same** cases on both sides of the TS/Go mirror. |
+| `backend`                              | Unit + handler tests for OTP (rate limiting, hashing, expiry), the SMTP mailer, rate limiting, KYC provider parsing, pool events, the folder, the prover shell-out, and pool spend handlers.                                                                                                                                         |
+| `mobile`                               | `tsc --noEmit`, `expo lint`, Prettier — enforced in CI; validation logic mirrors and is tested against the same cases as the backend's Go validators.                                                                                                                                                                                |
+| `shared`                               | `validation_test.go` and `validation.test.ts` assert the **same** cases on both sides of the TS/Go mirror.                                                                                                                                                                                                                           |
 
 Run everything locally: see each component's own README for the exact commands
 (`cargo test`, `go test ./...`, `npm run typecheck && npm run lint && npm run format:check`).
@@ -335,13 +339,13 @@ A single git repository, one folder per component, each with its own toolchain, 
 workflow. Every component below has its own detailed `README.md` — this file is the map, not the
 whole manual.
 
-| Folder | Stack | What it is |
-| --- | --- | --- |
-| [`mobile/`](mobile/) | React Native + Expo (TS) | The consumer app: wallet, KYC, send flow, cloud backup, the native ZK prover bridge |
-| [`backend/`](backend/) | Go | API, sign-in, SEP/anchor orchestration, KYC state machine, the shielded pool's off-chain half (indexer + folder + relayer) |
-| [`contracts/`](contracts/) | Rust + Soroban | Two on-chain programs: the per-transfer verifier and the shielded pool (real token custody) |
-| [`circuits/`](circuits/) | Rust + arkworks | The ZK circuits (BLS12-381 Groth16) and the on-device prover, shared by mobile, backend, and contracts |
-| [`shared/`](shared/) | TypeScript + Go | Cross-component schemas — proof format, IVMS101, API types, error codes, the pool/note format — mirrored, not generated, in both languages |
+| Folder                     | Stack                    | What it is                                                                                                                                 |
+| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`mobile/`](mobile/)       | React Native + Expo (TS) | The consumer app: wallet, KYC, send flow, cloud backup, the native ZK prover bridge                                                        |
+| [`backend/`](backend/)     | Go                       | API, sign-in, SEP/anchor orchestration, KYC state machine, the shielded pool's off-chain half (indexer + folder + relayer)                 |
+| [`contracts/`](contracts/) | Rust + Soroban           | Two on-chain programs: the per-transfer verifier and the shielded pool (real token custody)                                                |
+| [`circuits/`](circuits/)   | Rust + arkworks          | The ZK circuits (BLS12-381 Groth16) and the on-device prover, shared by mobile, backend, and contracts                                     |
+| [`shared/`](shared/)       | TypeScript + Go          | Cross-component schemas — proof format, IVMS101, API types, error codes, the pool/note format — mirrored, not generated, in both languages |
 
 ### Full file structure
 
@@ -394,14 +398,14 @@ Prova/
 
 ## Prerequisites
 
-| Tool | Version | Used by |
-| --- | --- | --- |
-| Node | 22 LTS (`nvm use 22`) | mobile, shared |
-| Go | ≥ 1.25 | backend |
-| Rust + wasm32 target | stable (see `contracts/rust-toolchain.toml`) | contracts, circuits |
-| Stellar CLI | ≥ 27 | contracts (deploy), circuits (dev tools) |
-| Docker + Compose | recent | backend (Postgres + Redis) |
-| Expo dev client | — | mobile (Expo Go cannot load the native prover module) |
+| Tool                 | Version                                      | Used by                                               |
+| -------------------- | -------------------------------------------- | ----------------------------------------------------- |
+| Node                 | 22 LTS (`nvm use 22`)                        | mobile, shared                                        |
+| Go                   | ≥ 1.25                                       | backend                                               |
+| Rust + wasm32 target | stable (see `contracts/rust-toolchain.toml`) | contracts, circuits                                   |
+| Stellar CLI          | ≥ 27                                         | contracts (deploy), circuits (dev tools)              |
+| Docker + Compose     | recent                                       | backend (Postgres + Redis)                            |
+| Expo dev client      | —                                            | mobile (Expo Go cannot load the native prover module) |
 
 ## Getting started
 
@@ -443,10 +447,10 @@ keys are far more dangerous than the rest and the difference isn't obvious from 
 Every component ships a `.env.example` labeled by **LOCAL DEV** vs **PRODUCTION** value, so there's
 one place to look, not a scavenger hunt across scripts:
 
-| Component | File | Notable values |
-| --- | --- | --- |
-| `backend/` | `.env.example` | `DATABASE_URL`, `REDIS_URL`, `POOL_CONTRACT_ID`, `CONTRACT_ID`, `RELAYER_KEY`, `ANCHOR_SEED`, `SMTP_*` (Gmail App Password compatible), `AUTH_MODE` |
-| `mobile/` | `.env.example` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_STELLAR_NETWORK`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_DEPOSIT_MODE`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (cloud backup) |
+| Component  | File           | Notable values                                                                                                                                                    |
+| ---------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/` | `.env.example` | `DATABASE_URL`, `REDIS_URL`, `POOL_CONTRACT_ID`, `CONTRACT_ID`, `RELAYER_KEY`, `ANCHOR_SEED`, `SMTP_*` (Gmail App Password compatible), `AUTH_MODE`               |
+| `mobile/`  | `.env.example` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_STELLAR_NETWORK`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_DEPOSIT_MODE`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (cloud backup) |
 
 No secret is ever required to run the app locally — `AUTH_MODE=development` accepts a fixed dev OTP
 and `DEPOSIT_MODE=simulated` credits a local counter with no chain or anchor involved. The one key
@@ -455,18 +459,19 @@ see the danger-ranked key table in [`Docs/deployment-and-keys.md`](Docs/deployme
 
 ## Security & privacy model
 
-| Layer | Sees amounts? | Sees identity? | Holds custody? |
-| --- | --- | --- | --- |
-| Phone (secure enclave) | Yes — that's where it's computed | Yes — that's where credentials live | No — never on-chain balances of its own |
-| Soroban contracts | No — only commitments/nullifiers | No | Yes — the pool contract custodies real tokens |
-| Go backend | No | No — only an opaque `userId` hash | No |
-| Licensed anchors | Only their own leg (deposit/payout) | Yes — that's their regulatory role | Only during on/off-ramp |
+| Layer                  | Sees amounts?                       | Sees identity?                      | Holds custody?                                |
+| ---------------------- | ----------------------------------- | ----------------------------------- | --------------------------------------------- |
+| Phone (secure enclave) | Yes — that's where it's computed    | Yes — that's where credentials live | No — never on-chain balances of its own       |
+| Soroban contracts      | No — only commitments/nullifiers    | No                                  | Yes — the pool contract custodies real tokens |
+| Go backend             | No                                  | No — only an opaque `userId` hash   | No                                            |
+| Licensed anchors       | Only their own leg (deposit/payout) | Yes — that's their regulatory role  | Only during on/off-ramp                       |
 
 If you take one thing from this table: **the backend is the least trusted-with-secrets component in
 the whole system, on purpose.** It coordinates a lot and stores none of what would matter if it were
 breached.
 
 **Concretely, on the code level:**
+
 - The master seed and every key derived from it never leave `expo-secure-store` (iOS Keychain /
   Android Keystore) in the clear.
 - Postgres holds commitments, nullifiers, status, and timestamps — never an amount, never a name.
@@ -480,16 +485,16 @@ breached.
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-| --- | --- |
+| Symptom                                       | Likely cause                                                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `go run ./cmd/api` ignores your `.env` values | Bare `go run` does **not** auto-load `.env` — `source .env` (with `set -a`/`set +a`) first, or use `docker compose up` which loads it automatically |
-| Postgres/Redis connection refused | Check for a port collision with another local project; `docker-compose.override.yml` supports `POSTGRES_PORT`/`REDIS_PORT` overrides |
-| Every fold rejected | `POOL_SETUP_SEED` doesn't match the seed the contract's embedded verifying keys were built with |
-| Every spend rejected | KYC credential bound to an old identity — re-verify |
-| `queueDepth` climbing and not draining | The folder has stalled, or its relayer key is unfunded — no funds at risk, but nothing new becomes spendable until it resumes |
-| `/pool/*` returns 503 | `POOL_CONTRACT_ID` is unset, or Postgres is unreachable |
-| Mobile app can't find the native prover | You're running Expo Go — the prover is a native module; use a development build (`eas build --profile development`) |
-| `initialize` fails on the pool contract | Already initialized — it's one-shot; redeploy under a new contract ID if the admin address was wrong |
+| Postgres/Redis connection refused             | Check for a port collision with another local project; `docker-compose.override.yml` supports `POSTGRES_PORT`/`REDIS_PORT` overrides                |
+| Every fold rejected                           | `POOL_SETUP_SEED` doesn't match the seed the contract's embedded verifying keys were built with                                                     |
+| Every spend rejected                          | KYC credential bound to an old identity — re-verify                                                                                                 |
+| `queueDepth` climbing and not draining        | The folder has stalled, or its relayer key is unfunded — no funds at risk, but nothing new becomes spendable until it resumes                       |
+| `/pool/*` returns 503                         | `POOL_CONTRACT_ID` is unset, or Postgres is unreachable                                                                                             |
+| Mobile app can't find the native prover       | You're running Expo Go — the prover is a native module; use a development build (`eas build --profile development`)                                 |
+| `initialize` fails on the pool contract       | Already initialized — it's one-shot; redeploy under a new contract ID if the admin address was wrong                                                |
 
 The full, longer list (with exact commands) lives in
 [`Docs/deployment-and-keys.md`](Docs/deployment-and-keys.md) §9.
@@ -500,20 +505,20 @@ The full, longer list (with exact commands) lives in
 read it before starting any non-trivial change, since Prova is a multi-repo system where the
 circuit, contract, backend, and app must agree on shared formats.
 
-| Doc | Covers |
-| --- | --- |
-| [`proposal .md`](Docs/proposal%20.md) | The product case: the problem, the persona, why ZK + Stellar, why it's defensible |
-| [`tech-stack.md`](Docs/tech-stack.md) | Stack choices and why, the polyrepo split, the end-to-end technical workflow |
-| [`implementation-guide.md`](Docs/implementation-guide.md) | The phase-by-phase build plan and exit criteria — the roadmap below is generated from this |
-| [`shielded-pool.md`](Docs/shielded-pool.md) | The note/UTXO design, the Merkle-fold architecture, the full must-not-break invariant list |
-| [`kyc-verification.md`](Docs/kyc-verification.md) | The verification state machine, credential issuance rules, tiers |
-| [`deposit-flow.md`](Docs/deposit-flow.md) | How money enters a Prova wallet (simulated vs. real anchor rails) |
-| [`account-recovery.md`](Docs/account-recovery.md) | Cloud backup, envelope encryption, the restore flow |
-| [`signup-and-validation.md`](Docs/signup-and-validation.md) | Sign-up, field validation (client + server), rate limiting, email delivery |
-| [`deployment-and-keys.md`](Docs/deployment-and-keys.md) | Every key, what it can do, where it goes, step-by-step contract deployment |
-| [`environments.md`](Docs/environments.md) | Environment matrix and secrets handling |
-| [`design-system.md`](Docs/design-system.md) | The UI style guide — dark theme, chartreuse accent, rounded glassy fintech look |
-| [`branding-assets.md`](Docs/branding-assets.md) | Every brand/marketing image, spec, and generation prompt |
+| Doc                                                         | Covers                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [`proposal .md`](Docs/proposal%20.md)                       | The product case: the problem, the persona, why ZK + Stellar, why it's defensible          |
+| [`tech-stack.md`](Docs/tech-stack.md)                       | Stack choices and why, the polyrepo split, the end-to-end technical workflow               |
+| [`implementation-guide.md`](Docs/implementation-guide.md)   | The phase-by-phase build plan and exit criteria — the roadmap below is generated from this |
+| [`shielded-pool.md`](Docs/shielded-pool.md)                 | The note/UTXO design, the Merkle-fold architecture, the full must-not-break invariant list |
+| [`kyc-verification.md`](Docs/kyc-verification.md)           | The verification state machine, credential issuance rules, tiers                           |
+| [`deposit-flow.md`](Docs/deposit-flow.md)                   | How money enters a Prova wallet (simulated vs. real anchor rails)                          |
+| [`account-recovery.md`](Docs/account-recovery.md)           | Cloud backup, envelope encryption, the restore flow                                        |
+| [`signup-and-validation.md`](Docs/signup-and-validation.md) | Sign-up, field validation (client + server), rate limiting, email delivery                 |
+| [`deployment-and-keys.md`](Docs/deployment-and-keys.md)     | Every key, what it can do, where it goes, step-by-step contract deployment                 |
+| [`environments.md`](Docs/environments.md)                   | Environment matrix and secrets handling                                                    |
+| [`design-system.md`](Docs/design-system.md)                 | The UI style guide — dark theme, chartreuse accent, rounded glassy fintech look            |
+| [`branding-assets.md`](Docs/branding-assets.md)             | Every brand/marketing image, spec, and generation prompt                                   |
 
 ## CI
 
@@ -523,14 +528,14 @@ one runs only when its component changes (`mobile-ci.yml`, `backend-ci.yml`, `co
 
 ## Roadmap
 
-| Phase | Ships | Status |
-| --- | --- | --- |
-| 0 — Foundations | 5-component scaffold, CI, environments, shared schemas | Done |
-| 1 — Core ZK on testnet | A Groth16 proof verifies on Soroban | Done — pivoted BN254→BLS12-381 after discovering Soroban has no BN254 host functions |
-| 2 — Stellar rails | Commitment/nullifier store, testnet anchor deposit flow | Done |
-| 3 — KYC attestation | In-circuit anchor-signed credential check | Done |
-| 4 — Mobile prover UX | On-device proving, honest progress, the shielded pool | Core done — on-device latency benchmarking on real low-end hardware is the one remaining manual step |
-| 5 — Real corridor | Licensed anchors, Travel Rule, public trusted-setup ceremony, audit | Not started |
-| 6 — Extraordinary | Selective disclosure, proof aggregation, compliance-proof-as-an-API | Not started |
+| Phase                  | Ships                                                               | Status                                                                                               |
+| ---------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 0 — Foundations        | 5-component scaffold, CI, environments, shared schemas              | Done                                                                                                 |
+| 1 — Core ZK on testnet | A Groth16 proof verifies on Soroban                                 | Done — pivoted BN254→BLS12-381 after discovering Soroban has no BN254 host functions                 |
+| 2 — Stellar rails      | Commitment/nullifier store, testnet anchor deposit flow             | Done                                                                                                 |
+| 3 — KYC attestation    | In-circuit anchor-signed credential check                           | Done                                                                                                 |
+| 4 — Mobile prover UX   | On-device proving, honest progress, the shielded pool               | Core done — on-device latency benchmarking on real low-end hardware is the one remaining manual step |
+| 5 — Real corridor      | Licensed anchors, Travel Rule, public trusted-setup ceremony, audit | Not started                                                                                          |
+| 6 — Extraordinary      | Selective disclosure, proof aggregation, compliance-proof-as-an-API | Not started                                                                                          |
 
 Full detail, exit criteria, and risks per phase: [`Docs/implementation-guide.md`](Docs/implementation-guide.md).

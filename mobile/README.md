@@ -21,13 +21,13 @@ npm start              # then press a (Android) with a dev client installed, or 
 
 ## Scripts
 
-| Script | Purpose |
-| --- | --- |
-| `npm start` | Start the Expo dev server |
+| Script                            | Purpose                      |
+| --------------------------------- | ---------------------------- |
+| `npm start`                       | Start the Expo dev server    |
 | `npm run android` / `ios` / `web` | Start on a specific platform |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | `expo lint` |
-| `npm run format` / `format:check` | Prettier write / verify |
+| `npm run typecheck`               | `tsc --noEmit`               |
+| `npm run lint`                    | `expo lint`                  |
+| `npm run format` / `format:check` | Prettier write / verify      |
 
 ## Builds (EAS)
 
@@ -50,10 +50,10 @@ generated once via `expo-crypto`, stored in the platform secure enclave — iOS 
 Keystore — and never leaving the device). From that single seed, three independent key sets are
 derived by domain-separated HKDF-SHA256 (`src/lib/keys.ts`, `src/lib/wallet.ts`, `src/lib/pool.ts`):
 
-| Derived key | Domain label | Used for |
-| --- | --- | --- |
-| ZK secret | `prova/zk/v1` | The legacy per-transfer circuit (v2) |
-| Stellar keypair (ed25519) | `prova/stellar/v1` | Signing real Stellar transactions (deposits, trustlines) |
+| Derived key                           | Domain label                | Used for                                                                                                                   |
+| ------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| ZK secret                             | `prova/zk/v1`               | The legacy per-transfer circuit (v2)                                                                                       |
+| Stellar keypair (ed25519)             | `prova/stellar/v1`          | Signing real Stellar transactions (deposits, trustlines)                                                                   |
 | Pool owner + encryption keys (Jubjub) | native, via the Rust module | The shielded pool: spending (`owner_sk`) and note-discovery (`enc`) — the current KYC/spend circuits bind to this identity |
 
 Losing the seed means losing the wallet; that's why cloud backup (below) exists. Compromising the
@@ -78,23 +78,23 @@ assets/                brand images, fonts, tab icons
 
 ### Screens (`src/app/`)
 
-| Route | Screen |
-| --- | --- |
-| `_layout.tsx` | Root layout: fonts, `QueryClientProvider`, dark navigation theme, `ToastProvider`, `AppLock` (idle biometric/PIN re-lock), the `Stack` navigator, global connection banner. |
-| `index.tsx` | Root gate — loading → `/welcome` (signed out) or the authenticated tab shell. |
-| `welcome.tsx` | Signed-out landing: 3-slide value-prop carousel → "Get started" (`/email`) or "Restore your account" (`/restore`). |
-| `email.tsx` → `otp.tsx` → `profile-setup.tsx` → `set-pin.tsx` | Sign-in: email OTP → verify → create the on-device ZK wallet secret + biometrics → set the 6-digit PIN. Deliberately asks for **no name/phone** here — those come later, during KYC. |
-| `restore.tsx` | Restore on a new phone: cloud sign-in → fetch the encrypted vault → unlock with PIN (rate-limited: a 30s pause after 5 wrong tries) → rebuild seed, credential, session, balance, recipients. |
-| `account.tsx` | Receive address (QR + copy) and status rows: cloud backup, recovery PIN, biometric lock, social recovery ("coming soon"), KYC status. |
-| `backup.tsx` | Cloud backup on/off, "back up now", explainer of what's protected. |
-| `blocked.tsx` | Policy-block screen (`kyc_required` / `kyc_rejected` / `frozen` / unknown) with tailored copy and actions. |
-| `send.tsx` | The private-transfer flow: recipient → amount → biometric/PIN step-up → on-device proof → submit → result. |
-| `deposit.tsx` | "Add money": instant local credit in `simulated` mode, or the real SEP-24/SEP-10 flow (with signature-review dialogs) in `anchor` mode. |
-| `kyc.tsx` | Identity (name/phone) → document/selfie capture → submit → poll status → collect the anchor-signed credential. |
-| `recipients.tsx` / `recipient-new.tsx` | Saved beneficiaries: list + add. |
-| `settings.tsx` | Diagnostics (auth mode, network, RPC/Horizon/backend hosts), change PIN, reset wallet, version info. |
-| `pool-benchmark.tsx` | On-device proving benchmark: warm-up, key derivation, shield-proof, and note-scan timings, with a UX verdict (spinner vs staged progress vs background job). |
-| `+not-found.tsx` | Expo Router's 404 catch-all. |
+| Route                                                         | Screen                                                                                                                                                                                        |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_layout.tsx`                                                 | Root layout: fonts, `QueryClientProvider`, dark navigation theme, `ToastProvider`, `AppLock` (idle biometric/PIN re-lock), the `Stack` navigator, global connection banner.                   |
+| `index.tsx`                                                   | Root gate — loading → `/welcome` (signed out) or the authenticated tab shell.                                                                                                                 |
+| `welcome.tsx`                                                 | Signed-out landing: 3-slide value-prop carousel → "Get started" (`/email`) or "Restore your account" (`/restore`).                                                                            |
+| `email.tsx` → `otp.tsx` → `profile-setup.tsx` → `set-pin.tsx` | Sign-in: email OTP → verify → create the on-device ZK wallet secret + biometrics → set the 6-digit PIN. Deliberately asks for **no name/phone** here — those come later, during KYC.          |
+| `restore.tsx`                                                 | Restore on a new phone: cloud sign-in → fetch the encrypted vault → unlock with PIN (rate-limited: a 30s pause after 5 wrong tries) → rebuild seed, credential, session, balance, recipients. |
+| `account.tsx`                                                 | Receive address (QR + copy) and status rows: cloud backup, recovery PIN, biometric lock, social recovery ("coming soon"), KYC status.                                                         |
+| `backup.tsx`                                                  | Cloud backup on/off, "back up now", explainer of what's protected.                                                                                                                            |
+| `blocked.tsx`                                                 | Policy-block screen (`kyc_required` / `kyc_rejected` / `frozen` / unknown) with tailored copy and actions.                                                                                    |
+| `send.tsx`                                                    | The private-transfer flow: recipient → amount → biometric/PIN step-up → on-device proof → submit → result.                                                                                    |
+| `deposit.tsx`                                                 | "Add money": instant local credit in `simulated` mode, or the real SEP-24/SEP-10 flow (with signature-review dialogs) in `anchor` mode.                                                       |
+| `kyc.tsx`                                                     | Identity (name/phone) → document/selfie capture → submit → poll status → collect the anchor-signed credential.                                                                                |
+| `recipients.tsx` / `recipient-new.tsx`                        | Saved beneficiaries: list + add.                                                                                                                                                              |
+| `settings.tsx`                                                | Diagnostics (auth mode, network, RPC/Horizon/backend hosts), change PIN, reset wallet, version info.                                                                                          |
+| `pool-benchmark.tsx`                                          | On-device proving benchmark: warm-up, key derivation, shield-proof, and note-scan timings, with a UX verdict (spinner vs staged progress vs background job).                                  |
+| `+not-found.tsx`                                              | Expo Router's 404 catch-all.                                                                                                                                                                  |
 
 ### Tabs (`src/features/`)
 
@@ -108,6 +108,7 @@ not OTP-verified**; the backend has phone-OTP endpoints ready, just not wired in
 The business logic underneath every screen:
 
 **Identity, keys, storage**
+
 - `wallet.ts` — generates and persists the master seed; `resetWallet()` wipes every secure-store key.
 - `keys.ts` — HKDF derivation of the ZK secret and Stellar keypair; signs a tx hash directly with
   ed25519 to match the Go SDK byte-for-byte.
@@ -116,7 +117,7 @@ The business logic underneath every screen:
 - `session.ts` — the signed-in identity record (`email`, `name?`, `phone?`) — distinct from the
   wallet's cryptographic secret.
 - `auth-otp.ts` — always calls the real backend; the only client-side fallback is for an
-  *unreachable* backend in dev mode, so the real code path is still exercised in development.
+  _unreachable_ backend in dev mode, so the real code path is still exercised in development.
 - `pin.ts` — the 6-digit PIN is stored only as a salted-hash **verifier**, never a KDF input — the
   PIN doesn't protect the seed (the enclave does), it gates the UI, so escalating rate-limits (up to
   a 1-hour lockout) are the real defense.
@@ -128,6 +129,7 @@ The business logic underneath every screen:
   crashing at startup.
 
 **The shielded pool**
+
 - `notes.ts` — the private note store: an AES-256-GCM-encrypted file (not secure-store — that caps
   around 8 notes), keyed by its own enclave-held file key. `leafIndex === null` means "real money,
   not yet foldable" — a distinction the UI must respect. Since the spend circuit is strictly
@@ -141,9 +143,11 @@ The business logic underneath every screen:
   review dialog before the phone signs.
 
 **The prover bridge**
+
 - `prover.ts` — thin re-export of `modules/prova-prover`'s `prove`/`userId`/`isProverAvailable`.
 
 **Everything else**
+
 - `api.ts` (backend client, typed `ApiError` with server message + code + retry-after),
   `balance.ts` (a separate, simpler local counter the send screen currently reads — a known,
   transitional seam versus the pool's real note-based balance), `kyc.ts` (90-day credential

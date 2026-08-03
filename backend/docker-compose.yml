@@ -42,8 +42,12 @@ services:
     # ANCHOR_*, MAINTENANCE_*, …) so new config never silently fails to reach the container just
     # because docker-compose.yml wasn't updated. The explicit `environment:` block below only
     # supplies container-specific defaults (e.g. PORT, RUN_MODE) and still overrides env_file values.
+    #
+    # `required: false` because .env is gitignored — it holds secrets. A fresh clone and CI have no
+    # such file, and without this the whole compose file fails to even parse there.
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       RUN_MODE: api
       PORT: '8080'
@@ -78,7 +82,8 @@ services:
       context: ..
       dockerfile: backend/Dockerfile
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       RUN_MODE: indexer
       APP_ENV: ${APP_ENV:-development}

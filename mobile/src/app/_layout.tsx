@@ -81,9 +81,8 @@ export default function RootLayout() {
                 {/* Gated root + auth flow render their own chrome. */}
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 <Stack.Screen name="welcome" options={{ headerShown: false }} />
-                <Stack.Screen name="phone" options={{ headerShown: false }} />
+                <Stack.Screen name="email" options={{ headerShown: false }} />
                 <Stack.Screen name="otp" options={{ headerShown: false }} />
-                <Stack.Screen name="profile-setup" options={{ headerShown: false }} />
                 <Stack.Screen name="set-pin" options={{ headerShown: false }} />
                 <Stack.Screen name="restore" options={{ headerShown: false }} />
                 {/* Pushed flows get a themed native header + back button. */}

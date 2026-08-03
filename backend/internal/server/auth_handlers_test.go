@@ -316,6 +316,18 @@ func (m *captureMailer) Send(_ context.Context, to, _, body string) error {
 	return nil
 }
 
+// The sign-in code goes out as multipart. The plain-text part is captured because it carries the
+// same code as the HTML and is far simpler to assert against.
+func (m *captureMailer) SendHTML(_ context.Context, to, _, text, _ string) error {
+	if m.failWith != nil {
+		return m.failWith
+	}
+	m.sent++
+	m.lastTo = to
+	m.lastMsg = text
+	return nil
+}
+
 // codeFrom pulls the six-digit code out of the email body.
 func codeFrom(t *testing.T, body string) string {
 	t.Helper()

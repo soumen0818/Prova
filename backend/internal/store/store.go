@@ -64,6 +64,9 @@ func New(ctx context.Context, databaseURL string, simpleProtocol bool) (*Store, 
 // Close releases the pool.
 func (s *Store) Close() { s.pool.Close() }
 
+// Ping checks the Postgres connection is alive — used by the readiness probe.
+func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
+
 // Migrate applies the embedded SQL migrations (backend/migrations/*.sql) in filename order. Each
 // file is idempotent (IF NOT EXISTS), so re-running on every boot — and across replicas — is safe.
 // These are the same files you can run by hand against a managed database (e.g. Supabase).

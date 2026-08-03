@@ -4,6 +4,13 @@
 > [tech-stack.md](tech-stack.md). This is the authoritative spec for how a Prova account is created,
 > secured on the device, backed up, and recovered on a new device. **Read this before touching any
 > wallet / key / auth code.**
+>
+> **Sign-in identity note:** this doc predates a change covered in
+> [signup-and-validation.md](signup-and-validation.md) — the account identifier is now **email**,
+> proved by a 6-digit OTP at sign-in, not phone. Any "phone + OTP" language below describing the
+> *sign-in* mechanism is stale; phone is now only a KYC data field (collected, not itself verified —
+> see that document §1). References below have been corrected where they described restore/recovery
+> specifically; treat any other "phone" mention in this file as the device, not the credential.
 
 ---
 
@@ -138,18 +145,25 @@ Why: losing the phone removes the only thing that could open the box *without* t
 the PIN removes the only key to the box. Cloud login returns the box but nothing can open it.
 
 This is the deliberate cost of deferring social recovery. **Future work (§9)** closes it with
-*identity recovery* (re-verify via phone OTP + KYC to release a recovery factor) — the natural fit
-for a KYC'd remittance product. Until then, onboarding must clearly tell users: **remember your PIN;
-it cannot be reset once the phone is gone.**
+*identity recovery* (re-verify via **email OTP** — the account credential — **+ re-KYC** to release a
+recovery factor) — the natural fit for a KYC'd remittance product. Until then, onboarding must
+clearly tell users: **remember your PIN; it cannot be reset once the phone is gone.**
 
 ---
 
 ## 7. Recovery flow (new phone), step by step
 
+> **Updated:** sign-in moved from phone+OTP to **email+OTP** (`Docs/signup-and-validation.md`).
+> Restore does **not** re-run an OTP step at all — the account identifier (email, plus name/phone if
+> KYC was completed) is part of the encrypted `box` and comes back with everything else in step 4.
+> The only credential the user re-enters here is their **PIN**; there is no separate sign-in screen.
+
 1. Install Prova on the new phone; sign in to the OS Google/Apple account (normal phone setup).
-2. Sign in to Prova with **phone number + OTP**.
+2. Open Prova → **"Restore your account"** → sign in to the same **Google Drive / iCloud** account
+   the backup was written to (this is the cloud account picker, not a Prova sign-in step).
 3. App **downloads the `box`** from Google Drive / iCloud.
-4. User enters the **PIN** → Argon2id → `vaultKey` → decrypt `box` → recover `master`.
+4. User enters the **PIN** → Argon2id → `vaultKey` → decrypt `box` → recover `master` **and the
+   saved session** (email, name/phone if captured during KYC).
 5. Re-derive ZK secret + Stellar key. **Everything is back:** same `G…` address, KYC, history.
 6. Store `master` in the new enclave (biometric-gated); re-enable biometric; keep the local `box`.
 
@@ -175,8 +189,9 @@ A single screen (from Profile) with everything account-related:
 When funded / prioritized, add a recovery factor so "lost phone + forgot PIN" is survivable:
 
 - **Identity recovery (recommended):** the backend releases a recovery share **only** after strong
-  identity re-verification (phone OTP + re-KYC through the anchor). Bank-like, fits regulation. Trade-
-  off: the backend becomes a recovery participant (must never hold enough to open a box alone).
+  identity re-verification (**email OTP** — the account identifier since
+  `Docs/signup-and-validation.md` — **+ re-KYC** through the anchor). Bank-like, fits regulation.
+  Trade-off: the backend becomes a recovery participant (must never hold enough to open a box alone).
 - **Social recovery (guardians):** Shamir-split a recovery share across 2 trusted contacts.
 - **Recovery code:** a one-time offline code (rejected for now — it's a seed phrase by another name).
 
@@ -240,7 +255,7 @@ Shipped:
   the native hash is instant). Legacy PBKDF2 (v1) records are still accepted until the PIN is changed.
 - `mobile/src/components/pin-pad.tsx` — reusable dots + keypad.
 - `mobile/src/app/set-pin.tsx` — enter→confirm setup, used by onboarding (mandatory) and Settings
-  (change). Onboarding is now `profile-setup → set-pin → app`.
+  (change). Onboarding is now `email → otp (creates the wallet) → set-pin → app`.
 - `mobile/src/components/app-lock.tsx` — locks on a wallet + any factor; unlock via biometric
   (auto-prompted) **or** PIN, with live lockout countdown.
 - `mobile/src/components/pin-prompt.tsx` + `send.tsx` — **payment step-up**: biometric, or PIN
@@ -283,7 +298,8 @@ Shipped:
   is therefore pure AES (~1 ms, verified) and runs silently in the background; the slow Argon2id
   runs only at backup-enable / restore / PIN-change, so the **KEK uses heavier params (19 MiB,
   t=4)** for stronger offline brute-force resistance on the cloud copy.
-- **Vault contents** now rebuild the whole account: `master`, profile (phone+name), KYC credential,
+- **Vault contents** now rebuild the whole account: `master`, profile (email, plus name/phone once
+  KYC is completed), KYC credential,
   balance snapshot, recipients (`mobile/src/lib/vault.ts`).
 - **`mobile/src/lib/cloud-backup.ts`** — iOS → iCloud (CloudKit, no sign-in); Android → Google
   Drive hidden `appDataFolder` via one-tap Google sign-in (`drive.appdata` scope only). Only the

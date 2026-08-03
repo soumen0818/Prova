@@ -189,6 +189,17 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 		logger.Warn("SMTP not configured — sign-in uses the fixed dev code", "dev_otp", cfg.DevOTP)
 	}
 
+	// COMPLIANCE_TOKEN gates POST /kyc/verifications/{id}/decide — without it, anyone who knows a
+	// userId can self-approve their own KYC. Only ever acceptable to skip in local dev.
+	if cfg.ComplianceToken == "" {
+		if cfg.AppEnv == "production" {
+			logger.Error("COMPLIANCE_TOKEN is not set and APP_ENV=production — " +
+				"the manual KYC decision endpoint is UNAUTHENTICATED; set COMPLIANCE_TOKEN before deploying")
+		} else {
+			logger.Warn("COMPLIANCE_TOKEN not set — the manual KYC decision endpoint has no auth (dev only)")
+		}
+	}
+
 	// Anchor (SEP-10 / SEP-24) with a dev key.
 	kp, err := sep10Key(cfg.SEP10Seed)
 	if err != nil {

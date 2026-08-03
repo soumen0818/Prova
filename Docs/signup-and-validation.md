@@ -45,8 +45,9 @@ The backend endpoints already exist, are validated, are rate-limited, and are te
 ## 2. The new flow
 
 ```
-Sign up ──► email ──► 6-digit code ──► create wallet ──► set PIN ──► app
-                                        (no name asked)
+Sign up ──► email ──► 6-digit code ──► set PIN ──► app
+                      (wallet is created here,
+                       no screen, no name asked)
 
 Verify identity ──► STEP 1: name + country + phone   ← new
                 ──► STEP 2: ID front
@@ -326,8 +327,9 @@ cd mobile    && npx tsc --noEmit  # types
 2. **Type `notanemail` → Continue.** *Enter a valid email address*. Nothing is sent.
 3. **Valid address → Continue.** The code screen reads *Sent to \<your address\>*.
 4. **Enter `12345`.** *Code must be 6 digits*.
-5. **Enter `000000`.** You reach **"Create your wallet"** — confirm there is **no name field**.
-6. **Create wallet → set PIN → home.** The header reads **"Prova"**, with **no "Hi, \<name\>"**.
+5. **Enter `000000`.** The wallet is created silently and you go **straight to the PIN screen** —
+   there is no "Create your wallet" step, and no name is ever asked for.
+6. **Set PIN → home.** The header reads **"Prova"**, with **no "Hi, \<name\>"**.
 
 ### Identity step
 

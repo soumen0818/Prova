@@ -38,9 +38,26 @@ func (h *handler) notFound(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// readyz is a readiness probe.
-// TODO(Phase 2): verify Postgres, Redis, and Soroban RPC connectivity before reporting ready.
-func (h *handler) readyz(w http.ResponseWriter, _ *http.Request) {
+// readyz is a readiness probe: it actually checks the dependencies this process needs, so a load
+// balancer stops routing to a replica whose Postgres/Redis connection has died — a bare 200 would
+// hide exactly the failure a readiness probe exists to catch.
+func (h *handler) readyz(w http.ResponseWriter, r *http.Request) {
+	if h.transfers == nil {
+		// No store configured at all (e.g. Postgres unreachable at boot) — nothing to ping, but
+		// that itself means this replica cannot serve the transfer/relay routes.
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"status": "not_ready",
+			"reason": "store not configured",
+		})
+		return
+	}
+	if err := h.transfers.Ping(r.Context()); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"status": "not_ready",
+			"reason": err.Error(),
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 

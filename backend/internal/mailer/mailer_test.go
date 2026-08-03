@@ -81,19 +81,74 @@ func TestMessageHasTheRequiredHeaders(t *testing.T) {
 
 // The code has to be easy to read and copy, and an unexpected email has to be self-explanatory.
 func TestCodeEmailIsUsable(t *testing.T) {
-	subject, body := CodeEmail("482913", 10)
+	subject, text, html := CodeEmail("482913", 10)
 
 	// Many clients surface the code from the subject line, which saves opening the mail at all.
 	if !strings.Contains(subject, "482913") {
 		t.Error("the subject should carry the code")
 	}
-	if !strings.Contains(body, "482913") {
-		t.Error("the body must contain the code")
+	// Both renderable forms must stand alone: a client that blocks HTML must not lose the code.
+	for name, body := range map[string]string{"text": text, "html": html} {
+		if !strings.Contains(body, "482913") {
+			t.Errorf("%s part must contain the code", name)
+		}
+		if !strings.Contains(body, "10 minutes") {
+			t.Errorf("%s part must state the expiry, so a stale code explains itself", name)
+		}
+		if !strings.Contains(strings.ToLower(body), "didn't try to sign in") &&
+			!strings.Contains(strings.ToLower(body), "didn't try to sign in?") {
+			t.Errorf("%s part must tell an unexpecting recipient they can ignore it", name)
+		}
 	}
-	if !strings.Contains(body, "10 minutes") {
-		t.Error("the body must state the expiry, so a stale code explains itself")
+	// The HTML must reference the logo by Content-ID; a `data:` URI would be stripped by Gmail.
+	if !strings.Contains(html, "cid:"+logoCID) {
+		t.Error("the HTML must reference the inline logo by CID")
 	}
-	if !strings.Contains(strings.ToLower(body), "didn't try to sign in") {
-		t.Error("the body must tell an unexpecting recipient they can ignore it")
+}
+
+// The logo has to actually ship inside the binary, or every email arrives with a broken image.
+func TestLogoIsEmbedded(t *testing.T) {
+	if len(logoPNG) == 0 {
+		t.Fatal("the logo was not embedded")
+	}
+	if !strings.HasPrefix(string(logoPNG[:4]), "\x89PNG") {
+		t.Error("the embedded logo is not a PNG")
+	}
+}
+
+// The multipart structure is what makes the logo render and keeps a text fallback. Getting the
+// nesting wrong produces an email that looks empty in some clients, so it is asserted explicitly.
+func TestRichMessageStructure(t *testing.T) {
+	m := SMTP{Host: "h", Username: "from@example.com", FromName: "Prova"}
+	msg := m.richMessage("from@example.com", "to@example.com", "482913 — code", "plain body", "<p>html body</p>")
+
+	for _, want := range []string{
+		"Content-Type: multipart/related;",
+		"Content-Type: multipart/alternative;",
+		"Content-Type: text/plain; charset=\"UTF-8\"",
+		"Content-Type: text/html; charset=\"UTF-8\"",
+		"Content-Type: image/png",
+		"Content-ID: <" + logoCID + ">",
+		"Content-Transfer-Encoding: base64",
+		"plain body",
+		"<p>html body</p>",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("missing from multipart message: %s", want)
+		}
+	}
+
+	// text/plain must precede text/html: within multipart/alternative the order is least- to
+	// most-preferred, so reversing it would show raw markup in clients that pick the first part.
+	if strings.Index(msg, "text/plain") > strings.Index(msg, "text/html") {
+		t.Error("text/plain must come before text/html inside multipart/alternative")
+	}
+
+	// Base64 lines must respect RFC 2045's 76-character limit; some servers reject longer ones.
+	for _, line := range strings.Split(msg, "\r\n") {
+		if len(line) > 76 && !strings.HasPrefix(line, "Content-") && !strings.HasPrefix(line, "<") {
+			t.Errorf("line exceeds 76 chars: %d", len(line))
+			break
+		}
 	}
 }

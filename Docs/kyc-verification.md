@@ -4,6 +4,11 @@
 > (Phase 3 / Phase 5). This is the authoritative spec for how a Prova user is verified, how a
 > verification is **approved**, and how the anchor-signed credential is issued, renewed and expired.
 > **Read this before touching any KYC code.**
+>
+> **Sign-in identity note:** the app now signs users in with **email + OTP**, not phone — see
+> [signup-and-validation.md](signup-and-validation.md) for the current mechanism, credentials
+> required, and the email template. Phone remains a **KYC data field only** (§3), collected but not
+> itself OTP-verified yet.
 
 ---
 
@@ -72,11 +77,18 @@ Data is tied to limits — collect the minimum for what the user needs.
 
 | Tier | Level | Data collected | Purpose |
 |---|:--:|---|---|
-| **Basic** | 1 | Phone (already held), full name, date of birth, nationality | Identify + screen against sanctions lists |
+| **Basic** | 1 | Full name, country, phone (captured here — not sign-in), date of birth, nationality | Identify + screen against sanctions lists |
 | **Standard** | 2 | + government ID (Emirates ID / passport: images, number, expiry) + **liveness selfie** | Prove the identity is real and belongs to this person |
 | **Enhanced** | 3 | + proof of address, occupation / source of funds | Enhanced due diligence for higher value |
 
 Most users need only **Tier 2**. Limits per tier: §9.
+
+> **Sign-in vs. this table:** the account identifier is **email**, proved by OTP at sign-in
+> (`Docs/signup-and-validation.md`). The **phone** collected in Tier 1 above is a separate, later
+> step — part of the identity/KYC data set, not the sign-in credential. It is presently
+> **user-asserted, not OTP-verified** (the phone-OTP endpoints exist and are tested, but are not yet
+> wired into the app) — do not treat it as a verified contact channel or a second factor until that
+> lands. See that document §1 and §9 for the exact status and how to wire it up.
 
 ### Where each piece lives — the boundary that must never move
 

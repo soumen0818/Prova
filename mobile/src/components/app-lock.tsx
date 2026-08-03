@@ -15,7 +15,7 @@ type LockState = 'checking' | 'locked' | 'unlocked';
  * How long the app may sit idle before it re-locks. Standard for banking apps: long enough not to
  * nag someone mid-task, short enough that a phone left on a table doesn't stay open.
  */
-const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Gates the app behind device authentication. Locks whenever a wallet exists and at least one

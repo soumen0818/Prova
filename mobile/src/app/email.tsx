@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, GlassIconButton } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { env } from '@/config/env';
 import { requestOtp } from '@/lib/auth-otp';
 import { captureError } from '@/lib/reporting';
 import { validateEmail } from '@/lib/validation';
@@ -22,7 +21,7 @@ import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 export default function EmailScreen() {
   const router = useRouter();
   const toast = useToast();
-  const [email, setEmail] = useState(env.auth.isDev ? env.auth.devEmail : '');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -69,12 +68,9 @@ export default function EmailScreen() {
 
         <View style={styles.body}>
           <Text style={styles.title}>What’s your email?</Text>
-          <Text style={styles.subtitle}>
-            We’ll email you a one-time code to confirm it’s you. Your email is your account.
-          </Text>
+          <Text style={styles.subtitle}>We’ll send you a 6-digit code.</Text>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Email address</Text>
             <TextInput
               style={[styles.input, showError ? styles.inputError : null]}
               value={email}
@@ -95,12 +91,6 @@ export default function EmailScreen() {
             />
             {showError ? <Text style={styles.error}>{showError}</Text> : null}
           </View>
-
-          {env.auth.isDev ? (
-            <Text style={styles.devHint}>
-              Dev mode — any valid address works and the code is {env.auth.devOtp}.
-            </Text>
-          ) : null}
         </View>
 
         <Button label={busy ? 'Sending…' : 'Continue'} onPress={onContinue} loading={busy} />
@@ -116,7 +106,6 @@ const styles = StyleSheet.create({
   title: { ...Typography.title, fontSize: 26, lineHeight: 32, color: Palette.white },
   subtitle: { ...Typography.body, color: Palette.textSecondary },
   field: { gap: Spacing.two, marginTop: Spacing.four },
-  label: { ...Typography.caption, color: Palette.textSecondary },
   input: {
     ...Typography.title,
     color: Palette.white,
@@ -127,5 +116,4 @@ const styles = StyleSheet.create({
   },
   inputError: { borderWidth: 1, borderColor: Palette.statusDown },
   error: { ...Typography.caption, color: Palette.statusDown },
-  devHint: { ...Typography.micro, color: Palette.accent },
 });

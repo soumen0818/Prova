@@ -95,8 +95,8 @@ func (h *handler) otpRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subject, body := mailer.CodeEmail(code, int(otp.TTL.Minutes()))
-	if err := h.mailer.Send(r.Context(), email, subject, body); err != nil {
+	subject, text, html := mailer.CodeEmail(code, int(otp.TTL.Minutes()))
+	if err := h.mailer.SendHTML(r.Context(), email, subject, text, html); err != nil {
 		// The address is never echoed into the log — an error report should not become a record of
 		// who is signing in.
 		h.logger.Error("otp email send failed", "err", err)

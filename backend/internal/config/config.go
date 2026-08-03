@@ -83,6 +83,12 @@ type Config struct {
 	KYCWebhookSecret string        // shared secret for X-Prova-Signature; empty → checks skipped (local dev only)
 	KYCMockDelay     time.Duration // simulated provider latency for the Stage A mock provider
 
+	// ComplianceToken gates the manual KYC decision endpoint (POST /kyc/verifications/{id}/decide) —
+	// without it, anyone who knows/guesses a userId could self-approve their own KYC. Required as
+	// "Bearer <token>" once AppEnv is production; empty in dev/staging skips the check (local testing
+	// only — never leave this unset in a real deployment).
+	ComplianceToken string
+
 	// SMTP — sending the sign-in code by email.
 	//
 	// Unset means nothing is sent: development falls back to the fixed DevOTP, and production
@@ -149,6 +155,7 @@ func Load() Config {
 
 		KYCWebhookSecret: getenv("KYC_WEBHOOK_SECRET", ""), // empty → signature check skipped (dev)
 		KYCMockDelay:     getdur("KYC_MOCK_DELAY_SECONDS", 4*time.Second),
+		ComplianceToken:  getenv("COMPLIANCE_TOKEN", ""),
 
 		SMTPHost:     getenv("SMTP_HOST", ""),
 		SMTPPort:     int(getuint("SMTP_PORT", 587)),

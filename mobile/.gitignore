@@ -44,3 +44,7 @@ example
 # generated native folders
 /ios
 /android
+
+# Gradle's local build cache/locks (not the module's build.gradle source files) — these are
+# machine-local and churn on every build, so they must never be tracked.
+modules/**/android/.gradle/

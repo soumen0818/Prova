@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/prova/backend/internal/kyc"
 	"github.com/prova/shared/schema"
@@ -119,10 +120,19 @@ func (h *handler) verificationWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 // decideVerification records a human compliance decision (POST /kyc/verifications/{userId}/decide).
-// Compliance-only: in production this sits behind the anchor's authenticated console.
+//
+// This lets its caller approve ANY user's KYC on request, so it is gated by a bearer token
+// (COMPLIANCE_TOKEN) rather than sitting open — without this check, anyone who knows or guesses a
+// userId could self-approve their own verification and collect a credential. In production this
+// route should additionally sit behind the anchor's authenticated compliance console; the token
+// here is the minimum bar for any deployment reachable from the internet.
 func (h *handler) decideVerification(w http.ResponseWriter, r *http.Request) {
 	if h.verification == nil {
 		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
+		return
+	}
+	if !h.validComplianceToken(r.Header.Get("Authorization")) {
+		writeError(w, http.StatusUnauthorized, schema.ErrInternal, "missing or invalid compliance token")
 		return
 	}
 	userID := r.PathValue("userId")
@@ -220,6 +230,20 @@ func (h *handler) renewCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cred)
+}
+
+// validComplianceToken checks the "Authorization: Bearer <token>" header against COMPLIANCE_TOKEN.
+// If no token is configured (local dev only), the check is skipped — see Config.ComplianceToken.
+func (h *handler) validComplianceToken(header string) bool {
+	if h.cfg.ComplianceToken == "" {
+		return true
+	}
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return false
+	}
+	got := strings.TrimPrefix(header, prefix)
+	return hmac.Equal([]byte(got), []byte(h.cfg.ComplianceToken))
 }
 
 // validWebhookSignature checks the HMAC-SHA256 of the raw body against the configured secret.

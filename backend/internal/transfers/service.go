@@ -91,6 +91,20 @@ func (s *Service) Submit(ctx context.Context, req schema.SubmitTransferRequest) 
 	return respFromTransfer(rec), nil
 }
 
+// Ping verifies the store (Postgres) and, if configured, Redis are reachable — used by the
+// readiness probe so a load balancer stops routing to a replica with a dead dependency.
+func (s *Service) Ping(ctx context.Context) error {
+	if err := s.store.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres: %w", err)
+	}
+	if s.redis != nil {
+		if err := s.redis.Ping(ctx).Err(); err != nil {
+			return fmt.Errorf("redis: %w", err)
+		}
+	}
+	return nil
+}
+
 // List returns recent transfer history (populated by relays + the indexer).
 func (s *Service) List(ctx context.Context, limit int) ([]schema.TransferRecord, error) {
 	ts, err := s.store.List(ctx, limit)

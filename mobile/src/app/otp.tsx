@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,11 +15,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, GlassIconButton } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { env } from '@/config/env';
 import { requestOtp, verifyOtp } from '@/lib/auth-otp';
 import { ApiError } from '@/lib/api';
+import { canUseBiometrics } from '@/lib/auth';
+import { QK } from '@/lib/queries';
 import { captureError } from '@/lib/reporting';
+import { saveSession, type Session } from '@/lib/session';
 import { validateOtp } from '@/lib/validation';
+import { getOrCreateSecret } from '@/lib/wallet';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 const CODE_LENGTH = 6;
@@ -27,6 +31,7 @@ const CODE_LENGTH = 6;
 export default function OtpScreen() {
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const { email } = useLocalSearchParams<{ email: string }>();
   const { devCode } = useLocalSearchParams<{ devCode?: string }>();
   // Pre-filled only when the server had no mail sender and handed one back — never invented here.
@@ -61,7 +66,24 @@ export default function OtpScreen() {
     setBusy(true);
     try {
       await verifyOtp(email ?? '', clean);
-      router.push({ pathname: '/profile-setup', params: { email: email ?? '' } });
+
+      // The wallet is created here rather than behind a "Create wallet" screen: there is nothing
+      // for the user to decide, so a confirmation step would be a tap that only delays them. The
+      // key is generated with a secure RNG straight into the enclave and never leaves the device.
+      await getOrCreateSecret();
+      await canUseBiometrics().catch(() => false); // warm up; AppLock enforces it next launch
+
+      const session: Session = {
+        email: (email ?? '').trim().toLowerCase(),
+        createdAt: Math.floor(Date.now() / 1000),
+      };
+      await saveSession(session);
+      // Write straight into the cache so the root gate sees the session synchronously — avoids a
+      // stale-null read that would bounce back to /welcome (the "onboarding twice" bug).
+      queryClient.setQueryData(QK.session, session);
+      // Clear the auth screens from the back stack, then set a PIN before entering the app.
+      if (router.canDismiss()) router.dismissAll();
+      router.replace('/set-pin');
     } catch (e) {
       captureError(e, { step: 'verify-otp' });
       // The server's message is written for a person and says what to do next — how many attempts
@@ -75,7 +97,7 @@ export default function OtpScreen() {
     } finally {
       setBusy(false);
     }
-  }, [code, email, router, toast]);
+  }, [code, email, queryClient, router, toast]);
 
   /** Ask for a fresh code. Disabled while the server's cooldown is running. */
   const onResend = useCallback(async () => {
@@ -136,10 +158,6 @@ export default function OtpScreen() {
           </View>
 
           {showError ? <Text style={styles.error}>{showError}</Text> : null}
-
-          {env.auth.isDev ? (
-            <Text style={styles.devHint}>Dev mode — code is {env.auth.devOtp}.</Text>
-          ) : null}
         </View>
 
         <Pressable onPress={onResend} disabled={cooldown > 0 || busy} hitSlop={8}>
@@ -191,5 +209,4 @@ const styles = StyleSheet.create({
     color: 'transparent',
   },
   error: { ...Typography.caption, color: Palette.statusDown },
-  devHint: { ...Typography.micro, color: Palette.accent },
 });

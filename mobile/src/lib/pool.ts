@@ -247,6 +247,38 @@ export async function prepareShield(amount: number): Promise<ShieldPlan> {
   };
 }
 
+/** Outcome of a completed deposit into the pool. */
+export interface ShieldResult {
+  txHash: string;
+  /**
+   * `pending` means the transaction was accepted but not yet confirmed. The money may still arrive,
+   * so the UI must say "processing" — never "failed", which is what makes someone deposit twice.
+   */
+  status: 'confirmed' | 'pending';
+}
+
+/**
+ * Deposit `amount` whole units into the pool: prove, review, sign, submit.
+ *
+ * The user signs this themselves because the contract moves their own tokens
+ * (`from.require_auth()`), so it cannot be relayed like a spend. `reviewAndSign` shows what is being
+ * approved first — nothing is blind-signed.
+ *
+ * The resulting note is **not spendable immediately**: it must be folded into the Merkle tree first
+ * (a few seconds). `poolBalance()` reports it as pending until then.
+ */
+export async function shieldToPool(
+  amount: number,
+  onProgress?: (stage: 'proving' | 'approving' | 'submitting') => void,
+): Promise<ShieldResult> {
+  onProgress?.('proving');
+  const plan = await prepareShield(amount);
+
+  onProgress?.('approving');
+  const { shieldIntoPool } = await import('./onchain');
+  return shieldIntoPool(plan);
+}
+
 // ---------------------------------------------------------------------------
 // Send / cash out — spending
 // ---------------------------------------------------------------------------

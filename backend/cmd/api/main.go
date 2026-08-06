@@ -214,6 +214,17 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 	deps.Wallet = chain.NewWallet(cfg.HorizonURL, cfg.StellarNetwork)
 	logger.Info("on-chain wallet ready", "horizon", cfg.HorizonURL, "deposit_mode", cfg.DepositMode)
 
+	// Shield builder: assembles `shield` invocations the *user* signs. Needs the pool contract, so
+	// it stays nil (routes 503) when the pool is not deployed for this environment.
+	if cfg.PoolContractID != "" {
+		deps.Shielder = chain.NewShieldBuilderFor(
+			cfg.HorizonURL, cfg.SorobanRPCURL, cfg.PoolContractID, cfg.StellarNetwork,
+		)
+		logger.Info("shield builder ready", "contract", cfg.PoolContractID, "rpc", cfg.SorobanRPCURL)
+	} else {
+		logger.Warn("POOL_CONTRACT_ID unset — /pool/shield routes disabled")
+	}
+
 	// KYC credential issuer (anchor side) — signs via the prover CLI.
 	issuer := kyc.CLIIssuer{ProverBin: cfg.ProverBin, AnchorSeed: cfg.AnchorSeed}
 	if pk, perr := issuer.AnchorPublicKey(ctx); perr != nil {

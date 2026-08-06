@@ -46,6 +46,11 @@ type handler struct {
 	// Without it a wallet cannot build a spend proof at all, so a nil here is not a degraded
 	// feature — it means the pool is unusable and the routes say so with 503.
 	pool *pool.Service
+	// shielder builds and submits `shield` invocations; nil disables the /pool/shield routes.
+	//
+	// Separate from `pool` because it needs the Soroban RPC and the contract id, while the pool
+	// service only reads the indexer's view.
+	shielder *chain.ShieldBuilder
 }
 
 // Deps are the runtime dependencies the server needs. Any service may be nil (e.g. when
@@ -59,6 +64,7 @@ type Deps struct {
 	VerificationProvider kyc.Provider
 	Wallet               *chain.Wallet
 	Pool                 *pool.Service
+	Shielder             *chain.ShieldBuilder
 	// Redis backs the rate limiter so limits hold across replicas. Nil falls back to per-instance
 	// in-process counters — degraded, but never open.
 	Redis *redis.Client
@@ -79,6 +85,7 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 		verificationProvider: deps.VerificationProvider,
 		wallet:               deps.Wallet,
 		pool:                 deps.Pool,
+		shielder:             deps.Shielder,
 		limiter:              ratelimit.New(deps.Redis),
 		otp:                  otp.New(deps.Redis),
 		mailer:               deps.Mailer,
@@ -123,6 +130,10 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 	mux.HandleFunc("GET /pool/path/{commitment}", h.poolPath)
 	mux.HandleFunc("POST /pool/spent", h.poolSpent)
 	mux.HandleFunc("POST /pool/spend", h.poolSpend)
+	// Shield needs the user's own signature (the contract moves THEIR tokens), so unlike a spend it
+	// is a prepare/submit pair rather than a single relayed call.
+	mux.HandleFunc("POST /pool/shield/prepare", h.prepareShield)
+	mux.HandleFunc("POST /pool/shield/submit", h.submitShield)
 
 	// Real (testnet) on-chain wallet: activate, add a trustline (phone-signed), read balances.
 	mux.HandleFunc("GET /wallet/{address}", h.walletState)

@@ -14,13 +14,8 @@ import { Card, GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
 import { formatBalance } from '@/lib/balance';
 import { useRequireKyc } from '@/hooks/use-require-kyc';
-import {
-  useBalance,
-  useDenomination,
-  useHistory,
-  useKycVerified,
-  useRecipients,
-} from '@/lib/queries';
+import { useHistory, useKycVerified, useRecipients } from '@/lib/queries';
+import { useMoney } from '@/hooks/use-money';
 import { initials, type Recipient } from '@/lib/recipients';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
@@ -30,8 +25,7 @@ type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: num
 export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity') => void }) {
   const router = useRouter();
   const requireKyc = useRequireKyc();
-  const balance = useBalance();
-  const denom = useDenomination();
+  const money = useMoney();
   const recipients = useRecipients();
   const kyc = useKycVerified();
   const history = useHistory();
@@ -66,10 +60,20 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
           </View>
         </View>
         <Text style={styles.balanceValue}>
-          {balance.isLoading
+          {money.isLoading
             ? '—'
-            : formatBalance(balance.data ?? 0, denom.data, 'No money added yet')}
+            : formatBalance(money.spendable, money.denom, 'No money added yet')}
         </Text>
+        {/*
+          Confirming money is shown separately and never added to the figure above. A note cannot
+          move until its fold lands, so summing them would invite a tap on money that can't go
+          anywhere — and the refusal would come from the contract instead of the screen.
+        */}
+        {money.pending > 0 ? (
+          <Text style={styles.pendingNote}>
+            {formatBalance(money.pending, money.denom)} confirming — usually a few seconds
+          </Text>
+        ) : null}
         <View style={styles.balanceActions}>
           <BalanceButton
             label="Add money"
@@ -216,6 +220,7 @@ const styles = StyleSheet.create({
   },
   netChipText: { ...Typography.micro, color: Palette.onAccent, textTransform: 'uppercase' },
   balanceValue: { ...Typography.displayBalance, color: Palette.onAccent },
+  pendingNote: { ...Typography.micro, color: 'rgba(17,19,26,0.7)', marginTop: Spacing.one },
   balanceActions: { flexDirection: 'row', gap: Spacing.three },
   balanceBtn: {
     flex: 1,

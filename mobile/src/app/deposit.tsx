@@ -18,7 +18,9 @@ import {
   startUserDeposit,
   UserRejectedError,
 } from '@/lib/onchain';
-import { useAssetMismatch, useBalance, useDenomination, useKycVerified, QK } from '@/lib/queries';
+import { useAssetMismatch, useKycVerified, QK } from '@/lib/queries';
+import { useMoney } from '@/hooks/use-money';
+import { shieldToPool } from '@/lib/pool';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
@@ -27,6 +29,13 @@ import { validateAmount } from '@/lib/validation';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 const QUICK = [100, 500, 1000, 2500];
+
+/** Progress copy for each shield stage. Proving is the slow one, so it says so plainly. */
+const SHIELD_STAGES: Record<'proving' | 'approving' | 'submitting', string> = {
+  proving: 'Proving the amount…',
+  approving: 'Waiting for approval…',
+  submitting: 'Submitting to Stellar…',
+};
 const MAX_DEPOSIT = 100_000;
 
 /**
@@ -38,17 +47,53 @@ export default function DepositScreen() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { data: balanceMinor } = useBalance();
-  const { data: denom } = useDenomination();
+  const money = useMoney();
   const assetMismatch = useAssetMismatch();
   const { data: verified } = useKycVerified();
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  /** Honest progress label while shielding — proving is the slow part and must be visible. */
+  const [shieldStage, setShieldStage] = useState('');
 
   const amt = Number(amount);
   const check = validateAmount(amount, { min: 1, max: MAX_DEPOSIT });
   const showError = submitted && !check.ok ? check.error : '';
+
+  /**
+   * Step 2 of the real flow: move the public on-chain balance into the shielded pool.
+   *
+   * A `pending` result is reported as processing, never failure — the deposit may still land, and
+   * telling someone it failed is how they shield twice.
+   */
+  const onShield = useCallback(async () => {
+    setSubmitted(true);
+    const v = validateAmount(amount, { min: 1, max: MAX_DEPOSIT });
+    if (!v.ok) {
+      toast.error(v.error);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await shieldToPool(amt, (stage) => setShieldStage(SHIELD_STAGES[stage]));
+      await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
+      await queryClient.invalidateQueries({ queryKey: QK.denomination });
+      if (res.status === 'pending') {
+        toast.info('Deposit submitted — confirming. It will appear shortly.');
+      } else {
+        // Confirmed on-chain, but not yet spendable: the note still has to be folded into the tree.
+        toast.success('Added to your private balance — confirming for a few seconds.');
+      }
+      router.back();
+    } catch (e) {
+      if (e instanceof UserRejectedError) return; // declined the review — a cancel, not a failure
+      captureError(e, { step: 'pool-shield' });
+      toast.error(e instanceof Error ? e.message : 'Could not move funds into the pool');
+    } finally {
+      setBusy(false);
+      setShieldStage('');
+    }
+  }, [amount, amt, queryClient, router, toast]);
 
   const onDevCredit = useCallback(async () => {
     setSubmitted(true);
@@ -129,8 +174,13 @@ export default function DepositScreen() {
         <Card tone="accent" style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Current balance</Text>
           <Text style={styles.balanceValue}>
-            {formatBalance(balanceMinor ?? 0, denom, 'Nothing added yet')}
+            {formatBalance(money.spendable, money.denom, 'Nothing added yet')}
           </Text>
+          {money.pending > 0 ? (
+            <Text style={styles.balanceLabel}>
+              {formatBalance(money.pending, money.denom)} confirming
+            </Text>
+          ) : null}
         </Card>
 
         {/*
@@ -149,6 +199,7 @@ export default function DepositScreen() {
           // currency, and `onAnchorDeposit` never reads a local amount. Collecting one would be a
           // control that changes nothing — and it is exactly where a wrong currency used to appear.
           <>
+            <Text style={styles.stepTitle}>1. Add money</Text>
             <Button
               label={busy ? 'Preparing…' : 'Add money via anchor'}
               onPress={onAnchorDeposit}
@@ -160,6 +211,42 @@ export default function DepositScreen() {
               device), then open the anchor’s deposit page — where you choose the amount. You
               receive {env.depositAsset}, a test asset with no real value.
             </Text>
+
+            {/*
+              Two steps, not one, because they are genuinely different events. The anchor deposit
+              puts a public balance in the user's own Stellar account; shielding then moves it into
+              the pool, which is where privacy begins. Collapsing them into one button would hide
+              a second signature and a second on-chain transaction the user is paying for.
+            */}
+            <View style={styles.divider} />
+            <Text style={styles.stepTitle}>2. Make it private</Text>
+            <Text style={styles.note}>
+              Moves {env.depositAsset} from your public Stellar balance into the shielded pool. Your
+              device proves the amount without revealing it. This step needs your signature because
+              the contract moves your own tokens.
+            </Text>
+            <Text style={styles.label}>Amount to shield ({env.depositAsset})</Text>
+            <View style={styles.amountRow}>
+              <Text style={styles.assetCode}>{env.depositAsset}</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={Palette.textMuted}
+                editable={!busy}
+              />
+            </View>
+            {showError ? <Text style={styles.error}>{showError}</Text> : null}
+            <Button
+              label={busy ? shieldStage : 'Move into private pool'}
+              onPress={onShield}
+              loading={busy}
+              disabled={!check.ok}
+              variant="secondary"
+              style={styles.action}
+            />
           </>
         ) : (
           <>
@@ -235,4 +322,10 @@ const styles = StyleSheet.create({
   note: { ...Typography.micro, color: Palette.textMuted },
   error: { ...Typography.caption, color: Palette.statusDown, marginBottom: Spacing.four },
   mismatch: { ...Typography.micro, color: Palette.statusDown, marginBottom: Spacing.four },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Palette.border,
+    marginVertical: Spacing.six,
+  },
+  stepTitle: { ...Typography.section, color: Palette.white, marginBottom: Spacing.two },
 });

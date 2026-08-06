@@ -21,16 +21,33 @@ import {
   fundAccount,
   getAccountState,
   prepareDeposit,
+  prepareShieldTx,
   prepareTrustline,
+  submitShieldTx,
   submitTrustline,
   type AccountState,
   type DepositResponse,
   type OnChainBalance,
 } from './api';
+import type { ShieldPlan, ShieldResult } from './pool';
 import { env } from '@/config/env';
 import { signStellarHash } from './keys';
 import { getSecret, SecureKey } from './secure-store';
 import { ensureAccount, getStellarAddress } from './wallet';
+
+/**
+ * Stellar assets carry 7 decimal places, so contract amounts are in stroops while the app counts
+ * whole units. Getting this wrong by a factor of 10^7 is the classic on-chain money bug, so the
+ * conversion lives in exactly one place.
+ */
+const STROOPS_PER_UNIT = 10_000_000;
+
+/**
+ * Hex lengths of the Groth16 proof components the contract expects: G1 (96 bytes), G2 (192), G1.
+ * `prepareShield` returns them concatenated as `A‖B‖C`.
+ */
+const PROOF_A_HEX = 96 * 2;
+const PROOF_B_HEX = 192 * 2;
 
 /** Raised when the user declines a signing review. */
 export class UserRejectedError extends Error {
@@ -101,6 +118,39 @@ export async function establishTrustline(): Promise<string> {
   const signature = await reviewAndSign(unsigned.summary, unsigned.hash, await master());
   const { hash } = await submitTrustline(unsigned.xdr, addr, signature);
   return hash;
+}
+
+/**
+ * Move a proved note into the shielded pool: prepare (server) → review + sign (user) → submit.
+ *
+ * This is the one pool operation the relayer cannot perform. The contract calls
+ * `from.require_auth()` and then moves tokens out of the user's account, so only they can authorise
+ * it — which is also why Prova never has to custody anyone's funds.
+ *
+ * The amount is deliberately public here: a deposit is visible on-chain by design. Privacy starts
+ * once the value is inside the pool.
+ */
+export async function shieldIntoPool(plan: ShieldPlan): Promise<ShieldResult> {
+  const addr = await address();
+  const unsigned = await prepareShieldTx({
+    address: addr,
+    // The contract takes the token's own units; the app counts whole units.
+    amount: plan.amount * STROOPS_PER_UNIT,
+    note: {
+      commitment: plan.commitment,
+      ownerPk: plan.ownerPk,
+      epkX: plan.epkX,
+      epkY: plan.epkY,
+      encAmount: plan.encAmount,
+      encRho: plan.encRho,
+    },
+    proofA: plan.proof.slice(0, PROOF_A_HEX),
+    proofB: plan.proof.slice(PROOF_A_HEX, PROOF_A_HEX + PROOF_B_HEX),
+    proofC: plan.proof.slice(PROOF_A_HEX + PROOF_B_HEX),
+  });
+  const signature = await reviewAndSign(unsigned.summary, unsigned.hash, await master());
+  const res = await submitShieldTx(unsigned.xdr, addr, signature);
+  return { txHash: res.hash, status: res.status };
 }
 
 /**

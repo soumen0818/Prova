@@ -102,9 +102,9 @@ func (c *SorobanClient) call(ctx context.Context, method string, params any, out
 // error, so callers can distinguish "the chain says no" from "we could not reach the chain".
 func (c *SorobanClient) Simulate(ctx context.Context, envelopeXDR string) (SimulateResult, error) {
 	var raw struct {
-		TransactionData string `json:"transactionData"`
-		MinResourceFee  string `json:"minResourceFee"`
-		Error           string `json:"error"`
+		TransactionData string   `json:"transactionData"`
+		MinResourceFee  string   `json:"minResourceFee"`
+		Error           string   `json:"error"`
 		Events          []string `json:"events"`
 		// Present when the invocation would trap; the SDK reports it inside `error` too.
 		RestorePreamble json.RawMessage `json:"restorePreamble"`

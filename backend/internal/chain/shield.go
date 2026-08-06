@@ -21,8 +21,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/stellar/go/clients/horizonclient"
+	"github.com/stellar/go/network"
 	"github.com/stellar/go/strkey"
 	"github.com/stellar/go/txnbuild"
 	"github.com/stellar/go/xdr"
@@ -41,6 +44,12 @@ const (
 // proof (contract error #2), since the proof is verified before the token moves. It is a permanent
 // failure for this request, so callers must not retry it unchanged.
 var ErrShieldRejected = errors.New("shield rejected by the contract")
+
+// ErrShieldUnconfirmed means the transaction was accepted by the network but its outcome was not
+// observed before the deadline. It is deliberately NOT an error the caller should present as
+// failure: the shield may still land, and telling someone their deposit failed when it did not is
+// how a user ends up depositing twice.
+var ErrShieldUnconfirmed = errors.New("shield submitted but not yet confirmed")
 
 // ShieldNote mirrors the contract's `ShieldNote` struct. All values are hex, 32 bytes each.
 type ShieldNote struct {
@@ -76,6 +85,25 @@ type ShieldBuilder struct {
 // NewShieldBuilder wires the Horizon (sequence numbers) and Soroban RPC (simulation) clients.
 func NewShieldBuilder(h *horizonclient.Client, s *SorobanClient, contractID, passphrase string) *ShieldBuilder {
 	return &ShieldBuilder{horizon: h, soroban: s, contractID: contractID, passphrase: passphrase}
+}
+
+// NewShieldBuilderFor builds one from plain configuration, so callers need no Stellar client types.
+func NewShieldBuilderFor(horizonURL, sorobanURL, contractID, stellarNetwork string) *ShieldBuilder {
+	return NewShieldBuilder(
+		&horizonclient.Client{HorizonURL: horizonURL, HTTP: &http.Client{Timeout: 30 * time.Second}},
+		NewSorobanClient(sorobanURL),
+		contractID,
+		NetworkPassphrase(stellarNetwork),
+	)
+}
+
+// NetworkPassphrase maps a network name to its Stellar passphrase. Anything that is not explicitly
+// mainnet is treated as testnet — the safe direction to be wrong in.
+func NetworkPassphrase(stellarNetwork string) string {
+	if stellarNetwork == "mainnet" {
+		return network.PublicNetworkPassphrase
+	}
+	return network.TestNetworkPassphrase
 }
 
 // Build prepares an unsigned, fully-assembled shield transaction.
@@ -160,6 +188,59 @@ func (b *ShieldBuilder) Build(ctx context.Context, req ShieldRequest) (UnsignedT
 	// blind-signing.
 	summary := fmt.Sprintf("Move %s into the private pool", formatStroops(req.Amount))
 	return UnsignedTx{XDR: envelope, Hash: hash, Network: b.passphrase, Summary: summary}, nil
+}
+
+// SubmitSigned attaches the phone's signature to a prepared shield envelope and submits it.
+//
+// Submission goes through Soroban RPC rather than Horizon so the settled contract outcome can be
+// read back: Horizon would report the transaction as applied without telling us whether the
+// invocation itself reverted.
+//
+// `AddSignatureBase64` re-derives the hash from the envelope and verifies it against the public key,
+// so a signature that does not match is rejected here — before anything reaches the network.
+func (b *ShieldBuilder) SubmitSigned(ctx context.Context, envelopeXDR, publicKey, signatureB64 string) (string, error) {
+	generic, err := txnbuild.TransactionFromXDR(envelopeXDR)
+	if err != nil {
+		return "", fmt.Errorf("parse envelope: %w", err)
+	}
+	tx, ok := generic.Transaction()
+	if !ok {
+		return "", fmt.Errorf("not a simple transaction")
+	}
+	signed, err := tx.AddSignatureBase64(b.passphrase, publicKey, signatureB64)
+	if err != nil {
+		return "", fmt.Errorf("attach signature: %w", err)
+	}
+	signedXDR, err := signed.Base64()
+	if err != nil {
+		return "", fmt.Errorf("encode signed tx: %w", err)
+	}
+
+	sent, err := b.soroban.Send(ctx, signedXDR)
+	if err != nil {
+		return "", fmt.Errorf("submit shield: %w", err)
+	}
+	switch sent.Status {
+	case "PENDING", "DUPLICATE":
+		// Accepted. DUPLICATE means this exact transaction was already submitted — same outcome.
+	case "TRY_AGAIN_LATER":
+		return "", fmt.Errorf("network is congested, try again shortly")
+	default:
+		return "", fmt.Errorf("%w: %s %s", ErrShieldRejected, sent.Status, sent.ErrorResultXDR)
+	}
+
+	// Wait for the outcome. A shield that lands but reverts must not be reported as success — the
+	// wallet would show money it does not have in the pool.
+	res, err := b.soroban.AwaitTransaction(ctx, sent.Hash, 2*time.Second)
+	if err != nil {
+		// Submitted but unconfirmed. The hash is returned so the caller can report "processing"
+		// rather than "failed" — the transaction may still land.
+		return sent.Hash, fmt.Errorf("%w: %v", ErrShieldUnconfirmed, err)
+	}
+	if res.Status != "SUCCESS" {
+		return sent.Hash, fmt.Errorf("%w: %s", ErrShieldRejected, res.ResultXDR)
+	}
+	return sent.Hash, nil
 }
 
 // shieldArgs builds the ScVal argument vector for `shield(from, amount, note, proof)`.

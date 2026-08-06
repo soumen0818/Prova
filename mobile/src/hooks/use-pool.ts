@@ -8,7 +8,8 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { poolBalance, scanForNotes, type ScanResult } from '@/lib/pool';
 import { QK } from '@/lib/queries';
@@ -37,6 +38,46 @@ export function usePoolBalance() {
     // Money should never look stale; showing the last known figure while refreshing is right here.
     placeholderData: (previous) => previous,
   });
+}
+
+/**
+ * Keep the wallet's view of the pool current, for the lifetime of the app.
+ *
+ * Mount this **once**, near the root. It scans on start, on a timer, and whenever the app returns to
+ * the foreground — that last one matters because money that arrived while the phone was locked is
+ * exactly what a user opens the app to check.
+ *
+ * Failures are deliberately silent: a scan is a refresh, and a red banner because one poll missed
+ * the network would be alarming about nothing. The next pass picks it up.
+ */
+export function usePoolSync(enabled = true): void {
+  const { scan } = useNoteScan();
+  // Kept in a ref so the effect below does not re-subscribe on every render — `scan` is recreated
+  // whenever a scan starts or finishes, which would otherwise tear down the timer mid-flight.
+  const scanRef = useRef(scan);
+  useEffect(() => {
+    scanRef.current = scan;
+  }, [scan]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    const run = () => {
+      if (active) void scanRef.current();
+    };
+
+    run();
+    const timer = setInterval(run, SCAN_INTERVAL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') run();
+    });
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [enabled]);
 }
 
 /**

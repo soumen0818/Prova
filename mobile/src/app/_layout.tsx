@@ -6,6 +6,10 @@ import {
   useFonts,
 } from '@expo-google-fonts/urbanist';
 import { QueryClientProvider } from '@tanstack/react-query';
+
+import { usePoolSync } from '@/hooks/use-pool';
+import { usesPool } from '@/hooks/use-money';
+import { warmUpProver } from '@/lib/pool';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -38,6 +42,27 @@ const ProvaNavTheme = {
   },
 };
 
+/**
+ * Background work that must run for the whole session, mounted inside the query provider.
+ *
+ * Kept as a component rather than an effect in RootLayout because both hooks need the React Query
+ * client, which only exists below the provider.
+ */
+function PoolSync() {
+  // Only meaningful when money actually lives in the pool; in simulated mode there is nothing to
+  // scan for and no prover cost worth paying up front.
+  usePoolSync(usesPool);
+
+  useEffect(() => {
+    if (!usesPool) return;
+    // ~1s of proving-key derivation. Doing it here means it lands while the user is reading the
+    // home screen instead of inside their first send.
+    void warmUpProver();
+  }, []);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Urbanist_400Regular,
@@ -65,6 +90,7 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <PoolSync />
         <ThemeProvider value={ProvaNavTheme}>
           <ToastProvider>
             <StatusBar style="light" />

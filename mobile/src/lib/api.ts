@@ -6,6 +6,8 @@
  */
 import { Platform } from 'react-native';
 
+import type { ShieldPrepareRequest, ShieldSubmitResponse } from '@prova/shared';
+
 import { env } from '@/config/env';
 
 /** Resolve the backend base URL, accounting for the Android emulator's host alias. */
@@ -477,6 +479,37 @@ export function getSpentNullifiers(nullifiers: string[]): Promise<{ spent: strin
   return json<{ spent: string[] }>('/pool/spent', {
     method: 'POST',
     body: JSON.stringify({ nullifiers }),
+  });
+}
+
+/**
+ * Prepare a shield (money INTO the pool) — an unsigned transaction for the phone to sign.
+ *
+ * Unlike a spend this cannot be relayed: the contract moves the user's *own* tokens and demands
+ * their authorisation. The backend simulates before returning, so an invalid proof fails here
+ * rather than after the user has approved and paid a fee for a reverting transaction.
+ */
+export function prepareShieldTx(body: ShieldPrepareRequest): Promise<UnsignedTx> {
+  return json<UnsignedTx>('/pool/shield/prepare', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Submit the phone-signed shield transaction.
+ *
+ * A `pending` status is not failure — see `ShieldStatus`. The deposit may still land, so the caller
+ * must say "processing", never "failed".
+ */
+export function submitShieldTx(
+  xdr: string,
+  publicKey: string,
+  signature: string,
+): Promise<ShieldSubmitResponse> {
+  return json<ShieldSubmitResponse>('/pool/shield/submit', {
+    method: 'POST',
+    body: JSON.stringify({ xdr, publicKey, signature }),
   });
 }
 

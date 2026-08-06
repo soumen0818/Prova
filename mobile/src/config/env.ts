@@ -82,10 +82,16 @@ export const env = {
     devEmail: str(process.env.EXPO_PUBLIC_DEV_EMAIL, 'you@example.com'),
     devOtp: str(process.env.EXPO_PUBLIC_DEV_OTP, '000000'),
   },
-  /** Display currency (funding side). */
-  currency: str(process.env.EXPO_PUBLIC_CURRENCY, 'AED'),
   /** How adding money works: 'simulated' (local counter) vs 'anchor' (real testnet rails). */
   depositMode,
-  /** On-chain deposit asset code (matches the backend's ANCHOR_ASSET). */
+  /**
+   * On-chain deposit asset code (matches the backend's `ANCHOR_ASSET`) — what the wallet settles in.
+   *
+   * This is the unit the app displays. There is deliberately **no** display-currency variable: a
+   * build-time currency is a single answer for everyone running the build, which is wrong as soon
+   * as senders are not all in one country. The real currency, when a licensed anchor exists, comes
+   * from that anchor's SEP-24 transaction and is recorded against the balance instead — see
+   * `lib/balance.ts` and `@prova/shared/money`.
+   */
   depositAsset: str(process.env.EXPO_PUBLIC_DEPOSIT_ASSET, 'SRT'),
 } as const;

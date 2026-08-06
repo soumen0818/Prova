@@ -6,13 +6,13 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { submitTransfer, type KycCredential } from '@/lib/api';
 import { authenticate, canUseBiometrics } from '@/lib/auth';
-import { debit, formatMinor, getBalanceMinor } from '@/lib/balance';
+import { debit, formatBalance, getBalanceMinor, settlementDenomination } from '@/lib/balance';
 import { syncBackup } from '@/lib/cloud-backup';
 import { getStoredCredential, isExpired } from '@/lib/kyc';
-import { tierLimit } from '@prova/shared';
+import { formatAmount, minorPerUnit, tierLimit } from '@prova/shared';
 import { hasPin } from '@/lib/pin';
 import { isProverAvailable, prove } from '@/lib/prover';
-import { useBalance, useRecipients, QK } from '@/lib/queries';
+import { useBalance, useDenomination, useRecipients, QK } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { getSecret, SecureKey } from '@/lib/secure-store';
 import { secureRandomU64 } from '@/lib/wallet';
@@ -21,7 +21,6 @@ import { Loader } from '@/components/loader';
 import { PaymentResult } from '@/components/payment-result';
 import { Button, Card, Screen } from '@/components/ui';
 import { PinPromptModal } from '@/components/pin-prompt';
-import { env } from '@/config/env';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 type Phase = 'idle' | 'proving' | 'submitting' | 'sent' | 'processing' | 'error';
@@ -37,6 +36,7 @@ export default function SendScreen() {
   const { recipientId } = useLocalSearchParams<{ recipientId?: string }>();
   const { data: recipients } = useRecipients();
   const { data: balanceMinor } = useBalance();
+  const { data: denom } = useDenomination();
 
   const [picked, setPicked] = useState<Recipient | null>(null);
   const [amount, setAmount] = useState('');
@@ -88,7 +88,11 @@ export default function SendScreen() {
 
   const amt = Number(amount);
   const amountValid = Number.isInteger(amt) && amt >= 1 && amt <= 9999;
-  const canAfford = amountValid && amt * 100 <= (balanceMinor ?? 0);
+  // Spending denomination: what the balance is actually held in, falling back to what this build
+  // settles in for an account that has not been funded yet (nothing is affordable then anyway).
+  const spendDenom = denom ?? settlementDenomination();
+  const amtMinor = Math.round(amt * minorPerUnit(spendDenom));
+  const canAfford = amountValid && amtMinor <= (balanceMinor ?? 0);
 
   // The actual prove + relay, run only after the user has authorized the payment (step-up).
   const runTransfer = useCallback(async () => {
@@ -161,7 +165,7 @@ export default function SendScreen() {
       return;
     }
     // Re-read balance at send time (source of truth) to avoid a stale cached value.
-    if (amt * 100 > (await getBalanceMinor())) {
+    if (amtMinor > (await getBalanceMinor())) {
       setReason('insufficient_funds');
       setPhase('error');
       return;
@@ -186,7 +190,7 @@ export default function SendScreen() {
     } else {
       await runTransfer();
     }
-  }, [amountValid, amt, secret, credential, runTransfer]);
+  }, [amountValid, amt, amtMinor, secret, credential, runTransfer]);
 
   const busy = phase === 'proving' || phase === 'submitting';
   const list = useMemo(() => recipients ?? [], [recipients]);
@@ -194,7 +198,7 @@ export default function SendScreen() {
   // ---- Terminal outcomes: success / still-processing / failed ----
   if (phase === 'sent' || phase === 'processing' || phase === 'error') {
     const receipt = {
-      amount: formatMinor(amt * 100),
+      amount: formatAmount(amtMinor, spendDenom),
       recipientName: selected?.name ?? 'your recipient',
       recipientHandle: selected?.handle,
       reference: txHash || undefined,
@@ -301,9 +305,9 @@ export default function SendScreen() {
 
         {/* Amount */}
         <View style={styles.amountWrap}>
-          <Text style={styles.amountLabel}>Amount ({env.currency})</Text>
+          <Text style={styles.amountLabel}>Amount ({spendDenom.code})</Text>
           <View style={styles.amountRow}>
-            <Text style={styles.currency}>{env.currency}</Text>
+            <Text style={styles.assetCode}>{spendDenom.code}</Text>
             <TextInput
               style={styles.amountInput}
               value={amount}
@@ -316,7 +320,7 @@ export default function SendScreen() {
             />
           </View>
           <Text style={styles.balanceHint}>
-            Available: {formatMinor(balanceMinor ?? 0)}
+            Available: {formatBalance(balanceMinor ?? 0, denom, 'nothing added yet')}
             {amountValid && !canAfford ? '  ·  Insufficient balance' : ''}
           </Text>
         </View>
@@ -402,7 +406,7 @@ const styles = StyleSheet.create({
   amountWrap: { marginBottom: Spacing.six, gap: Spacing.two },
   amountLabel: { ...Typography.caption, color: Palette.textSecondary },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.two },
-  currency: { ...Typography.title, color: Palette.textSecondary },
+  assetCode: { ...Typography.title, color: Palette.textSecondary },
   amountInput: {
     ...Typography.displayBalance,
     color: Palette.white,

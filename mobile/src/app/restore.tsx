@@ -108,7 +108,7 @@ export default function RestoreScreen() {
         if (data.profile) {
           await saveSession(data.profile as Session);
         }
-        await restoreBalanceMinor(data.balanceMinor ?? 0);
+        await restoreBalanceMinor(data.balanceMinor ?? 0, data.balanceDenom);
         await restoreRecipients(data.recipients ?? []);
         await savePin(candidate); // re-arm the local PIN verifier on this device
         await adoptVault(box, opened.dekHex); // this box is now the local vault

@@ -14,8 +14,8 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { formatMinor } from '@/lib/balance';
-import { useBalance, useKycVerified, useSession, QK } from '@/lib/queries';
+import { formatBalance } from '@/lib/balance';
+import { useBalance, useDenomination, useKycVerified, useSession, QK } from '@/lib/queries';
 import { initials } from '@/lib/recipients';
 import { clearSession } from '@/lib/session';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
@@ -29,6 +29,7 @@ export function ProfileScreen() {
   const queryClient = useQueryClient();
   const session = useSession();
   const balance = useBalance();
+  const denom = useDenomination();
   const kyc = useKycVerified();
   const verified = kyc.data === true;
 
@@ -77,7 +78,7 @@ export function ProfileScreen() {
         <Card style={styles.statCard}>
           <Text style={styles.statLabel}>Balance</Text>
           <Text style={styles.statValue}>
-            {balance.isLoading ? '—' : formatMinor(balance.data ?? 0)}
+            {balance.isLoading ? '—' : formatBalance(balance.data ?? 0, denom.data)}
           </Text>
         </Card>
         <Pressable style={styles.flex} onPress={() => !verified && router.push('/kyc')}>

@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
 import { apiBaseUrl } from '@/lib/api';
 import { hasPin } from '@/lib/pin';
-import { QK } from '@/lib/queries';
+import { useAssetMismatch, QK } from '@/lib/queries';
 import { resetWallet } from '@/lib/wallet';
 import { Palette, Spacing, Typography } from '@/constants/theme';
 
@@ -17,6 +17,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [pinSet, setPinSet] = useState(false);
+  const assetMismatch = useAssetMismatch();
 
   // Refresh the PIN state each time the screen gains focus (e.g. returning from set-pin).
   useFocusEffect(
@@ -55,7 +56,20 @@ export default function SettingsScreen() {
       <Text style={styles.section}>Account</Text>
       <Card style={styles.card}>
         <Row label="Sign-in mode" value={env.auth.mode} />
-        <Row label="Currency" value={env.currency} />
+        {/* The asset the wallet settles in — not a currency, and not tied to the user's country. */}
+        <Row label="Settlement asset" value={env.depositAsset} />
+        {/*
+          This build's asset code is only a label; the backend's is the one validated against the
+          anchor. If they differ, every balance on screen names the wrong asset — so say so plainly
+          instead of letting the number look authoritative.
+        */}
+        {assetMismatch ? (
+          <Text style={styles.warning}>
+            Backend settles in {assetMismatch.backend}, this app is built for {assetMismatch.app}.
+            Balances are labelled with the wrong asset — set EXPO_PUBLIC_DEPOSIT_ASSET=
+            {assetMismatch.backend} and rebuild.
+          </Text>
+        ) : null}
       </Card>
 
       <Text style={styles.section}>Network</Text>
@@ -127,4 +141,5 @@ const styles = StyleSheet.create({
   },
   rowLabel: { ...Typography.caption, color: Palette.textSecondary },
   rowValue: { ...Typography.caption, color: Palette.white, flexShrink: 1 },
+  warning: { ...Typography.micro, color: Palette.statusDown },
 });

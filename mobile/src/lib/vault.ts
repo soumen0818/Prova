@@ -21,7 +21,9 @@ import { argon2id } from '@noble/hashes/argon2.js';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import * as Crypto from 'expo-crypto';
 
-import { getBalanceMinor } from './balance';
+import type { Denomination } from '@prova/shared';
+
+import { getBalanceMinor, getDenomination } from './balance';
 import { listRecipients, type Recipient } from './recipients';
 import { deleteSecret, getSecret, hasSecret, SecureKey, setSecret } from './secure-store';
 import { getSession, type Session } from './session';
@@ -50,6 +52,12 @@ export interface VaultData {
   kycCredential: unknown | null;
   /** On-device private balance snapshot (minor units) as of the last sync. */
   balanceMinor: number;
+  /**
+   * What `balanceMinor` is denominated in; absent when nothing has ever been funded, and also in
+   * boxes sealed before denominations existed. Optional on purpose — adding it does not invalidate
+   * a v2 box, and restore infers the settlement asset when it is missing but a balance is present.
+   */
+  balanceDenom?: Denomination | null;
   /** Saved beneficiaries. */
   recipients: Recipient[];
   /** Unix seconds this snapshot was sealed. */
@@ -99,6 +107,7 @@ async function collectVaultData(): Promise<VaultData> {
     profile: await getSession(),
     kycCredential: kycRaw ? (JSON.parse(kycRaw) as unknown) : null,
     balanceMinor: await getBalanceMinor(),
+    balanceDenom: await getDenomination(),
     recipients: await listRecipients(),
     updatedAt: Math.floor(Date.now() / 1000),
   };

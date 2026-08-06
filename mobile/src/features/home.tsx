@@ -12,9 +12,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
-import { formatMinor } from '@/lib/balance';
+import { formatBalance } from '@/lib/balance';
 import { useRequireKyc } from '@/hooks/use-require-kyc';
-import { useBalance, useHistory, useKycVerified, useRecipients } from '@/lib/queries';
+import {
+  useBalance,
+  useDenomination,
+  useHistory,
+  useKycVerified,
+  useRecipients,
+} from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
@@ -25,6 +31,7 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
   const router = useRouter();
   const requireKyc = useRequireKyc();
   const balance = useBalance();
+  const denom = useDenomination();
   const recipients = useRecipients();
   const kyc = useKycVerified();
   const history = useHistory();
@@ -59,7 +66,9 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
           </View>
         </View>
         <Text style={styles.balanceValue}>
-          {balance.isLoading ? '—' : formatMinor(balance.data ?? 0)}
+          {balance.isLoading
+            ? '—'
+            : formatBalance(balance.data ?? 0, denom.data, 'No money added yet')}
         </Text>
         <View style={styles.balanceActions}>
           <BalanceButton

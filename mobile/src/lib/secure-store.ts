@@ -33,6 +33,13 @@ export const SecureKey = {
   session: 'prova.session',
   /** Spendable balance in minor units — kept on-device because the amount is private. */
   balance: 'prova.balance',
+  /**
+   * What `balance` is denominated in (JSON `Denomination`), recorded when funds first arrive.
+   *
+   * Absent means "no money has ever landed", which is the honest state for a new account — the app
+   * shows no unit rather than guessing one. Stored next to the balance so the two can never drift.
+   */
+  balanceDenom: 'prova.balance_denom',
   /** Saved beneficiaries (JSON array). */
   recipients: 'prova.recipients',
   /**

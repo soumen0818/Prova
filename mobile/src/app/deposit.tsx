@@ -4,7 +4,9 @@ import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { credit, formatMinor } from '@/lib/balance';
+import { formatAmount, minorPerUnit } from '@prova/shared';
+
+import { credit, formatBalance, settlementDenomination } from '@/lib/balance';
 import { ConnectionGate } from '@/components/connection-gate';
 import { LockedMark } from '@/components/illustrations';
 import { StateView } from '@/components/state-view';
@@ -16,7 +18,7 @@ import {
   startUserDeposit,
   UserRejectedError,
 } from '@/lib/onchain';
-import { useBalance, useKycVerified, QK } from '@/lib/queries';
+import { useAssetMismatch, useBalance, useDenomination, useKycVerified, QK } from '@/lib/queries';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { env } from '@/config/env';
@@ -37,6 +39,8 @@ export default function DepositScreen() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { data: balanceMinor } = useBalance();
+  const { data: denom } = useDenomination();
+  const assetMismatch = useAssetMismatch();
   const { data: verified } = useKycVerified();
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,9 +59,13 @@ export default function DepositScreen() {
     }
     setBusy(true);
     try {
-      await credit(amt);
+      // A simulated top-up stands in for an anchor deposit, so it credits the same settlement asset
+      // the anchor would deliver — never a currency, which no one has actually paid.
+      const d = settlementDenomination();
+      await credit(amt, d);
       await queryClient.invalidateQueries({ queryKey: QK.balance });
-      toast.success(`Added ${formatMinor(amt * 100)}`);
+      await queryClient.invalidateQueries({ queryKey: QK.denomination });
+      toast.success(`Added ${formatAmount(amt * minorPerUnit(d), d)}`);
       void syncBackup(); // silent, best-effort backup refresh
       router.back();
     } catch (e) {
@@ -86,6 +94,7 @@ export default function DepositScreen() {
       toast.info('Opening the anchor…');
       await WebBrowser.openBrowserAsync(dep.url);
       await queryClient.invalidateQueries({ queryKey: QK.balance });
+      await queryClient.invalidateQueries({ queryKey: QK.denomination });
     } catch (e) {
       if (e instanceof UserRejectedError) return; // user cancelled a review — not an error
       captureError(e, { step: 'anchor-deposit' });
@@ -119,36 +128,26 @@ export default function DepositScreen() {
       <Screen scroll>
         <Card tone="accent" style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Current balance</Text>
-          <Text style={styles.balanceValue}>{formatMinor(balanceMinor ?? 0)}</Text>
+          <Text style={styles.balanceValue}>
+            {formatBalance(balanceMinor ?? 0, denom, 'Nothing added yet')}
+          </Text>
         </Card>
 
-        <Text style={styles.label}>Amount to add ({env.currency})</Text>
-        <View style={styles.amountRow}>
-          <Text style={styles.currency}>{env.currency}</Text>
-          <TextInput
-            style={styles.amountInput}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="number-pad"
-            placeholder="0"
-            placeholderTextColor={Palette.textMuted}
-            editable={!busy}
-            autoFocus
-          />
-        </View>
-        {showError ? <Text style={styles.error}>{showError}</Text> : null}
-
-        <View style={styles.chips}>
-          {QUICK.map((q) => (
-            <Pressable key={q} style={styles.chip} onPress={() => setAmount(String(q))}>
-              <Text style={styles.chipText}>
-                {env.currency} {q}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        {/*
+          Warn here as well as in Settings: this is the screen where a wrong asset label actually
+          costs something, because the user is about to act on it.
+        */}
+        {assetMismatch ? (
+          <Text style={styles.mismatch}>
+            This app is built for {assetMismatch.app} but the backend settles in{' '}
+            {assetMismatch.backend}. Amounts here are labelled with the wrong asset.
+          </Text>
+        ) : null}
 
         {env.depositMode === 'anchor' ? (
+          // No amount field here: the anchor's own interactive page asks how much and in which
+          // currency, and `onAnchorDeposit` never reads a local amount. Collecting one would be a
+          // control that changes nothing — and it is exactly where a wrong currency used to appear.
           <>
             <Button
               label={busy ? 'Preparing…' : 'Add money via anchor'}
@@ -158,11 +157,38 @@ export default function DepositScreen() {
             />
             <Text style={styles.note}>
               Real testnet rails: we activate your Stellar account, add a trustline (signed on your
-              device), then open the anchor’s deposit page. The asset is test-only — no real value.
+              device), then open the anchor’s deposit page — where you choose the amount. You
+              receive {env.depositAsset}, a test asset with no real value.
             </Text>
           </>
         ) : (
           <>
+            <Text style={styles.label}>Amount to add ({env.depositAsset})</Text>
+            <View style={styles.amountRow}>
+              <Text style={styles.assetCode}>{env.depositAsset}</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={Palette.textMuted}
+                editable={!busy}
+                autoFocus
+              />
+            </View>
+            {showError ? <Text style={styles.error}>{showError}</Text> : null}
+
+            <View style={styles.chips}>
+              {QUICK.map((q) => (
+                <Pressable key={q} style={styles.chip} onPress={() => setAmount(String(q))}>
+                  <Text style={styles.chipText}>
+                    {env.depositAsset} {q}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
             <Button
               label={busy ? 'Adding…' : 'Add to balance'}
               onPress={onDevCredit}
@@ -171,8 +197,9 @@ export default function DepositScreen() {
               style={styles.action}
             />
             <Text style={styles.note}>
-              Testnet top-up — funds are credited instantly on this device for testing. Set
-              `EXPO_PUBLIC_DEPOSIT_MODE=anchor` for the real on-chain deposit flow.
+              Testnet top-up — {env.depositAsset} is credited instantly on this device for testing
+              and has no real value. Set `EXPO_PUBLIC_DEPOSIT_MODE=anchor` for the real on-chain
+              deposit flow.
             </Text>
           </>
         )}
@@ -192,7 +219,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     marginBottom: Spacing.four,
   },
-  currency: { ...Typography.title, color: Palette.textSecondary },
+  assetCode: { ...Typography.title, color: Palette.textSecondary },
   amountInput: { ...Typography.displayBalance, color: Palette.white, flex: 1, padding: 0 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginBottom: Spacing.six },
   chip: {
@@ -207,4 +234,5 @@ const styles = StyleSheet.create({
   action: { marginBottom: Spacing.four },
   note: { ...Typography.micro, color: Palette.textMuted },
   error: { ...Typography.caption, color: Palette.statusDown, marginBottom: Spacing.four },
+  mismatch: { ...Typography.micro, color: Palette.statusDown, marginBottom: Spacing.four },
 });

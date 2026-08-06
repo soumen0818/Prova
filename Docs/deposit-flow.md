@@ -20,6 +20,55 @@ simulator: real controls, no real plane.
 
 ---
 
+## What amounts are denominated in
+
+The app shows the **settlement asset** it actually holds (`SRT`), never a currency.
+
+There used to be an `EXPO_PUBLIC_CURRENCY=AED` display constant. It was wrong in a way that only
+shows up once senders are not all in one country: Expo inlines `EXPO_PUBLIC_*` at build time, so one
+build meant one currency for every user of it — a sender in New York was shown dirhams. And because
+nothing downstream is currency-aware (the balance is a bare integer, the circuit takes a bare
+`amount` against a single `MAX_AMOUNT`, `tierLimit()` returns bare numbers), making that label
+per-user would have quietly changed what the limit *means*: 9999 is ~$2,720 in AED and $9,999 in
+USD, on the same circuit and the same contract ceiling.
+
+So the unit is a value carried **with** the balance, not a build flag:
+
+| | |
+|---|---|
+| Type | `Denomination { code, kind: 'asset' \| 'fiat', exponent }` — `shared/src/money.ts`, mirrored in `money.go` |
+| Stored | `SecureKey.balanceDenom`, written by `credit()` when funds land; snapshotted in the vault as `balanceDenom` |
+| Read | `getDenomination()` → `null` when nothing has ever been funded |
+| Rendered | `formatBalance(minor, denom, fallback)`; screens pass their own "nothing yet" wording |
+
+`null` is a real state. A new account has no unit because nothing has arrived, and the UI says so
+instead of inventing one — that is what replaced `AED 0.00` on a fresh install.
+
+**Why an asset code is the honest answer today:** `testanchor.stellar.org` is SDF's *reference*
+anchor and `SRT` is a test token with no bank behind it. Nobody funds in any currency, so there is
+no fiat to report — and an asset code belongs to no country, so it is equally true for a sender in
+Dubai and one in New York.
+
+**When a licensed anchor is integrated**, its SEP-24 transaction reports the fiat actually paid:
+
+```
+GET {TRANSFER_SERVER_SEP0024}/transactions?id={id}
+  → amount_in:       "500.00"
+  → amount_in_asset: "iso4217:AED"
+```
+
+That maps to `fiatDenomination('AED')`, recorded against the balance for that user. Every screen
+renders it unchanged. Note the anchor client has **no** method that reads a transaction back today —
+`DepositInteractive` returns `{url, id}` and the `id` is never used again, so this is the piece to
+build, along with polling (the deposit completes asynchronously inside the webview).
+
+**Do not** derive the currency from the user's country. An American working in Dubai is paid in AED;
+country decides which rails are available, the rail decides the currency. The country picker in the
+KYC screen is a *phone* dial-code selector — it is not residence, and must not be written into
+`countryOfResidence`.
+
+---
+
 ## The real (`anchor`) flow
 
 Three one-time setup steps, then the deposit itself:
@@ -102,3 +151,8 @@ Backend: `internal/chain/wallet.go` (Horizon ops), `internal/server/wallet_handl
   (this is the one reason to consider a Stellar client lib on-device later).
 - **Mainnet** also needs real KYC (see [kyc-verification.md](kyc-verification.md)) and a licensed
   anchor. Everything here targets **testnet** and a test asset with no value.
+- **Fiat denomination and FX.** Reading `amount_in_asset` back from the anchor is unbuilt (above),
+  and so is converting between a user's currency and the settlement unit. Limits (`MAX_AMOUNT`,
+  `tierLimit()`) must stay denominated in the settlement unit and the converted figure is what goes
+  into the proof — never the number the user typed. The rate has to come from the backend with a
+  timestamp and an expiry: if the phone picks the rate, a favourable one gets past the tier limit.

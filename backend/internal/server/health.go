@@ -10,6 +10,13 @@ import (
 // healthz is a liveness probe — the process is up. It reports the shared-schema version so
 // clients can detect a contract mismatch against @prova/shared.
 //
+// It also reports the settlement asset (ANCHOR_ASSET). The app holds its own copy in
+// EXPO_PUBLIC_DEPOSIT_ASSET and *displays* it on every balance, but nothing validates that copy:
+// the backend's value is checked against the anchor's stellar.toml when the issuer is discovered,
+// while the app's is only a label. Publishing it here lets the app notice the two have drifted —
+// otherwise switching ANCHOR_ASSET and forgetting the client would silently label one asset as
+// another.
+//
 // It also carries the **maintenance** flag. The app renders its maintenance screen from this
 // response, so downtime is announced by the server (flip MAINTENANCE_MODE) rather than shipped as a
 // hardcoded client state. When maintenance is on we still answer 200: the client needs to read the
@@ -19,6 +26,7 @@ func (h *handler) healthz(w http.ResponseWriter, _ *http.Request) {
 		"status":        "ok",
 		"env":           h.cfg.AppEnv,
 		"schemaVersion": schema.SchemaVersion,
+		"anchorAsset":   h.cfg.AnchorAsset,
 		"maintenance":   h.cfg.MaintenanceMode,
 	}
 	if h.cfg.MaintenanceMode {

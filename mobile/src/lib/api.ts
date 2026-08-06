@@ -22,6 +22,12 @@ export interface HealthResponse {
   status: string;
   env: string;
   schemaVersion: string;
+  /**
+   * The backend's settlement asset (`ANCHOR_ASSET`). Compare against `env.depositAsset`, which is
+   * what this app prints on every balance — see `useAssetMismatch`. Optional: an older backend
+   * won't send it, and a missing value means "cannot check", not "mismatch".
+   */
+  anchorAsset?: string;
   /** Server-announced planned downtime — the app renders its maintenance screen from this. */
   maintenance?: boolean;
   maintenanceMessage?: string;

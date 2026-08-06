@@ -14,6 +14,10 @@
  * numbers precisely so a screen cannot accidentally conflate them.
  */
 
+import { bytesToUtf8 } from '@noble/ciphers/utils.js';
+import { utf8ToBytes } from '@noble/hashes/utils.js';
+import { base64 } from '@scure/base';
+
 import {
   userId as deriveUserId,
   poolKeys as nativePoolKeys,
@@ -92,6 +96,46 @@ export function forgetPoolIdentity(): void {
 export async function poolAddress(): Promise<{ ownerPk: string; encPkX: string; encPkY: string }> {
   const k = await poolIdentity();
   return { ownerPk: k.owner_pk, encPkX: k.enc_pk_x, encPkY: k.enc_pk_y };
+}
+
+/**
+ * Serialise a pool address for a QR code / copy-paste, so it can travel outside the app (over chat,
+ * a photo, a paste) and still round-trip exactly. Not a secret — this is the "share to get paid"
+ * value, equivalent in purpose to a Stellar receive address.
+ *
+ * Base64 via `@scure/base`, not the global `btoa`/`atob` — unreliable on Hermes, and the rest of the
+ * app already standardises on `@scure/base` for this (see `lib/keys.ts`).
+ */
+export function encodePoolAddress(addr: Payee): string {
+  const json = JSON.stringify({ pk: addr.ownerPk, ex: addr.encPkX, ey: addr.encPkY });
+  return `prova-pay:${base64.encode(utf8ToBytes(json))}`;
+}
+
+/** Parse a value produced by {@link encodePoolAddress}. Returns `null` for anything else. */
+export function decodePoolAddress(text: string): Payee | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('prova-pay:')) return null;
+  try {
+    const json = bytesToUtf8(base64.decode(trimmed.slice('prova-pay:'.length)));
+    const parsed = JSON.parse(json) as {
+      pk?: unknown;
+      ex?: unknown;
+      ey?: unknown;
+    };
+    if (
+      typeof parsed.pk !== 'string' ||
+      typeof parsed.ex !== 'string' ||
+      typeof parsed.ey !== 'string' ||
+      !parsed.pk ||
+      !parsed.ex ||
+      !parsed.ey
+    ) {
+      return null;
+    }
+    return { ownerPk: parsed.pk, encPkX: parsed.ex, encPkY: parsed.ey };
+  } catch {
+    return null;
+  }
 }
 
 /**

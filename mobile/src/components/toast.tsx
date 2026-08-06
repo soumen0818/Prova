@@ -1,4 +1,3 @@
-import { BlurView } from 'expo-blur';
 import { CheckCircle2, Info, XCircle } from 'lucide-react-native';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -80,12 +79,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             exiting={FadeOutUp.duration(200)}
             style={styles.shadow}>
             <View style={styles.clip}>
-              <BlurView
-                intensity={48}
-                tint="dark"
-                experimentalBlurMethod="dimezisBlurView"
-                style={StyleSheet.absoluteFill}
-              />
               <View style={styles.surface}>
                 <View style={[styles.iconChip, { backgroundColor: CHIP_BG[toast.variant] }]}>
                   <Icon color={ACCENTS[toast.variant]} size={16} strokeWidth={2.4} />
@@ -126,8 +119,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Palette.glassBorder,
-    // Tint behind the blur so it stays legible even where the blur is subtle (e.g. Android).
-    backgroundColor: 'rgba(18,18,22,0.62)',
+    // Solid, not glass: expo-blur's Android blur needs a configured `blurTarget` to actually blur
+    // (see the "dimezisBlurView... fallback to none" warning) — without it the view is just an
+    // invisible no-op, which read as "the toast has no background at all". A flat surface color
+    // is simpler and always correct, on every Android version, with no experimental API involved.
+    backgroundColor: Palette.bgElevated,
   },
   surface: {
     flexDirection: 'row',

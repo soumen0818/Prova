@@ -8,11 +8,13 @@ import { submitTransfer, type KycCredential } from '@/lib/api';
 import { authenticate, canUseBiometrics } from '@/lib/auth';
 import { debit, formatBalance, getBalanceMinor, settlementDenomination } from '@/lib/balance';
 import { syncBackup } from '@/lib/cloud-backup';
+import { useMoney, usesPool } from '@/hooks/use-money';
 import { getStoredCredential, isExpired } from '@/lib/kyc';
 import { formatAmount, minorPerUnit, tierLimit } from '@prova/shared';
 import { hasPin } from '@/lib/pin';
+import { InsufficientFunds, sendPrivately, type Payee } from '@/lib/pool';
 import { isProverAvailable, prove } from '@/lib/prover';
-import { useBalance, useDenomination, useRecipients, QK } from '@/lib/queries';
+import { useRecipients, QK } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { getSecret, SecureKey } from '@/lib/secure-store';
 import { secureRandomU64 } from '@/lib/wallet';
@@ -35,8 +37,7 @@ export default function SendScreen() {
   const queryClient = useQueryClient();
   const { recipientId } = useLocalSearchParams<{ recipientId?: string }>();
   const { data: recipients } = useRecipients();
-  const { data: balanceMinor } = useBalance();
-  const { data: denom } = useDenomination();
+  const money = useMoney();
 
   const [picked, setPicked] = useState<Recipient | null>(null);
   const [amount, setAmount] = useState('');
@@ -79,6 +80,25 @@ export default function SendScreen() {
     setProgress(0.05);
     timer.current = setInterval(() => setProgress((p) => (p < 0.9 ? p + 0.03 : p)), 250);
   };
+  // Same progress bar, but the copy escalates with elapsed time. Measured on-device this proof runs
+  // ~2.6s (see Docs/shielded-pool.md §10.8) — comfortably under the 5s "just show a spinner" line —
+  // but phones vary a lot more than one test unit, so this is a cheap safety net: if a slower device
+  // ever takes noticeably longer, the copy adapts instead of just sitting there looking frozen.
+  const startPoolProgress = () => {
+    setProgress(0.05);
+    const startedAt = Date.now();
+    timer.current = setInterval(() => {
+      setProgress((p) => (p < 0.9 ? p + 0.03 : p));
+      const elapsed = Date.now() - startedAt;
+      setMessage(
+        elapsed < 5_000
+          ? 'Securing your transfer…'
+          : elapsed < 20_000
+            ? 'Still securing your transfer — this can take longer on some phones…'
+            : 'Almost there — thanks for waiting…',
+      );
+    }, 250);
+  };
   const stopProgress = () => {
     if (timer.current) {
       clearInterval(timer.current);
@@ -90,12 +110,72 @@ export default function SendScreen() {
   const amountValid = Number.isInteger(amt) && amt >= 1 && amt <= 9999;
   // Spending denomination: what the balance is actually held in, falling back to what this build
   // settles in for an account that has not been funded yet (nothing is affordable then anyway).
-  const spendDenom = denom ?? settlementDenomination();
+  const spendDenom = money.denom ?? settlementDenomination();
   const amtMinor = Math.round(amt * minorPerUnit(spendDenom));
-  const canAfford = amountValid && amtMinor <= (balanceMinor ?? 0);
+  const canAfford = amountValid && amtMinor <= money.spendable;
 
-  // The actual prove + relay, run only after the user has authorized the payment (step-up).
-  const runTransfer = useCallback(async () => {
+  /**
+   * Pool-mode send: the real shielded pool, wired to `sendPrivately()`. The balance comes from the
+   * chain (via `useMoney()`), so — unlike the legacy path below — there is no local `debit()` call to
+   * make; double-crediting would invent money that does not exist.
+   */
+  const runPoolTransfer = useCallback(async () => {
+    if (!selected?.poolOwnerPk || !selected.poolEncPkX || !selected.poolEncPkY) {
+      setError(
+        'Add this recipient’s pool address first — ask them for it from Account → Receive privately.',
+      );
+      return;
+    }
+    const payee: Payee = {
+      ownerPk: selected.poolOwnerPk,
+      encPkX: selected.poolEncPkX,
+      encPkY: selected.poolEncPkY,
+    };
+    try {
+      setPhase('proving');
+      setMessage('Securing your transfer…');
+      startPoolProgress();
+
+      const hash = await sendPrivately(amt, payee, (stage) => {
+        if (stage === 'submitting') {
+          stopProgress();
+          setProgress(1);
+          setPhase('submitting');
+          setMessage('Submitting to Stellar…');
+        }
+      });
+
+      setTxHash(hash);
+      await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
+      setPhase('sent');
+      void syncBackup(); // keep the cloud backup's balance snapshot fresh (silent, best-effort)
+    } catch (e) {
+      stopProgress();
+      if (e instanceof InsufficientFunds) {
+        // Not a proving/network failure — a precondition that failed before anything was submitted.
+        // Send the user back to the amount screen with a specific, actionable message rather than a
+        // full-page "transfer failed", which would be misleading (nothing was ever attempted).
+        setError(e.message);
+        setPhase('idle');
+        return;
+      }
+      const msg = e instanceof Error ? e.message : 'send failed';
+      if (/still confirming|verification|verify/i.test(msg)) {
+        setError(msg);
+        setPhase('idle');
+        return;
+      }
+      // A network failure after submitting is ambiguous: the transfer may still be in flight.
+      // Treat it as "processing" rather than "failed" so nobody is nudged into paying twice.
+      const ambiguous = /network|timeout|fetch|abort/i.test(msg);
+      setReason(ambiguous ? 'timeout' : 'unknown');
+      setPhase(ambiguous ? 'processing' : 'error');
+    }
+  }, [amt, selected, queryClient]);
+
+  // The legacy per-transfer path (circuit v2) — unchanged, still used when this build's money lives
+  // in the local counter (`EXPO_PUBLIC_DEPOSIT_MODE=simulated`) rather than the shielded pool.
+  const runLegacyTransfer = useCallback(async () => {
     if (!secret || !credential) return;
     try {
       setPhase('proving');
@@ -153,6 +233,8 @@ export default function SendScreen() {
     }
   }, [amt, secret, credential, queryClient]);
 
+  const runTransfer = usesPool ? runPoolTransfer : runLegacyTransfer;
+
   // Validate, then require a step-up (biometric, or PIN as fallback) before spending.
   const onSend = useCallback(async () => {
     setError('');
@@ -164,8 +246,17 @@ export default function SendScreen() {
       setError('Verify your identity first.');
       return;
     }
-    // Re-read balance at send time (source of truth) to avoid a stale cached value.
-    if (amtMinor > (await getBalanceMinor())) {
+    if (usesPool) {
+      // The pool's own InsufficientFunds check (thrown from sendPrivately) is the authoritative
+      // guard — it also catches the "balance is there but fragmented across notes" case this
+      // simpler pre-check cannot express. This is just the fast, cheap rejection.
+      if (amtMinor > money.spendable) {
+        setReason('insufficient_funds');
+        setPhase('error');
+        return;
+      }
+    } else if (amtMinor > (await getBalanceMinor())) {
+      // Re-read balance at send time (source of truth) to avoid a stale cached value.
       setReason('insufficient_funds');
       setPhase('error');
       return;
@@ -190,7 +281,7 @@ export default function SendScreen() {
     } else {
       await runTransfer();
     }
-  }, [amountValid, amt, amtMinor, secret, credential, runTransfer]);
+  }, [amountValid, amt, amtMinor, secret, credential, money.spendable, runTransfer]);
 
   const busy = phase === 'proving' || phase === 'submitting';
   const list = useMemo(() => recipients ?? [], [recipients]);
@@ -320,9 +411,14 @@ export default function SendScreen() {
             />
           </View>
           <Text style={styles.balanceHint}>
-            Available: {formatBalance(balanceMinor ?? 0, denom, 'nothing added yet')}
+            Available: {formatBalance(money.spendable, money.denom, 'nothing added yet')}
             {amountValid && !canAfford ? '  ·  Insufficient balance' : ''}
           </Text>
+          {usesPool && money.pending > 0 ? (
+            <Text style={styles.balanceHint}>
+              {formatBalance(money.pending, money.denom)} still confirming — not yet spendable
+            </Text>
+          ) : null}
         </View>
 
         <Button

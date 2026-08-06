@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card } from '@/components/ui';
-import { useToast } from '@/components/toast';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 import { validateName, validateNationalPhone } from '@/lib/validation';
 
@@ -45,8 +44,6 @@ interface Props {
 }
 
 export function KycIdentityStep({ onCaptured }: Props) {
-  const toast = useToast();
-
   const [name, setName] = useState('');
   const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY);
   const [national, setNational] = useState('');
@@ -65,21 +62,14 @@ export function KycIdentityStep({ onCaptured }: Props) {
   const e164 = toE164(national, countryCode);
 
   const onContinue = useCallback(() => {
+    // `submitted` reveals the inline errors under each field, which is the whole feedback the user
+    // needs: it points at the offending field and stays visible while they fix it. A toast saying
+    // the same thing is redundant and, being transient and detached from the field, worse. Toasts
+    // are for things with no place on screen to live — not for form validation.
     setSubmitted(true);
-    if (!nameCheck.ok) {
-      toast.error(nameCheck.error);
-      return;
-    }
-    if (!phoneCheck.ok) {
-      toast.error(phoneCheck.error);
-      return;
-    }
-    // toE164 re-runs the country's own rules, so this cannot produce a malformed number even if the
-    // field checks above were somehow bypassed.
-    if (!e164) {
-      toast.error('Enter a valid phone number');
-      return;
-    }
+    // toE164 re-runs the country's own rules, so a malformed number cannot get through even if the
+    // field checks were somehow bypassed.
+    if (!nameCheck.ok || !phoneCheck.ok || !e164) return;
 
     setBusy(true);
     try {
@@ -87,7 +77,7 @@ export function KycIdentityStep({ onCaptured }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [e164, name, nameCheck, onCaptured, phoneCheck, toast]);
+  }, [e164, name, nameCheck, onCaptured, phoneCheck]);
 
   return (
     <Card>

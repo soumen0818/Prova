@@ -13,9 +13,8 @@ import { warmUpProver } from '@/lib/pool';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { BrandedLoading } from '@/components/animated-icon';
 import { AppLock } from '@/components/app-lock';
 import { ConnectionBanner } from '@/components/connection-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -75,17 +74,25 @@ export default function RootLayout() {
     initReporting();
   }, []);
 
+  // The native splash stays up until the app can show something real: fonts ready AND the lock
+  // decision made. There is deliberately no JS loading screen in between — for a payments app a
+  // spinner on launch is noise, and the gap it used to fill was really AppLock painting an empty
+  // full-screen overlay while it decided, which read as a black flash.
+  const [lockResolved, setLockResolved] = useState(false);
+  const onLockResolved = useCallback(() => setLockResolved(true), []);
+  const ready = fontsLoaded && lockResolved;
+
   useEffect(() => {
-    if (fontsLoaded) {
+    if (ready) {
       SplashScreen.hideAsync().catch(() => {
-        /* no-op */
+        /* no-op: already hidden */
       });
     }
-  }, [fontsLoaded]);
+  }, [ready]);
 
-  // Until fonts resolve, show the dark branded loading screen (never a blank white window). It uses
-  // no brand text, so there is no fallback-font flash; on a JS reload this is what covers the gap.
-  if (!fontsLoaded) return <BrandedLoading />;
+  // Fonts gate the tree because rendering brand text in a fallback face and swapping it a frame
+  // later is its own visible flash. The splash is still covering this, so nothing shows through.
+  if (!fontsLoaded) return null;
 
   return (
     <ErrorBoundary>
@@ -94,7 +101,7 @@ export default function RootLayout() {
         <ThemeProvider value={ProvaNavTheme}>
           <ToastProvider>
             <StatusBar style="light" />
-            <AppLock>
+            <AppLock onResolved={onLockResolved}>
               <Stack
                 screenOptions={{
                   headerStyle: { backgroundColor: Palette.bgBase },
@@ -113,6 +120,7 @@ export default function RootLayout() {
                 <Stack.Screen name="restore" options={{ headerShown: false }} />
                 {/* Pushed flows get a themed native header + back button. */}
                 <Stack.Screen name="account" options={{ title: 'Account details' }} />
+                <Stack.Screen name="receive" options={{ title: 'Receive privately' }} />
                 <Stack.Screen name="backup" options={{ title: 'Cloud backup' }} />
                 <Stack.Screen name="blocked" options={{ headerShown: false }} />
                 <Stack.Screen name="send" options={{ title: 'Send' }} />

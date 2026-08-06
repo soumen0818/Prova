@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "prova-mobile",
+    "name": "Prova",
     "slug": "prova-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -45,7 +45,8 @@
       ],
       "expo-secure-store",
       "react-native-cloud-storage",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "./plugins/with-prova-android.js"
     ],
     "experiments": {
       "typedRoutes": true,

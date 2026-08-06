@@ -105,21 +105,35 @@ function fallbackMessage(status: number): string {
   return 'Something went wrong. Please try again.';
 }
 
+/**
+ * `fetch` has no default timeout — a hung connection (weak signal, a half-open socket) leaves the
+ * promise neither resolved nor rejected forever. A caller `await`-ing this inside a screen's init
+ * effect then sits on a loading spinner with no way out, since nothing ever reaches its `catch`.
+ * Bounding every request fixes that at the one place all API calls pass through, rather than in
+ * each screen that happens to call one.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     res = await fetch(`${baseUrl()}${path}`, {
       headers: { 'Content-Type': 'application/json' },
       ...init,
+      signal: controller.signal,
     });
   } catch {
-    // fetch only rejects on a transport failure, which is nearly always connectivity. Saying so is
-    // far more useful than surfacing "Network request failed".
+    // fetch rejects on a transport failure (nearly always connectivity) or our own timeout abort
+    // above — both read the same to the user, so one message covers them.
     throw new ApiError(
       'Can’t reach Prova. Check your connection and try again.',
       'network_error',
       0,
     );
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!res.ok) {

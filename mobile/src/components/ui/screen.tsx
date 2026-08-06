@@ -45,7 +45,15 @@ export function Screen({
           <ScrollView
             style={styles.flex}
             contentContainerStyle={[styles.scrollContent, innerStyle, contentContainerStyle]}
-            showsVerticalScrollIndicator={false}>
+            showsVerticalScrollIndicator={false}
+            // Forms: Android's `adjustResize` shrinks the window when the keyboard opens, but a
+            // ScrollView does not scroll the focused field into view by itself — so a field low on
+            // the screen ends up behind the keyboard. The bottom inset gives it somewhere to
+            // scroll to; `persistTaps` makes a button tap land on the first press instead of being
+            // swallowed to dismiss the keyboard.
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets>
             {children}
           </ScrollView>
         ) : (

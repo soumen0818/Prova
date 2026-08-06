@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { DocumentCapture } from '@/components/document-capture';
+import { LivenessCapture } from '@/components/liveness-capture';
 import { Loader } from '@/components/loader';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -40,11 +41,14 @@ const STEPS: { key: CapturedArtifact; title: string; hint: string; facing: 'fron
   },
   {
     key: 'selfie',
-    title: 'Take a selfie',
-    hint: 'We match your face to your ID. Look straight at the camera.',
+    title: 'Liveness check',
+    hint: 'Follow the prompts so we can confirm a real person is here.',
     facing: 'front',
   },
 ];
+
+/** The selfie step runs the guided liveness sequence instead of a single still capture. */
+const SELFIE_STEP = STEPS.findIndex((s) => s.key === 'selfie');
 
 /** How often to re-check status while a verification is being processed. */
 const POLL_MS = 3000;
@@ -298,13 +302,17 @@ export default function KycScreen() {
         <Text style={styles.progress}>
           Step {step + 2} of {STEPS.length + 1}
         </Text>
-        <DocumentCapture
-          key={s.key}
-          title={s.title}
-          hint={s.hint}
-          facing={s.facing}
-          onCaptured={onCaptured}
-        />
+        {step === SELFIE_STEP ? (
+          <LivenessCapture key={s.key} onCaptured={onCaptured} />
+        ) : (
+          <DocumentCapture
+            key={s.key}
+            title={s.title}
+            hint={s.hint}
+            facing={s.facing}
+            onCaptured={onCaptured}
+          />
+        )}
         {step === 1 ? (
           <Button
             label="Skip — I used a passport"

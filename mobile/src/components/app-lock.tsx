@@ -24,8 +24,21 @@ const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
  * PIN; the PIN is rate-limited (see lib/pin). If there's no wallet or no factor at all, it passes
  * through — nothing to protect.
  */
-export function AppLock({ children }: { children: ReactNode }) {
+export function AppLock({
+  children,
+  onResolved,
+}: {
+  children: ReactNode;
+  /**
+   * Fired once the very first lock decision is made. The native splash is held until then, because
+   * while this is still `checking` the overlay below covers the screen with nothing in it — which
+   * is what used to read as a black flash on launch. Holding the splash means the user goes
+   * straight from the branded splash to real content.
+   */
+  onResolved?: () => void;
+}) {
   const [state, setState] = useState<LockState>('checking');
+  const resolvedOnce = useRef(false);
   const [bioAvailable, setBioAvailable] = useState(false);
   const [pinSet, setPinSet] = useState(false);
   /** Set when the lock was triggered by the idle timer, so we can explain why. */
@@ -74,28 +87,41 @@ export function AppLock({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
-      const [wallet, bio, pinExists] = await Promise.all([
-        hasWallet(),
-        canUseBiometrics(),
-        hasPin(),
-      ]);
-      if (!active) return;
-      setBioAvailable(bio);
-      setPinSet(pinExists);
-      if (wallet && (bio || pinExists)) {
-        setState('locked');
-        if (bio && !autoPrompted.current) {
-          autoPrompted.current = true;
-          unlockBiometric();
+      try {
+        const [wallet, bio, pinExists] = await Promise.all([
+          hasWallet(),
+          canUseBiometrics(),
+          hasPin(),
+        ]);
+        if (!active) return;
+        setBioAvailable(bio);
+        setPinSet(pinExists);
+        if (wallet && (bio || pinExists)) {
+          setState('locked');
+          if (bio && !autoPrompted.current) {
+            autoPrompted.current = true;
+            unlockBiometric();
+          }
+        } else {
+          setState('unlocked');
         }
-      } else {
-        setState('unlocked');
+      } catch {
+        // A failed check must not strand the user on a splash screen forever. Lock rather than
+        // pass through: if we cannot tell whether a wallet needs protecting, assume it does.
+        if (!active) return;
+        setState('locked');
+      } finally {
+        // Always signal, on every path — the splash is held until this fires.
+        if (active && !resolvedOnce.current) {
+          resolvedOnce.current = true;
+          onResolved?.();
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [unlockBiometric]);
+  }, [unlockBiometric, onResolved]);
 
   // Re-lock when the app returns to the foreground.
   useEffect(() => {

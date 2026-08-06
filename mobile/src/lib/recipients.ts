@@ -16,6 +16,14 @@ export interface Recipient {
   /** Destination country label, e.g. "India". */
   country: string;
   createdAt: number;
+  /**
+   * Shielded-pool payee, captured from the recipient's own Receive screen (QR/paste). Optional so
+   * older vault backups — sealed before the pool address existed — still restore cleanly; a
+   * recipient without these fields simply cannot be paid privately yet.
+   */
+  poolOwnerPk?: string;
+  poolEncPkX?: string;
+  poolEncPkY?: string;
 }
 
 export async function listRecipients(): Promise<Recipient[]> {
@@ -37,6 +45,9 @@ export async function addRecipient(input: {
   name: string;
   handle: string;
   country?: string;
+  poolOwnerPk?: string;
+  poolEncPkX?: string;
+  poolEncPkY?: string;
 }): Promise<Recipient> {
   const list = await listRecipients();
   const recipient: Recipient = {
@@ -45,6 +56,13 @@ export async function addRecipient(input: {
     handle: input.handle.trim(),
     country: (input.country ?? 'India').trim(),
     createdAt: Math.floor(Date.now() / 1000),
+    ...(input.poolOwnerPk && input.poolEncPkX && input.poolEncPkY
+      ? {
+          poolOwnerPk: input.poolOwnerPk,
+          poolEncPkX: input.poolEncPkX,
+          poolEncPkY: input.poolEncPkY,
+        }
+      : {}),
   };
   await writeAll([recipient, ...list]);
   return recipient;

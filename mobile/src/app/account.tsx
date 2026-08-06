@@ -100,6 +100,18 @@ export default function AccountScreen() {
         </Pressable>
       </Card>
 
+      <Pressable onPress={() => router.push('/receive')} style={styles.linkCardPress}>
+        <Card style={styles.linkCard}>
+          <View style={styles.flex}>
+            <Text style={styles.statusLabel}>Receive privately</Text>
+            <Text style={styles.linkHint}>
+              Your shielded-pool address — a different thing from above
+            </Text>
+          </View>
+          <ChevronRight color={Palette.textMuted} size={18} />
+        </Card>
+      </Pressable>
+
       <Text style={styles.section}>Backup & recovery</Text>
       <Card style={styles.statusCard}>
         <Pressable onPress={() => router.push('/backup')} style={styles.statusRowPress}>
@@ -169,6 +181,10 @@ function StatusRow({
 
 const styles = StyleSheet.create({
   addrCard: { alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.six },
+  flex: { flex: 1 },
+  linkCardPress: { marginBottom: Spacing.six },
+  linkCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  linkHint: { ...Typography.micro, color: Palette.textMuted, marginTop: 2 },
   cardLabel: { ...Typography.section, color: Palette.white },
   hint: { ...Typography.micro, color: Palette.textMuted, textAlign: 'center' },
   qrWrap: { marginVertical: Spacing.four },

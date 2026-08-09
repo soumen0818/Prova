@@ -4,6 +4,7 @@
  * The amount never leaves the device, so it is never sent here. This talks to the backend for
  * anchor deposit (SEP-24) and, later, transfer relay.
  */
+import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
 import type { ShieldPrepareRequest, ShieldSubmitResponse } from '@prova/shared';
@@ -13,8 +14,12 @@ import { env } from '@/config/env';
 /** Resolve the backend base URL, accounting for the Android emulator's host alias. */
 function baseUrl(): string {
   let u = env.apiBaseUrl;
-  // The Android emulator reaches the host machine via 10.0.2.2, not localhost/127.0.0.1.
-  if (Platform.OS === 'android') {
+  // `10.0.2.2` is the **emulator's** alias for the host machine — it does not exist on a real
+  // handset. On a physical device `localhost` is already correct, because `adb reverse tcp:8080`
+  // forwards the phone's own localhost back over USB. Rewriting there sent every request to an
+  // address nothing answers on, which surfaced as "Can't reach Prova" with a perfectly healthy
+  // backend. So the rewrite must be gated on actually being an emulator.
+  if (Platform.OS === 'android' && !Device.isDevice) {
     u = u.replace('localhost', '10.0.2.2').replace('127.0.0.1', '10.0.2.2');
   }
   return u.replace(/\/$/, '');

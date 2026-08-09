@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/prova/backend/internal/chain"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -154,7 +155,9 @@ func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (str
 		"--",
 	}, callArgs...)
 
-	out, err := exec.CommandContext(ctx, r.Bin, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, r.Bin, args...)
+	chain.PrepareCLI(cmd)
+	out, err := cmd.CombinedOutput()
 	text := string(out)
 	if err == nil {
 		return foldTxHashRe.FindString(text), nil

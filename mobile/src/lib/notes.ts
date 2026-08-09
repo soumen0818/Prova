@@ -169,6 +169,22 @@ export async function scanCursor(): Promise<number> {
 }
 
 /**
+ * Queue index of the earliest note still waiting to be folded, or `null` when none are.
+ *
+ * The scan cursor only moves forward, but a note's fold status changes *after* it was first seen:
+ * it is queued when discovered and becomes a leaf seconds later. Resuming from the cursor alone
+ * means that later change is never re-read, so a note stays "confirming" forever even once the
+ * chain has folded it. Rewinding to the earliest unfolded note is what lets the update be noticed.
+ */
+export async function earliestUnfoldedIndex(): Promise<number | null> {
+  const notes = Object.values((await readStore()).notes).filter(
+    (n) => n.leafIndex === null && !n.spent,
+  );
+  if (notes.length === 0) return null;
+  return notes.reduce((min, n) => Math.min(min, n.queueIndex), Number.MAX_SAFE_INTEGER);
+}
+
+/**
  * Merge freshly discovered notes and advance the cursor.
  *
  * Keyed on commitment and idempotent: rescanning the same range must not duplicate a note, or the

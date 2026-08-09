@@ -37,7 +37,13 @@ func New(homeDomain string) *Client {
 	return &Client{HomeDomain: homeDomain, HTTP: &http.Client{Timeout: 30 * time.Second}}
 }
 
-var tomlKV = regexp.MustCompile(`(?m)^\s*([A-Z0-9_]+)\s*=\s*"([^"]*)"`)
+// TOML keys are matched case-insensitively and normalised to upper case on read.
+//
+// SEP-1 writes its examples in upper case, but real anchors do not follow that — SDF's own
+// testanchor declares `code = "SRT"` / `issuer = "..."` in lower case. An upper-case-only pattern
+// silently parsed those blocks into an empty map, so every asset lookup failed with "not found in
+// anchor toml" even though the asset was plainly there.
+var tomlKV = regexp.MustCompile(`(?mi)^\s*([a-z0-9_]+)\s*=\s*"([^"]*)"`)
 
 // Discover fetches and parses the anchor's stellar.toml for the endpoints we need.
 func (c *Client) Discover(ctx context.Context) (Endpoints, error) {
@@ -48,7 +54,7 @@ func (c *Client) Discover(ctx context.Context) (Endpoints, error) {
 	}
 	kv := map[string]string{}
 	for _, m := range tomlKV.FindAllStringSubmatch(string(body), -1) {
-		kv[m[1]] = m[2]
+		kv[strings.ToUpper(m[1])] = m[2]
 	}
 	ep := Endpoints{
 		WebAuth:           kv["WEB_AUTH_ENDPOINT"],
@@ -203,9 +209,6 @@ func (c *Client) DepositInteractive(ctx context.Context, token, assetCode, accou
 	return resp.URL, resp.ID, nil
 }
 
-// currencyBlock matches one [[CURRENCIES]] table in the stellar.toml.
-var currencyBlock = regexp.MustCompile(`(?s)\[\[CURRENCIES\]\](.*?)(?:\n\s*\[\[|\z)`)
-
 // AssetIssuer discovers the issuer (G...) for an asset code from the anchor's stellar.toml
 // CURRENCIES section, so a trustline can be built without hardcoding the issuer.
 func (c *Client) AssetIssuer(ctx context.Context, assetCode string) (string, error) {
@@ -214,16 +217,35 @@ func (c *Client) AssetIssuer(ctx context.Context, assetCode string) (string, err
 	if err != nil {
 		return "", fmt.Errorf("fetch toml: %w", err)
 	}
-	for _, block := range currencyBlock.FindAllStringSubmatch(string(body), -1) {
-		kv := map[string]string{}
-		for _, m := range tomlKV.FindAllStringSubmatch(block[1], -1) {
-			kv[m[1]] = m[2]
-		}
-		if kv["CODE"] == assetCode && kv["ISSUER"] != "" {
-			return kv["ISSUER"], nil
-		}
+	if issuer := issuerFromToml(string(body), assetCode); issuer != "" {
+		return issuer, nil
 	}
 	return "", fmt.Errorf("asset %s not found in anchor toml", assetCode)
+}
+
+// issuerFromToml finds an asset's issuer in a stellar.toml body, or "" if absent.
+//
+// Split out from the fetch so the parsing — the part that actually broke — is testable without a
+// network round-trip against someone else's server.
+func issuerFromToml(body, assetCode string) string {
+	// Split rather than regex-match the blocks. The previous pattern terminated a match by
+	// consuming the *next* block's `[[`, so FindAll resumed past it and silently skipped every
+	// other currency — and Go's RE2 has no lookahead to express "stop before" instead.
+	parts := strings.Split(body, "[[CURRENCIES]]")
+	for _, block := range parts[1:] {
+		// A later table header ends this block; anything after it belongs to something else.
+		if i := strings.Index(block, "\n["); i >= 0 {
+			block = block[:i]
+		}
+		kv := map[string]string{}
+		for _, m := range tomlKV.FindAllStringSubmatch(block, -1) {
+			kv[strings.ToUpper(m[1])] = m[2]
+		}
+		if kv["CODE"] == assetCode && kv["ISSUER"] != "" {
+			return kv["ISSUER"]
+		}
+	}
+	return ""
 }
 
 // --- helpers ---

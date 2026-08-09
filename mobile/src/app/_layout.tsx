@@ -15,6 +15,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { ApproveProvider } from '@/components/approve-sheet';
 import { AppLock } from '@/components/app-lock';
 import { ConnectionBanner } from '@/components/connection-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -96,46 +99,51 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <PoolSync />
-        <ThemeProvider value={ProvaNavTheme}>
-          <ToastProvider>
-            <StatusBar style="light" />
-            <AppLock onResolved={onLockResolved}>
-              <Stack
-                screenOptions={{
-                  headerStyle: { backgroundColor: Palette.bgBase },
-                  headerTintColor: Palette.white,
-                  headerTitleStyle: { fontFamily: FontFamily.semibold },
-                  headerShadowVisible: false,
-                  contentStyle: { backgroundColor: Palette.bgBase },
-                  headerBackButtonDisplayMode: 'minimal',
-                }}>
-                {/* Gated root + auth flow render their own chrome. */}
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="welcome" options={{ headerShown: false }} />
-                <Stack.Screen name="email" options={{ headerShown: false }} />
-                <Stack.Screen name="otp" options={{ headerShown: false }} />
-                <Stack.Screen name="set-pin" options={{ headerShown: false }} />
-                <Stack.Screen name="restore" options={{ headerShown: false }} />
-                {/* Pushed flows get a themed native header + back button. */}
-                <Stack.Screen name="account" options={{ title: 'Account details' }} />
-                <Stack.Screen name="receive" options={{ title: 'Receive privately' }} />
-                <Stack.Screen name="backup" options={{ title: 'Cloud backup' }} />
-                <Stack.Screen name="blocked" options={{ headerShown: false }} />
-                <Stack.Screen name="send" options={{ title: 'Send' }} />
-                <Stack.Screen name="deposit" options={{ title: 'Add money' }} />
-                <Stack.Screen name="kyc" options={{ title: 'Verify identity' }} />
-                <Stack.Screen name="recipients" options={{ title: 'Recipients' }} />
-                <Stack.Screen name="recipient-new" options={{ title: 'New recipient' }} />
-                <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-                <Stack.Screen name="pool-benchmark" options={{ title: 'Proving benchmark' }} />
-              </Stack>
-            </AppLock>
-            <ConnectionBanner />
-          </ToastProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <PoolSync />
+          <ThemeProvider value={ProvaNavTheme}>
+            <ToastProvider>
+              <ApproveProvider>
+                <StatusBar style="light" />
+                <AppLock onResolved={onLockResolved}>
+                  <Stack
+                    screenOptions={{
+                      headerStyle: { backgroundColor: Palette.bgBase },
+                      headerTintColor: Palette.white,
+                      headerTitleStyle: { fontFamily: FontFamily.semibold },
+                      headerShadowVisible: false,
+                      contentStyle: { backgroundColor: Palette.bgBase },
+                      headerBackButtonDisplayMode: 'minimal',
+                    }}>
+                    {/* Gated root + auth flow render their own chrome. */}
+                    <Stack.Screen name="index" options={{ headerShown: false }} />
+                    <Stack.Screen name="welcome" options={{ headerShown: false }} />
+                    <Stack.Screen name="email" options={{ headerShown: false }} />
+                    <Stack.Screen name="otp" options={{ headerShown: false }} />
+                    <Stack.Screen name="set-pin" options={{ headerShown: false }} />
+                    <Stack.Screen name="restore" options={{ headerShown: false }} />
+                    {/* Pushed flows get a themed native header + back button. */}
+                    <Stack.Screen name="account" options={{ title: 'Account details' }} />
+                    <Stack.Screen name="receive" options={{ title: 'Receive privately' }} />
+                    <Stack.Screen name="backup" options={{ title: 'Cloud backup' }} />
+                    <Stack.Screen name="blocked" options={{ headerShown: false }} />
+                    <Stack.Screen name="send" options={{ title: 'Send' }} />
+                    <Stack.Screen name="deposit" options={{ title: 'Add money' }} />
+                    <Stack.Screen name="anchor" options={{ title: 'Add funds' }} />
+                    <Stack.Screen name="kyc" options={{ title: 'Verify identity' }} />
+                    <Stack.Screen name="recipients" options={{ title: 'Recipients' }} />
+                    <Stack.Screen name="recipient-new" options={{ title: 'New recipient' }} />
+                    <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+                    <Stack.Screen name="pool-benchmark" options={{ title: 'Proving benchmark' }} />
+                  </Stack>
+                </AppLock>
+                <ConnectionBanner />
+              </ApproveProvider>
+            </ToastProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }

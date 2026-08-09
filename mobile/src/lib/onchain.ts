@@ -14,8 +14,6 @@
  *  - **nothing is blind-signed** — every signature goes through `reviewAndSign`, which shows the
  *    server-provided plain-language summary and requires the user to approve first.
  */
-import { Alert } from 'react-native';
-
 import {
   completeDeposit,
   fundAccount,
@@ -29,6 +27,7 @@ import {
   type DepositResponse,
   type OnChainBalance,
 } from './api';
+import { requestApproval } from '@/components/approve-sheet';
 import type { ShieldPlan, ShieldResult } from './pool';
 import { env } from '@/config/env';
 import { signStellarHash } from './keys';
@@ -40,7 +39,7 @@ import { ensureAccount, getStellarAddress } from './wallet';
  * whole units. Getting this wrong by a factor of 10^7 is the classic on-chain money bug, so the
  * conversion lives in exactly one place.
  */
-const STROOPS_PER_UNIT = 10_000_000;
+export const STROOPS_PER_UNIT = 10_000_000;
 
 /**
  * Hex lengths of the Groth16 proof components the contract expects: G1 (96 bytes), G2 (192), G1.
@@ -75,13 +74,10 @@ async function address(): Promise<string> {
  * blind-hash-signing into informed consent (Docs/deposit-flow.md). Rejecting throws
  * `UserRejectedError` so callers can treat it as a cancel, not a failure.
  */
-function reviewAndSign(summary: string, hashHex: string, masterHex: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    Alert.alert('Approve this action', summary, [
-      { text: 'Cancel', style: 'cancel', onPress: () => reject(new UserRejectedError()) },
-      { text: 'Approve', onPress: () => resolve(signStellarHash(masterHex, hashHex)) },
-    ]);
-  });
+async function reviewAndSign(summary: string, hashHex: string, masterHex: string): Promise<string> {
+  const approved = await requestApproval(summary);
+  if (!approved) throw new UserRejectedError();
+  return signStellarHash(masterHex, hashHex);
 }
 
 export interface OnChainStatus {
@@ -96,13 +92,17 @@ export interface OnChainStatus {
 export async function getOnChainStatus(): Promise<OnChainStatus> {
   const addr = await address();
   const state: AccountState = await getAccountState(addr);
-  const asset = state.balances.find((b) => b.code === env.depositAsset);
+  // A brand-new account has no balances, and Go marshals a nil slice as `null` rather than `[]` —
+  // so this is `null` for exactly the users who are about to activate. Calling `.find` on it threw
+  // before the flow could even start, surfacing as an unexplained error on "Add funds".
+  const balances = state.balances ?? [];
+  const asset = balances.find((b) => b.code === env.depositAsset);
   return {
     address: addr,
     activated: state.exists,
     trusted: asset !== undefined,
     assetBalance: asset?.balance ?? '0',
-    balances: state.balances,
+    balances,
   };
 }
 
@@ -135,7 +135,10 @@ export async function shieldIntoPool(plan: ShieldPlan): Promise<ShieldResult> {
   const unsigned = await prepareShieldTx({
     address: addr,
     // The contract takes the token's own units; the app counts whole units.
-    amount: plan.amount * STROOPS_PER_UNIT,
+    // Already in stroops: the proof was built against this exact number, and the contract
+    // verifies the proof against the amount it transfers. Scaling here again would make the
+    // two disagree — which is precisely what the contract rejected as InvalidProof.
+    amount: plan.amount,
     note: {
       commitment: plan.commitment,
       ownerPk: plan.ownerPk,

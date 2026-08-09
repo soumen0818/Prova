@@ -78,10 +78,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             entering={FadeInDown.springify().damping(18)}
             exiting={FadeOutUp.duration(200)}
             style={styles.shadow}>
-            <View style={styles.clip}>
+            <View style={[styles.clip, { borderColor: ACCENTS[toast.variant] + '55' }]}>
+              {/* A coloured rail carries the status at a glance, without tinting the whole
+                  surface — which at this size turns into a solid block of colour and fights the
+                  text for contrast. */}
+              <View style={[styles.rail, { backgroundColor: ACCENTS[toast.variant] }]} />
               <View style={styles.surface}>
                 <View style={[styles.iconChip, { backgroundColor: CHIP_BG[toast.variant] }]}>
-                  <Icon color={ACCENTS[toast.variant]} size={16} strokeWidth={2.4} />
+                  <Icon color={ACCENTS[toast.variant]} size={15} strokeWidth={2.4} />
                 </View>
                 <Text style={styles.text}>{toast.message}</Text>
               </View>
@@ -101,7 +105,9 @@ const styles = StyleSheet.create({
     top: 0,
     alignItems: 'center',
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
+    // Clears the navigation header. At the previous offset the toast landed on top of the screen
+    // title, so a success message hid the very heading telling you where you were.
+    paddingTop: Spacing.seven,
   },
   shadow: {
     maxWidth: 520,
@@ -115,29 +121,32 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   clip: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
     borderRadius: Radius.card,
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Palette.glassBorder,
+    borderWidth: 1,
     // Solid, not glass: expo-blur's Android blur needs a configured `blurTarget` to actually blur
     // (see the "dimezisBlurView... fallback to none" warning) — without it the view is just an
     // invisible no-op, which read as "the toast has no background at all". A flat surface color
     // is simpler and always correct, on every Android version, with no experimental API involved.
     backgroundColor: Palette.bgElevated,
   },
+  rail: { width: 4 },
   surface: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.four,
     paddingHorizontal: Spacing.four,
   },
   iconChip: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: { ...Typography.caption, color: Palette.white, flex: 1 },
+  text: { ...Typography.caption, color: Palette.white, flex: 1, lineHeight: 19 },
 });

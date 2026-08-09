@@ -30,13 +30,13 @@ const STEPS: { key: CapturedArtifact; title: string; hint: string; facing: 'fron
   {
     key: 'document_front',
     title: 'Front of your ID',
-    hint: 'Emirates ID or passport photo page. Fill the frame, avoid glare.',
+    hint: 'Passport, Emirates ID, Aadhaar, voter ID, PAN or driving licence — the side with your photo. Fill the frame, avoid glare.',
     facing: 'back',
   },
   {
     key: 'document_back',
     title: 'Back of your ID',
-    hint: 'Skip if you used a passport photo page.',
+    hint: 'Skip this if your document has everything on one side (e.g. a passport photo page).',
     facing: 'back',
   },
   {
@@ -310,6 +310,7 @@ export default function KycScreen() {
             title={s.title}
             hint={s.hint}
             facing={s.facing}
+            side={s.key === 'document_back' ? 'back' : 'front'}
             onCaptured={onCaptured}
           />
         )}

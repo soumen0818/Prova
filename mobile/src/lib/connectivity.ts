@@ -20,6 +20,20 @@ import { useHealth } from './queries';
 /** Requests slower than this mean a weak connection — warn, but keep working. */
 export const SLOW_MS = 2500;
 
+/**
+ * Latency measured within this window of app start is not trusted.
+ *
+ * `getHealth` times a wall-clock `await`, so at launch it is really measuring contention on the JS
+ * thread — fonts, the lock check, the first note scan, and ~1s of proving-key warm-up all land in
+ * the same moment. The backend itself answers in microseconds, so a "weak connection" warning on
+ * first open was reporting our own startup cost as the user's network. For a payments app that is
+ * worse than saying nothing: it invites someone to distrust a connection that is in fact fine.
+ *
+ * Genuine slowness persists, so it is still caught by the very next probe.
+ */
+const STARTUP_GRACE_MS = 10_000;
+const appStartedAt = Date.now();
+
 export type ConnectionState =
   /** No usable device network. */
   | 'offline'
@@ -87,7 +101,12 @@ export function useConnectivity(): Connectivity {
       return { state: 'unreachable', isChecking: false, canTransact: false, retry, latencyMs };
     }
 
-    if (latencyMs !== undefined && latencyMs > SLOW_MS) {
+    // Judged from when this sample was taken, not from "now" — reading the clock during render is
+    // impure, and this is the better question anyway: a sample captured during startup stays
+    // untrusted until a fresh probe replaces it.
+    const startupNoise =
+      health.dataUpdatedAt > 0 && health.dataUpdatedAt - appStartedAt < STARTUP_GRACE_MS;
+    if (latencyMs !== undefined && latencyMs > SLOW_MS && !startupNoise) {
       // Still usable — we warn rather than block, but callers should guard against double-submits.
       return { state: 'slow', isChecking: false, canTransact: true, retry, latencyMs };
     }

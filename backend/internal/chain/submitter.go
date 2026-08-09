@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -69,7 +70,9 @@ func (s CLISubmitter) Submit(ctx context.Context, p Proof) (string, error) {
 		"--anchor_pk_y", p.AnchorPkY,
 		"--current_time", p.CurrentTime,
 	}
-	out, err := exec.CommandContext(ctx, s.Bin, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, s.Bin, args...)
+	PrepareCLI(cmd)
+	out, err := cmd.CombinedOutput()
 	text := string(out)
 
 	if err != nil {
@@ -96,4 +99,26 @@ func lastLines(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, " | ")
+}
+
+// PrepareCLI configures a `stellar` CLI subprocess so it cannot be confused by the backend's own
+// configuration.
+//
+// The CLI auto-loads a `.env` from its **working directory**. The backend runs from `backend/`,
+// whose `.env` sets SOROBAN_RPC_URL for our RPC client — the CLI reads that as an explicit endpoint
+// with no matching passphrase and refuses to run ("rpc-url is used but network passphrase is
+// missing"), even though `--network testnet` was passed and resolves both on its own. Running from
+// a directory with no `.env` removes the ambiguity; the inherited environment is scrubbed too so an
+// exported variable cannot reintroduce it.
+func PrepareCLI(cmd *exec.Cmd) {
+	cmd.Dir = os.TempDir()
+	src := os.Environ()
+	env := make([]string, 0, len(src))
+	for _, kv := range src {
+		if strings.HasPrefix(kv, "SOROBAN_RPC_URL=") || strings.HasPrefix(kv, "STELLAR_RPC_URL=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	cmd.Env = env
 }

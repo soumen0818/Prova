@@ -4,6 +4,7 @@ import { Check, ScanFace } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { DocumentCapture } from '@/components/document-capture';
 import { Loader } from '@/components/loader';
 import { Button } from '@/components/ui';
 import { Palette, Spacing, Typography } from '@/constants/theme';
@@ -69,12 +70,28 @@ const CHALLENGES: Challenge[] = [
 /** How often to sample the camera while a challenge is active. */
 const SAMPLE_MS = 700;
 
+/**
+ * How long one challenge may stall before we offer a way past it.
+ *
+ * Without this the screen is a dead end: if the detector cannot see the user's face — a dim room, an
+ * older camera, ML Kit unavailable on the device — the sampler loops forever and they can never
+ * finish verification at all. A hard block on onboarding is a far worse failure than a weaker
+ * signal, especially since the provider re-scores everything later anyway.
+ *
+ * Long enough that it is not the easy path: someone genuinely doing the check passes well inside it.
+ */
+const STUCK_AFTER_MS = 30_000;
+
 export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [index, setIndex] = useState(0);
   const [checking, setChecking] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [done, setDone] = useState(false);
+  /** The current challenge has stalled long enough to offer the fallback. */
+  const [stuck, setStuck] = useState(false);
+  /** User opted out of the movement check; capture a plain selfie instead. */
+  const [fallback, setFallback] = useState(false);
 
   const camera = useRef<CameraView>(null);
   /** Yaw when the user was centred, so the turn challenge is relative to their own neutral pose. */
@@ -111,7 +128,7 @@ export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
       if (!alive.current) return;
 
       if (faces.length === 0) {
-        setFeedback('No face detected — move into the light.');
+        setFeedback('No face detected — move somewhere brighter and centre your face.');
         return;
       }
       if (faces.length > 1) {
@@ -131,6 +148,8 @@ export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
       if (index < CHALLENGES.length - 1) {
         setIndex((i) => i + 1);
         setFeedback('');
+        // Real progress — restart the stall clock rather than carrying it into the next challenge.
+        setStuck(false);
       } else {
         setDone(true);
       }
@@ -140,6 +159,14 @@ export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
       busy.current = false;
     }
   }, [index, done]);
+
+  // Offer a way out if a single challenge stalls. Keyed on `index` so the clock restarts each time
+  // the user makes real progress — only a genuinely stuck step surfaces the fallback.
+  useEffect(() => {
+    if (!checking || done) return;
+    const id = setTimeout(() => setStuck(true), STUCK_AFTER_MS);
+    return () => clearTimeout(id);
+  }, [checking, done, index]);
 
   // Sample on a timer while a challenge is outstanding.
   useEffect(() => {
@@ -167,6 +194,19 @@ export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
     );
   }
 
+  // Fallback: a single still selfie, the same capture the flow used before liveness existed.
+  if (fallback) {
+    return (
+      <DocumentCapture
+        title="Take a selfie"
+        hint="Look straight at the camera in good light."
+        facing="front"
+        side="selfie"
+        onCaptured={onCaptured}
+      />
+    );
+  }
+
   if (done) {
     return (
       <View style={styles.gate}>
@@ -185,7 +225,11 @@ export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
   return (
     <View style={styles.wrap}>
       <View style={styles.cameraRing}>
-        <CameraView ref={camera} style={styles.camera} facing="front" />
+        {/* The check samples a frame every ~700ms. `animateShutter={false}` suppresses the capture
+            flash that would otherwise fire on every one of those — which read as the screen
+            blinking constantly. The user is being filmed, not photographed; shutter feedback is
+            wrong here. */}
+        <CameraView ref={camera} style={styles.camera} facing="front" animateShutter={false} />
       </View>
 
       <Text style={styles.prompt}>{challenge.prompt}</Text>
@@ -198,13 +242,42 @@ export function LivenessCapture({ onCaptured }: { onCaptured: () => void }) {
       </View>
 
       {checking ? (
-        <View style={styles.busyRow}>
-          <Loader />
-          <Text style={styles.hint}>Checking…</Text>
-        </View>
+        <>
+          <View style={styles.busyRow}>
+            <Loader />
+            <Text style={styles.hint}>Checking…</Text>
+          </View>
+          {stuck ? (
+            <Button
+              label="Having trouble? Take a photo instead"
+              variant="secondary"
+              onPress={() => setFallback(true)}
+            />
+          ) : null}
+        </>
       ) : (
-        <Button label="Start check" onPress={() => setChecking(true)} />
+        <>
+          {/* Shown before the check rather than as an error afterwards: bad lighting is the most
+              common reason a face fails to detect, and it is far less frustrating to prevent than
+              to diagnose. */}
+          <View style={styles.tips}>
+            <Tip text="Find a well-lit spot — avoid dark rooms." />
+            <Tip text="Keep light in front of you, not behind." />
+            <Tip text="Remove sunglasses, hats, or a mask." />
+            <Tip text="Hold the phone at eye level, face in the circle." />
+          </View>
+          <Button label="Start check" onPress={() => setChecking(true)} />
+        </>
       )}
+    </View>
+  );
+}
+
+function Tip({ text }: { text: string }) {
+  return (
+    <View style={styles.tipRow}>
+      <View style={styles.tipDot} />
+      <Text style={styles.tipText}>{text}</Text>
     </View>
   );
 }
@@ -249,4 +322,14 @@ const styles = StyleSheet.create({
     borderColor: Palette.glassBorder,
   },
   busyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  tips: { alignSelf: 'stretch', gap: Spacing.two, marginBottom: Spacing.three },
+  tipRow: { flexDirection: 'row', gap: Spacing.three, alignItems: 'flex-start' },
+  tipDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: Palette.accent,
+    marginTop: 7,
+  },
+  tipText: { ...Typography.caption, color: Palette.textSecondary, flex: 1 },
 });

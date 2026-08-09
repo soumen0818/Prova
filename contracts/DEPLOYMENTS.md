@@ -2,7 +2,29 @@
 
 Tracked deployments of the `prova-verifier` and `prova-pool` contracts per environment.
 
-## Testnet — Phase 4 shielded pool
+## Testnet — Phase 4 shielded pool (XLM)
+
+| Field | Value |
+| --- | --- |
+| Contract ID | `CCOWLFXXKLFCBPES25273CX6VRQHG5S2OAXSOI4W7GR5KZZSW62K44ZX` |
+| Network | `Test SDF Network ; September 2015` |
+| Deployer | `prova-test` |
+| Admin | `prova-admin` (`GBGSKDFXWQHKLNW6YE4AEOUW7WC35YOST4UCROPDDBEJEC3WAVVJFK7R`) |
+| Token custodied | **native XLM** via SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
+| Explorer | https://stellar.expert/explorer/testnet/contract/CCOWLFXXKLFCBPES25273CX6VRQHG5S2OAXSOI4W7GR5KZZSW62K44ZX |
+| Deploy tx | https://stellar.expert/explorer/testnet/tx/f42daa1bcf1265f82a4452de53bd2313f8519fe40d83315f4f7505c18c04436a |
+| Initialize tx | https://stellar.expert/explorer/testnet/tx/159b5de89e35f041b7e359bae7e0efa4cae854c7cd52c6768f2e1283780847ed |
+| Post-deploy checks | `admin` ✓ · `is_paused` false ✓ · `queue_depth` 0 ✓ · `next_index` 0 ✓ |
+
+**Why XLM and not SRT.** The earlier pool custodied SRT, and SRT turned out to be unobtainable on
+testnet: SDF's anchor accepts SEP-12 customer info (status `ACCEPTED`, no outstanding fields) but
+never delivers the asset — a deposit represents a fiat transfer that never arrives in a sandbox —
+its SEP-24 web UI is an unfinished demo whose landing route is placeholder text, and the DEX has
+**zero SRT sellers**. With no route to the asset, the shield/spend flow could not be exercised at
+all. XLM has a faucet that always works, needs no trustline, and removes the anchor from the demo
+path — which is honest, since a working anchor leg needs a licensed partner (Phase 5).
+
+## Testnet — Phase 4 shielded pool (SRT, superseded)
 
 | Field | Value |
 | --- | --- |

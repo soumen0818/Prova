@@ -67,7 +67,7 @@ func (p Prover) MerklePathFor(ctx context.Context, leaves []string, index int64)
 	input, err := json.Marshal(struct {
 		Leaves []string `json:"leaves"`
 		Index  int64    `json:"index"`
-	}{leaves, index})
+	}{nonNil(leaves), index})
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (p Prover) ProveFold(ctx context.Context, leaves, next []string) (*FoldProo
 	input, err := json.Marshal(struct {
 		Leaves []string `json:"leaves"`
 		New    []string `json:"new"`
-	}{leaves, next})
+	}{nonNil(leaves), nonNil(next)})
 	if err != nil {
 		return nil, err
 	}
@@ -138,4 +138,17 @@ func (p Prover) run(ctx context.Context, input []byte, args ...string) ([]byte, 
 		return nil, fmt.Errorf("%s: %w", args[0], err)
 	}
 	return stdout.Bytes(), nil
+}
+
+// nonNil guarantees a JSON array rather than `null`.
+//
+// A nil Go slice marshals to `null`, and the prover CLI's input types expect a sequence — so it
+// panics rather than reporting a usable error. This bites in exactly the case that must work:
+// the *first* fold, when no leaf has been folded yet and the folded-leaf list is legitimately
+// empty. Left unguarded, the pool can never make its first note spendable.
+func nonNil(xs []string) []string {
+	if xs == nil {
+		return []string{}
+	}
+	return xs
 }

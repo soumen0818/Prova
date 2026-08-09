@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui';
+import { checkDocument, type DocumentSide } from '@/lib/document-check';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 /**
@@ -18,29 +19,47 @@ export function DocumentCapture({
   title,
   hint,
   facing = 'back',
+  side = 'front',
   onCaptured,
 }: {
   title: string;
   hint: string;
-  /** 'front' for the selfie step, 'back' for documents. */
+  /** Which camera to use: 'front' for the selfie step, 'back' for documents. */
   facing?: CameraType;
+  /**
+   * Which side of the document this is — distinct from `facing`, which is the camera. Only the
+   * photo page is expected to contain a face, so the checks differ.
+   */
+  side?: DocumentSide;
   onCaptured: () => void;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Why the last capture was not accepted; cleared on the next attempt. */
+  const [rejected, setRejected] = useState('');
   const camera = useRef<CameraView>(null);
 
   const snap = useCallback(async () => {
     if (!camera.current || busy) return;
     setBusy(true);
+    setRejected('');
     try {
       const photo = await camera.current.takePictureAsync({ quality: 0.7, skipProcessing: true });
-      setPreview(photo?.uri ?? null);
+      if (!photo?.uri) return;
+
+      // Check before showing "Use this photo": telling someone their ID was unreadable while the
+      // document is still in their hand is worth far more than a rejection days later.
+      const verdict = await checkDocument(photo.uri, side);
+      if (!verdict.ok) {
+        setRejected(verdict.reason ?? 'That does not look like an ID. Please try again.');
+        return;
+      }
+      setPreview(photo.uri);
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, side]);
 
   // Permission is still resolving.
   if (!permission) return <View style={styles.frame} />;
@@ -84,7 +103,10 @@ export function DocumentCapture({
           </Pressable>
         </View>
       ) : (
-        <Button label={busy ? 'Capturing…' : 'Take photo'} onPress={snap} loading={busy} />
+        <>
+          {rejected ? <Text style={styles.rejected}>{rejected}</Text> : null}
+          <Button label={busy ? 'Checking…' : 'Take photo'} onPress={snap} loading={busy} />
+        </>
       )}
     </View>
   );
@@ -96,6 +118,7 @@ const styles = StyleSheet.create({
   title: { ...Typography.section, color: Palette.white, textAlign: 'center' },
   hint: { ...Typography.caption, color: Palette.textSecondary, textAlign: 'center' },
   cta: { alignSelf: 'stretch', marginTop: Spacing.four },
+  rejected: { ...Typography.caption, color: Palette.statusDown, textAlign: 'center' },
   frame: {
     height: 260,
     borderRadius: Radius.card,

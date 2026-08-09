@@ -62,7 +62,10 @@ func (w *Wallet) Load(ctx context.Context, address string) (AccountState, error)
 	acct, err := w.horizon.AccountDetail(horizonclient.AccountRequest{AccountID: address})
 	if err != nil {
 		if horizonclient.IsNotFoundError(err) {
-			return AccountState{Exists: false}, nil
+			// Non-nil so this marshals as `[]`, not `null`. A nil slice here reached clients as
+			// JSON null and broke any caller that iterated it — which is every caller, since a
+			// missing account is exactly the state right before activation.
+			return AccountState{Exists: false, Balances: []AssetBalance{}}, nil
 		}
 		return AccountState{}, fmt.Errorf("load account: %w", err)
 	}

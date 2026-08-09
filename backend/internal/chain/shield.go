@@ -161,6 +161,24 @@ func (b *ShieldBuilder) Build(ctx context.Context, req ShieldRequest) (UnsignedT
 	}
 	op.Ext = xdr.TransactionExt{V: 1, SorobanData: &sorobanData}
 
+	// Attach the authorisation tree the simulation produced.
+	//
+	// Without it the contract's `from.require_auth()` has no entry to match, panics, and the
+	// transaction fails on-chain as `trapped` — even though simulation passed, because simulation
+	// infers authorisation rather than requiring it. Source-account credentials still need an entry
+	// present saying exactly that; they do not make the tree optional.
+	if len(sim.Auth) > 0 {
+		auth := make([]xdr.SorobanAuthorizationEntry, 0, len(sim.Auth))
+		for _, raw := range sim.Auth {
+			var entry xdr.SorobanAuthorizationEntry
+			if err := xdr.SafeUnmarshalBase64(raw, &entry); err != nil {
+				return UnsignedTx{}, fmt.Errorf("decode simulated auth entry: %w", err)
+			}
+			auth = append(auth, entry)
+		}
+		op.Auth = auth
+	}
+
 	// Pass 2: rebuild with the footprint and the resource fee the network quoted. The sequence
 	// number must not advance again, so start from the same account snapshot.
 	acct.Sequence--

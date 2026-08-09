@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/prova/backend/internal/chain"
 	"log/slog"
 	"os/exec"
 	"regexp"
@@ -182,7 +183,9 @@ func (s CLIRootSubmitter) UpdateRoot(ctx context.Context, proofHex, newRoot stri
 		"--new_root", newRoot,
 		"--count", strconv.Itoa(count),
 	}
-	out, err := exec.CommandContext(ctx, s.Bin, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, s.Bin, args...)
+	chain.PrepareCLI(cmd)
+	out, err := cmd.CombinedOutput()
 	text := string(out)
 
 	if err != nil {

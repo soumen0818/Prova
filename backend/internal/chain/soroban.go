@@ -45,6 +45,13 @@ type SimulateResult struct {
 	// Events are diagnostic events emitted during simulation (base64 XDR), useful for debugging a
 	// failed simulation.
 	Events []string
+	// Auth is the authorisation tree the simulation worked out, as base64 SorobanAuthorizationEntry.
+	//
+	// These must be attached to the operation before submitting. Simulation infers authorisation on
+	// the caller's behalf, so it succeeds without them — but real execution does not: `require_auth`
+	// finds no matching entry, the contract panics, and the transaction fails as `trapped`. Source
+	// account credentials still need an *entry* saying so; they do not make the tree optional.
+	Auth []string
 }
 
 // Failed reports whether the simulation itself rejected the invocation.
@@ -106,6 +113,9 @@ func (c *SorobanClient) Simulate(ctx context.Context, envelopeXDR string) (Simul
 		MinResourceFee  string   `json:"minResourceFee"`
 		Error           string   `json:"error"`
 		Events          []string `json:"events"`
+		Results         []struct {
+			Auth []string `json:"auth"`
+		} `json:"results"`
 		// Present when the invocation would trap; the SDK reports it inside `error` too.
 		RestorePreamble json.RawMessage `json:"restorePreamble"`
 	}
@@ -116,6 +126,9 @@ func (c *SorobanClient) Simulate(ctx context.Context, envelopeXDR string) (Simul
 		TransactionData: raw.TransactionData,
 		Error:           raw.Error,
 		Events:          raw.Events,
+	}
+	if len(raw.Results) > 0 {
+		out.Auth = raw.Results[0].Auth
 	}
 	if raw.MinResourceFee != "" {
 		fee, err := strconv.ParseInt(raw.MinResourceFee, 10, 64)

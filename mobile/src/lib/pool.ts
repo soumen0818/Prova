@@ -41,11 +41,13 @@ import {
   markSpent,
   mergeNotes,
   pendingBalance,
+  earliestUnfoldedIndex,
   scanCursor,
   selectNoteFor,
   spendableBalance,
   type OwnedNote,
 } from './notes';
+import { STROOPS_PER_UNIT } from './onchain';
 import { getSecret, SecureKey } from './secure-store';
 import { secureRandomHex } from './wallet';
 
@@ -177,7 +179,10 @@ export interface ScanResult {
  */
 export async function scanForNotes(): Promise<ScanResult> {
   const keys = await poolIdentity();
-  const after = await scanCursor();
+  // Rewind to the earliest note we are still waiting on, so its fold is actually seen. Resuming
+  // from the cursor alone left folded notes stuck as "confirming" indefinitely.
+  const [cursor, pendingFrom] = await Promise.all([scanCursor(), earliestUnfoldedIndex()]);
+  const after = pendingFrom === null ? cursor : Math.min(cursor, pendingFrom);
   const page = await getPoolNotes(after, SCAN_PAGE);
 
   const candidates = page.notes.map((n: PoolNoteRecord) => ({
@@ -233,9 +238,24 @@ async function reconcileSpent(): Promise<number> {
   return spent.length;
 }
 
-/** Spendable and confirming balances, in minor units. Never conflate the two in the UI. */
+/**
+ * Stroops per app minor unit.
+ *
+ * Two different "smallest units" meet here. On-chain, and therefore inside notes and proofs, amounts
+ * are stroops (7 decimals) — the contract verifies the proof against the exact number it transfers.
+ * The app's own minor unit is cents-like (exponent 2, see `assetDenomination`), which every balance
+ * and limit has used since balances existed. Notes are converted at this boundary rather than
+ * changing either convention: raising the app's exponent would reinterpret every stored balance.
+ */
+const STROOPS_PER_MINOR = STROOPS_PER_UNIT / 100;
+
+/** Spendable and confirming balances, in the app's minor units. Never conflate the two in the UI. */
 export async function poolBalance(): Promise<{ spendable: number; pending: number }> {
-  return { spendable: await spendableBalance(), pending: await pendingBalance() };
+  const [spendable, pending] = await Promise.all([spendableBalance(), pendingBalance()]);
+  return {
+    spendable: Math.floor(spendable / STROOPS_PER_MINOR),
+    pending: Math.floor(pending / STROOPS_PER_MINOR),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -269,8 +289,13 @@ export async function prepareShield(amount: number): Promise<ShieldPlan> {
   }
   const keys = await poolIdentity();
 
+  // Everything inside the pool is denominated in the token's own smallest unit, because that is
+  // what the contract moves and what it verifies the proof against. Proving in whole units while
+  // transferring stroops made the two disagree, and the contract rejected it as InvalidProof.
+  const minor = amount * STROOPS_PER_UNIT;
+
   const out = await poolShieldProve({
-    amount,
+    amount: minor,
     owner_pk: keys.owner_pk,
     rho: secureRandomHex(32),
     enc_pk_x: keys.enc_pk_x,
@@ -287,7 +312,7 @@ export async function prepareShield(amount: number): Promise<ShieldPlan> {
     epkY: out.epk_y,
     encAmount: out.enc_amount,
     encRho: out.enc_rho,
-    amount,
+    amount: minor,
   };
 }
 
@@ -412,10 +437,15 @@ async function spend(args: SpendArgs): Promise<string> {
   onProgress?.('selecting');
   const keys = await poolIdentity();
 
+  // Notes hold minor units (see prepareShield), so convert before selecting and before the
+  // change arithmetic below — mixing the two would silently pick the wrong note.
+  const amountMinor = amount * STROOPS_PER_UNIT;
+  const publicMinor = publicAmount * STROOPS_PER_UNIT;
+
   // One input note only — the spend circuit is 1-in-2-out. If no single note covers the amount we
   // surface that specifically, because "insufficient funds" would be misleading when the balance is
   // there but fragmented.
-  const input = await selectNoteFor(amount);
+  const input = await selectNoteFor(amountMinor);
   if (!input) {
     const { spendableNotes } = await import('./notes');
     const notes = await spendableNotes();
@@ -449,8 +479,8 @@ async function spend(args: SpendArgs): Promise<string> {
 
   // out1 goes to the payee, out2 is the change back to us. An unshield sends its value out publicly,
   // so out1 carries zero and the change still returns here.
-  const change = input.amount - amount;
-  const recipientAmount = publicAmount > 0 ? 0 : amount;
+  const change = input.amount - amountMinor;
+  const recipientAmount = publicMinor > 0 ? 0 : amountMinor;
 
   onProgress?.('proving');
   const proof = await poolSpendProve({
@@ -475,7 +505,7 @@ async function spend(args: SpendArgs): Promise<string> {
       enc_pk_y: keys.enc_pk_y,
     },
     esk: secureRandomHex(32),
-    public_amount: publicAmount,
+    public_amount: publicMinor,
     destination: destinationField ?? '',
     kyc_level: credential.kycLevel,
     expiry: credential.expiry,
@@ -503,7 +533,7 @@ async function spend(args: SpendArgs): Promise<string> {
       enc2Rho: proof.enc2_rho,
     },
     currentTime: Math.floor(Date.now() / 1000),
-    ...(publicAmount > 0 ? { amount: publicAmount, destination } : {}),
+    ...(publicMinor > 0 ? { amount: publicMinor, destination } : {}),
   });
 
   // Mark the input spent immediately rather than waiting for the next scan, so the balance cannot

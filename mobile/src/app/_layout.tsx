@@ -135,6 +135,8 @@ export default function RootLayout() {
                     <Stack.Screen name="recipients" options={{ title: 'Recipients' }} />
                     <Stack.Screen name="recipient-new" options={{ title: 'New recipient' }} />
                     <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+                    <Stack.Screen name="legal" options={{ title: 'Legal' }} />
+                    <Stack.Screen name="support" options={{ title: 'Chat with us' }} />
                     <Stack.Screen name="pool-benchmark" options={{ title: 'Proving benchmark' }} />
                   </Stack>
                 </AppLock>

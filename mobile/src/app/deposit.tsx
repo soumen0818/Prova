@@ -118,6 +118,7 @@ export default function DepositScreen() {
       const res = await shieldToPool(amt, (stage) => setShieldStage(SHIELD_STAGES[stage]));
       await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
       await queryClient.invalidateQueries({ queryKey: QK.denomination });
+      await queryClient.invalidateQueries({ queryKey: QK.activity });
       // Deliberately stays on this screen. Bouncing straight to Home landed the user there before
       // the note had been scanned back off-chain, so Home briefly said "No money added yet" about
       // money they had just watched being deposited. Confirming here, where they acted, is both

@@ -7,7 +7,12 @@
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
-import type { ShieldPrepareRequest, ShieldSubmitResponse } from '@prova/shared';
+import type {
+  ShieldPrepareRequest,
+  ShieldSubmitResponse,
+  SupportMessage,
+  SupportThreadView,
+} from '@prova/shared';
 
 import { env } from '@/config/env';
 
@@ -384,6 +389,24 @@ export function renewCredential(userId: string): Promise<KycCredential> {
   return json<KycCredential>('/kyc/credential/renew', {
     method: 'POST',
     body: JSON.stringify({ userId }),
+  });
+}
+
+/**
+ * Read the user's support conversation.
+ *
+ * `after` is a message-id cursor: pass the last id you already have and the server returns only what
+ * is new, so polling while someone is reading does not re-render the whole thread under them.
+ */
+export function getSupportThread(userId: string, after = 0): Promise<SupportThreadView> {
+  return json<SupportThreadView>(`/support/threads/${encodeURIComponent(userId)}?after=${after}`);
+}
+
+/** Send a message to the Prova team. */
+export function sendSupportMessage(userId: string, body: string): Promise<SupportMessage> {
+  return json<SupportMessage>(`/support/threads/${encodeURIComponent(userId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
   });
 }
 

@@ -98,4 +98,9 @@ export async function resetWallet(): Promise<void> {
   await deleteSecret(SecureKey.session);
   await deleteSecret(SecureKey.balance);
   await deleteSecret(SecureKey.recipients);
+
+  // The local history file lives outside the enclave, so deleting keys does not take it with it.
+  // Leaving it behind would show the next person to use this device what the last one did.
+  const { clearActivity } = await import('./activity');
+  await clearActivity();
 }

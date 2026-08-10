@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
-import { CheckCircle2, Clock, ShieldCheck, ShieldX, UserSearch } from 'lucide-react-native';
+import { Stack, useRouter } from 'expo-router';
+import { Clock, ShieldCheck, ShieldX, UserSearch } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -350,6 +350,7 @@ function StatusView({
   record: VerificationRecord | null;
   onRetry: () => void;
 }) {
+  const router = useRouter();
   const status = record?.status ?? 'pending';
 
   if (status === 'rejected') {
@@ -370,8 +371,8 @@ function StatusView({
         ) : (
           <Card style={styles.card}>
             <Text style={styles.note}>
-              This decision is final and can’t be retried in the app. Contact support if you believe
-              it’s a mistake.
+              This decision is final and can’t be retried in the app. Message us if you believe it’s
+              a mistake.
             </Text>
           </Card>
         )}
@@ -384,26 +385,29 @@ function StatusView({
     <>
       <View style={styles.hero}>
         <View style={styles.badge}>
-          {inReview ? (
-            <Clock color={Palette.accent} size={36} strokeWidth={1.7} />
-          ) : (
-            <CheckCircle2 color={Palette.accent} size={36} strokeWidth={1.7} />
-          )}
+          <Clock color={Palette.accent} size={36} strokeWidth={1.7} />
         </View>
-        <Text style={styles.heroTitle}>{inReview ? 'Under review' : 'Checking your details'}</Text>
+        <Text style={styles.heroTitle}>
+          {inReview ? 'Our team is reviewing your details' : 'Details received'}
+        </Text>
         <Text style={styles.heroBody}>
           {inReview
-            ? 'A specialist is taking a closer look. This can take a little longer — we’ll update this screen automatically.'
-            : 'Running the automated checks. This usually takes under a minute.'}
+            ? 'A member of our team is checking your documents. This is usually done within 24 hours, and we will notify you as soon as it is decided.'
+            : 'Thanks — your details are in the queue. A member of our team reviews every application, usually within 24 hours.'}
         </Text>
       </View>
-      <View style={styles.busyRow}>
-        <Loader />
-        <Text style={styles.busyText}>Waiting for the result…</Text>
-      </View>
-      <Text style={styles.note}>
-        You can leave this screen — we’ll keep checking in the background.
-      </Text>
+      <Card style={styles.card}>
+        <Bullet text="You can close the app — we will notify you when it is decided." />
+        <Bullet text="Most reviews finish well inside 24 hours." />
+        <Bullet text="Not heard from us after 24 hours? Message us and we will look into it." />
+      </Card>
+      {/*
+        A direct way through, rather than "go to your profile and find the chat". Someone opening
+        this screen for the second day running is exactly the person who should not have to hunt for
+        the way to ask about it.
+      */}
+      <Button label="Chat with us" variant="secondary" onPress={() => router.push('/support')} />
+      <Text style={styles.note}>Your documents never leave your phone.</Text>
     </>
   );
 }

@@ -220,6 +220,11 @@ export async function scanForNotes(): Promise<ScanResult> {
   await mergeNotes(owned, page.next);
   await markFolded(leafByCommitment);
 
+  // Anything we did not put here ourselves is money somebody sent us. Our own deposits and the
+  // change from our own sends were already logged with their commitments, so they are skipped.
+  const { recordIncoming } = await import('./activity');
+  await recordIncoming(owned, (stroops) => Math.floor(stroops / STROOPS_PER_MINOR));
+
   const newlySpendable = owned.filter((n) => n.leafIndex !== null).length;
   const newlySpent = await reconcileSpent();
 
@@ -248,6 +253,14 @@ async function reconcileSpent(): Promise<number> {
  * changing either convention: raising the app's exponent would reinterpret every stored balance.
  */
 const STROOPS_PER_MINOR = STROOPS_PER_UNIT / 100;
+/**
+ * Minor units in one whole unit, for the display layer.
+ *
+ * The app renders money with an exponent of 2 while the chain uses 7; every figure shown to a person
+ * goes through this. Do not "simplify" it to STROOPS_PER_UNIT — that is the bug that once printed a
+ * 1,000 XLM deposit as 100,000,000.
+ */
+const MINOR_PER_UNIT = 100;
 
 /** Spendable and confirming balances, in the app's minor units. Never conflate the two in the UI. */
 export async function poolBalance(): Promise<{ spendable: number; pending: number }> {
@@ -345,7 +358,20 @@ export async function shieldToPool(
 
   onProgress?.('approving');
   const { shieldIntoPool } = await import('./onchain');
-  return shieldIntoPool(plan);
+  const result = await shieldIntoPool(plan);
+
+  // Written here, not on the next scan, because only this call knows the note was *our deposit*
+  // rather than a payment from somebody else. `pending` still counts: the money is on its way, and
+  // history that omits it looks like the deposit vanished.
+  const { recordActivity } = await import('./activity');
+  await recordActivity({
+    kind: 'added',
+    amountMinor: amount * MINOR_PER_UNIT,
+    txHash: result.txHash,
+    commitment: plan.commitment,
+  });
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,8 +413,10 @@ export async function sendPrivately(
   amount: number,
   payee: Payee,
   onProgress?: (stage: 'selecting' | 'proving' | 'submitting') => void,
+  /** Shown in the user's own history only; never transmitted. */
+  counterparty?: string,
 ): Promise<string> {
-  return spend({ amount, payee, onProgress });
+  return spend({ amount, payee, onProgress, kind: 'sent', counterparty });
 }
 
 /**
@@ -414,6 +442,8 @@ export async function cashOut(
     destination,
     destinationField,
     onProgress,
+    kind: 'withdrawn',
+    counterparty: destination,
   });
 }
 
@@ -425,11 +455,23 @@ interface SpendArgs {
   destination?: string;
   destinationField?: string;
   onProgress?: (stage: 'selecting' | 'proving' | 'submitting') => void;
+  /** How this spend is described in the user's own local history. */
+  kind: 'sent' | 'withdrawn';
+  counterparty?: string;
 }
 
 /** The shared path behind both a private transfer and a cash-out. */
 async function spend(args: SpendArgs): Promise<string> {
-  const { amount, payee, publicAmount = 0, destination, destinationField, onProgress } = args;
+  const {
+    amount,
+    payee,
+    publicAmount = 0,
+    destination,
+    destinationField,
+    onProgress,
+    kind,
+    counterparty,
+  } = args;
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new Error('Amount must be a positive whole number.');
   }
@@ -539,5 +581,18 @@ async function spend(args: SpendArgs): Promise<string> {
   // Mark the input spent immediately rather than waiting for the next scan, so the balance cannot
   // briefly show money that is already gone. The chain confirms it on the following poll.
   await markSpent([input.nullifier]);
+
+  // Both output commitments are recorded: c2 is our change coming home, and logging it here is what
+  // stops the next scan announcing our own change as money received.
+  const { recordActivity } = await import('./activity');
+  await recordActivity({
+    kind,
+    amountMinor: amount * MINOR_PER_UNIT,
+    txHash,
+    counterparty,
+    commitment: proof.out_c1,
+    relatedCommitments: [proof.out_c2],
+  });
+
   return txHash;
 }

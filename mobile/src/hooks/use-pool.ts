@@ -101,6 +101,8 @@ export function useNoteScan() {
       setLastResult(result);
       if (result.found > 0 || result.newlySpendable > 0 || result.newlySpent > 0) {
         await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
+        // A scan is also how received money first appears in history, so the list must refresh.
+        await queryClient.invalidateQueries({ queryKey: QK.activity });
       }
       return result;
     } catch (e) {

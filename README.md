@@ -68,6 +68,9 @@ the amount and the identity behind it.
   adds the one layer that was missing: **privacy in transit, with compliance intact.**
 - **Status:** deployed and verified end-to-end on **Stellar testnet** — see
   [Smart contracts](#smart-contracts) for live contract IDs you can check yourself.
+- **Scope today:** transfers run Prova-to-Prova. Withdrawals to a bank account will follow once a
+  licensed payout partner is connected — the private transfer is built; the last mile is a
+  commercial arrangement, not a missing feature.
 
 ## The problem
 
@@ -339,13 +342,14 @@ A single git repository, one folder per component, each with its own toolchain, 
 workflow. Every component below has its own detailed `README.md` — this file is the map, not the
 whole manual.
 
-| Folder                     | Stack                    | What it is                                                                                                                                 |
-| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`mobile/`](mobile/)       | React Native + Expo (TS) | The consumer app: wallet, KYC, send flow, cloud backup, the native ZK prover bridge                                                        |
-| [`backend/`](backend/)     | Go                       | API, sign-in, SEP/anchor orchestration, KYC state machine, the shielded pool's off-chain half (indexer + folder + relayer)                 |
-| [`contracts/`](contracts/) | Rust + Soroban           | Two on-chain programs: the per-transfer verifier and the shielded pool (real token custody)                                                |
-| [`circuits/`](circuits/)   | Rust + arkworks          | The ZK circuits (BLS12-381 Groth16) and the on-device prover, shared by mobile, backend, and contracts                                     |
-| [`shared/`](shared/)       | TypeScript + Go          | Cross-component schemas — proof format, IVMS101, API types, error codes, the pool/note format — mirrored, not generated, in both languages |
+| Folder                     | Stack                    | What it is                                                                                                                                                 |
+| -------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`mobile/`](mobile/)       | React Native + Expo (TS) | The consumer app: wallet, KYC, send flow, cloud backup, the native ZK prover bridge                                                                        |
+| [`backend/`](backend/)     | Go                       | API, sign-in, SEP/anchor orchestration, KYC state machine, the shielded pool's off-chain half (indexer + folder + relayer)                                 |
+| [`contracts/`](contracts/) | Rust + Soroban           | Two on-chain programs: the per-transfer verifier and the shielded pool (real token custody)                                                                |
+| [`circuits/`](circuits/)   | Rust + arkworks          | The ZK circuits (BLS12-381 Groth16) and the on-device prover, shared by mobile, backend, and contracts                                                     |
+| [`shared/`](shared/)       | TypeScript + Go          | Cross-component schemas — proof format, IVMS101, API types, error codes, the pool/note format, the legal text — mirrored, not generated, in both languages |
+| [`web/`](web/)             | Next.js (TS)             | The public site and, at `/ops`, the operator console: KYC review queue and support inbox                                                                   |
 
 ### Full file structure
 
@@ -388,8 +392,16 @@ Prova/
 │       └── src/bin/prova_prover.rs   the CLI: setup, proving, artifact generation, dev tools
 │
 ├── shared/                          cross-component schemas (mirrored, not generated)
-│   ├── src/                         TypeScript — consumed by mobile/
+│   ├── src/                         TypeScript — consumed by mobile/ and web/
+│   │   └── legal.ts                 Privacy Policy + Terms, so app and site publish one wording
 │   └── go/schema/                   Go — consumed by backend/
+│
+├── web/                             Next.js — marketing site + operator console
+│   └── src/
+│       ├── app/                     public pages (/, /privacy, /terms) and /ops (staff only)
+│       ├── components/              site chrome, scroll reveal, shared legal renderer
+│       └── lib/                     server-only session + backend client (COMPLIANCE_TOKEN never
+│                                    reaches the browser)
 │
 ├── Docs/                            product, architecture, and phase-by-phase design docs
 ├── .github/workflows/               one path-filtered CI workflow per component
@@ -451,6 +463,7 @@ one place to look, not a scavenger hunt across scripts:
 | ---------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend/` | `.env.example` | `DATABASE_URL`, `REDIS_URL`, `POOL_CONTRACT_ID`, `CONTRACT_ID`, `RELAYER_KEY`, `ANCHOR_SEED`, `SMTP_*` (Gmail App Password compatible), `AUTH_MODE`               |
 | `mobile/`  | `.env.example` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_STELLAR_NETWORK`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_DEPOSIT_MODE`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (cloud backup) |
+| `web/`     | `.env.example` | `PROVA_API_URL`, `OPS_PASSWORD`, `OPS_SESSION_SECRET`, `COMPLIANCE_TOKEN` (must equal the backend's) — the marketing pages need none of these                     |
 
 No secret is ever required to run the app locally — `AUTH_MODE=development` accepts a fixed dev OTP
 and `DEPOSIT_MODE=simulated` credits a local counter with no chain or anchor involved. The one key
@@ -523,8 +536,29 @@ circuit, contract, backend, and app must agree on shared formats.
 ## CI
 
 All workflows live in [`.github/workflows/`](.github/workflows/) and are **path-filtered** — each
-one runs only when its component changes (`mobile-ci.yml`, `backend-ci.yml`, `contracts-ci.yml`,
-`circuits-ci.yml`, `shared-ci.yml`, `docker-ci.yml`).
+runs only when something it actually depends on changes.
+
+| Workflow           | Runs on changes to                        | Checks                            |
+| ------------------ | ----------------------------------------- | --------------------------------- |
+| `web-ci.yml`       | `web/`, `shared/src/`                     | typecheck, Prettier, `next build` |
+| `mobile-ci.yml`    | `mobile/`, `shared/src/`                  | typecheck, `expo lint`, Prettier  |
+| `shared-ci.yml`    | `shared/src/`                             | typecheck, build                  |
+| `backend-ci.yml`   | `backend/`, `shared/go/`                  | `gofmt`, `go vet`, build, tests   |
+| `contracts-ci.yml` | `contracts/`, `circuits/`                 | fmt, clippy, wasm build, tests    |
+| `circuits-ci.yml`  | `circuits/`                               | fmt, clippy, tests                |
+| `docker-ci.yml`    | `backend/`, `shared/go/`, `.dockerignore` | image build + compose validation  |
+
+The filters follow the **real** dependency graph, not the folder names, because the two disagree in
+three places:
+
+- The Go backend consumes `shared/go` through a `replace` directive, so a change there compiles into
+  it — `backend-ci` watches `shared/go/**` for that reason.
+- `contracts/pool` builds real Groth16 proofs in its tests via `prova-prover` as a path
+  dev-dependency, so `contracts-ci` watches `circuits/**`.
+- The Node pipelines watch `shared/src/**` rather than all of `shared/**`, so a Go-only edit does not
+  run the mobile and web jobs for nothing.
+
+A web-only change therefore runs `web-ci` and nothing else.
 
 ## Roadmap
 

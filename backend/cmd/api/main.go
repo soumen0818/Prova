@@ -116,6 +116,9 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 		logger.Error("migration failed — /transfers disabled", "err", err)
 	} else {
 		pg = st
+		// Support conversations talk to Postgres directly — an append and a list, with no domain
+		// logic that would justify a service layer.
+		deps.Store = st
 		rdb := connectRedis(logger, cfg.RedisURL)
 		// Backs the rate limiter too, so limits hold across replicas rather than per-instance.
 		deps.Redis = rdb
@@ -240,6 +243,10 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 			logger.Warn("postgres unavailable — /kyc/verifications disabled (credentials cannot be gated)")
 		} else {
 			provider := kyc.NewMockProvider(cfg.KYCMockDelay)
+			if cfg.KYCManualReview {
+				// Every submission lands in the human queue. See config.KYCManualReview.
+				provider.ForceDecision = kyc.DecisionReview
+			}
 			svc := kyc.NewService(pg, provider, issuer, logger)
 			// The mock reports its simulated verdict straight back into the state machine, standing
 			// in for a real provider's webhook.

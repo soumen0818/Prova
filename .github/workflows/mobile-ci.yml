@@ -3,10 +3,24 @@ name: mobile-ci
 on:
   push:
     branches: [main]
-    paths: ['mobile/**', 'shared/**', '.github/workflows/mobile-ci.yml']
+    paths:
+      [
+        'mobile/**',
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/mobile-ci.yml',
+      ]
   pull_request:
     branches: [main]
-    paths: ['mobile/**', 'shared/**', '.github/workflows/mobile-ci.yml']
+    paths:
+      [
+        'mobile/**',
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/mobile-ci.yml',
+      ]
 
 defaults:
   run:

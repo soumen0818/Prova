@@ -1,0 +1,233 @@
+/*
+ * Prova web design tokens.
+ *
+ * Mirrors `mobile/src/constants/theme.ts` value for value, so the site and the app are recognisably
+ * the same product. Prova is dark-first and committed to it: there is no light theme here because
+ * there is none in the app, and a marketing page that looks nothing like the product it sells is
+ * worse than one that ignores a system preference.
+ */
+
+:root {
+  --accent: #e6f94e;
+  --accent-pressed: #d2e63a;
+  --lilac: #dccbf7;
+  --on-accent: #11131a;
+
+  --bg-base: #0e0e11;
+  --bg-elevated: #171719;
+  --bg-input: #1e1e21;
+
+  --white: #ffffff;
+  /*
+   * Supporting text. Set by measured contrast against --bg-base, not by taste. The original pair
+   * measured 6.8:1 and 3.6:1 — the muted one failed the 4.5:1 minimum for body text outright.
+   * These measure 12.6:1 and 7.8:1, deliberately far above the minimum: hierarchy on this site
+   * comes from size and weight, not from making text dim enough to strain at.
+   *
+   * Mirrors Palette.textSecondary / textMuted in the app. Change both together.
+   */
+  --text-secondary: #d2d2d9;
+  --text-muted: #a5a5af;
+
+  --glass: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --status-up: #3fae6f;
+  --status-down: #c0473c;
+  --status-warn: #e0a83c;
+  --glow-olive: rgba(160, 160, 40, 0.18);
+
+  --radius-card: 24px;
+  --radius-input: 14px;
+  --radius-pill: 999px;
+
+  --page: 1120px;
+
+  --font-sans:
+    'Urbanist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--white);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  /* The site is a single column at every width; a horizontal scrollbar is always a bug here. */
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Motion                                                                     */
+/*                                                                            */
+/* Every animated element starts hidden and is revealed by `.in`, which the   */
+/* reveal observer adds when it scrolls into view. That means a visitor who   */
+/* has JavaScript disabled would see nothing — so the no-JS fallback below    */
+/* forces everything visible, and the reduced-motion block does the same for  */
+/* anyone who has asked the OS to stop moving things.                         */
+/* ------------------------------------------------------------------------ */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--delay, 0ms);
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.in {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.no-js .reveal {
+  opacity: 1;
+  transform: none;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Layout primitives                                                          */
+/* ------------------------------------------------------------------------ */
+
+.page {
+  width: 100%;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 28px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 26px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-pressed);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--white);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}

@@ -1,8 +1,10 @@
 /**
- * Saved beneficiaries ("recipients"). Who you send to — e.g. "Amma · HDFC ••4821".
+ * Saved beneficiaries ("recipients"). Who you send to — e.g. "Amma · India".
  *
- * Stored on-device. A recipient is just a label the sender manages; the actual settlement happens
- * anchor-to-anchor. Kept alongside wallet material so a reset wipes it too.
+ * Stored on-device. Kept alongside wallet material so a reset wipes it too.
+ *
+ * A recipient is a name you choose plus the one field that actually moves money: their **pool
+ * address**, taken from their own Receive screen. Everything else here is a label for the sender.
  */
 import { getSecret, SecureKey, setSecret } from './secure-store';
 import { secureRandomHex } from './wallet';
@@ -11,8 +13,14 @@ export interface Recipient {
   id: string;
   /** Display name, e.g. "Amma". */
   name: string;
-  /** Masked destination, e.g. "HDFC ••4821" or "+91 98••• ••210". */
-  handle: string;
+  /**
+   * Legacy bank/phone label, e.g. "HDFC ••4821".
+   *
+   * No longer collected. It existed for a payout leg that does not exist yet — money moves to the
+   * pool address below, never to an account number — so asking for it implied a capability the app
+   * does not have. Kept optional so recipients saved by earlier builds still read and restore.
+   */
+  handle?: string;
   /** Destination country label, e.g. "India". */
   country: string;
   createdAt: number;
@@ -43,7 +51,6 @@ async function writeAll(list: Recipient[]): Promise<void> {
 
 export async function addRecipient(input: {
   name: string;
-  handle: string;
   country?: string;
   poolOwnerPk?: string;
   poolEncPkX?: string;
@@ -53,7 +60,6 @@ export async function addRecipient(input: {
   const recipient: Recipient = {
     id: secureRandomHex(8),
     name: input.name.trim(),
-    handle: input.handle.trim(),
     country: (input.country ?? 'India').trim(),
     createdAt: Math.floor(Date.now() / 1000),
     ...(input.poolOwnerPk && input.poolEncPkX && input.poolEncPkY

@@ -47,9 +47,23 @@ export function Screen({
   const scroller = useRef<ScrollView>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
+  /**
+   * Whether this screen is the one on top.
+   *
+   * `Keyboard` events are global, and a stack keeps earlier screens **mounted** underneath the one
+   * you are looking at. Without this gate, opening the keyboard on "Add recipient" also padded and
+   * scrolled the Home screen sitting behind it — so coming back showed Home shifted upward for a
+   * moment, until its own `keyboardDidHide` arrived. Only the focused screen may react.
+   *
+   * A ref rather than state: the listeners below need to read the *current* value, and re-creating
+   * them on every focus change would drop events during the transition.
+   */
+  const focused = useRef(true);
+
   useEffect(() => {
     if (!scroll) return;
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (!focused.current) return;
       setKeyboardHeight(e.endCoordinates?.height ?? 0);
       // After the padding lands, bring the focused field into view.
       requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
@@ -62,20 +76,21 @@ export function Screen({
   }, [scroll]);
 
   /**
-   * Drop the keyboard padding when the screen is left.
+   * Track focus, and drop the keyboard padding when the screen is left.
    *
    * Navigating away closes the keyboard, but `keyboardDidHide` does not reliably arrive for a
    * screen that is being torn down — so the padding stayed applied and the next screen appeared
    * shifted upward, as if the keyboard were still open.
    */
   useFocusEffect(
-    useCallback(
-      () => () => {
+    useCallback(() => {
+      focused.current = true;
+      return () => {
+        focused.current = false;
         Keyboard.dismiss();
         setKeyboardHeight(0);
-      },
-      [],
-    ),
+      };
+    }, []),
   );
 
   return (

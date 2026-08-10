@@ -1,0 +1,55 @@
+name: web-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      [
+        'web/**',
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/web-ci.yml',
+      ]
+  pull_request:
+    branches: [main]
+    paths:
+      [
+        'web/**',
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/web-ci.yml',
+      ]
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  quality:
+    name: Typecheck, format & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # web consumes @prova/shared via a local file: dependency (the legal text and the API types
+      # are shared with the app), so its dist/ must exist before typecheck or build.
+      - name: Build @prova/shared
+        working-directory: shared
+        run: |
+          npm ci
+          npm run build
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run format:check
+      # The build needs a session secret because `session.ts` refuses to sign with a default key.
+      # This value is a build-time placeholder only — it signs nothing, since no request is served.
+      - name: Build
+        run: npm run build
+        env:
+          OPS_SESSION_SECRET: ci-placeholder-not-a-real-secret

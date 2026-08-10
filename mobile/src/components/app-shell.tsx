@@ -1,15 +1,19 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Clock, Home, Send, User } from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useToast } from '@/components/toast';
 import { ActivityScreen } from '@/features/activity';
 import { HomeScreen } from '@/features/home';
 import { ProfileScreen } from '@/features/profile';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 import { useRequireKyc } from '@/hooks/use-require-kyc';
+
+/** How long a second back press still counts as "yes, I meant to leave". */
+const EXIT_CONFIRM_MS = 2500;
 
 type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
 type TabKey = 'home' | 'activity' | 'profile';
@@ -29,7 +33,46 @@ export function AppShell() {
   const router = useRouter();
   const requireKyc = useRequireKyc();
   const insets = useSafeAreaInsets();
+  const toast = useToast();
   const [tab, setTab] = useState<TabKey>('home');
+  const lastBackPress = useRef(0);
+
+  /**
+   * Make the Android back button behave the way people expect.
+   *
+   * The tabs are React state, not routes, so the navigator has no history to pop for them. Without
+   * this, back from Activity or Profile fell through to the system default and **closed the app** —
+   * which for a payments app, mid-task, is alarming rather than merely annoying.
+   *
+   * Two rules:
+   *  - On a tab other than Home, go to Home. That is what the back arrow means to a person here.
+   *  - On Home, ask once before leaving. A single stray press closing a wallet is a bad outcome;
+   *    a second press within a couple of seconds confirms it and the app exits normally.
+   *
+   * Registered through `useFocusEffect` so it is only active while the shell is on top. The
+   * listener is global, so left mounted it would also swallow the back press on pushed screens
+   * like Send — breaking exactly what it is meant to fix.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const onBack = () => {
+        if (tab !== 'home') {
+          setTab('home');
+          return true; // handled
+        }
+        const now = Date.now();
+        if (now - lastBackPress.current < EXIT_CONFIRM_MS) {
+          return false; // let Android close the app
+        }
+        lastBackPress.current = now;
+        toast.info('Press back again to exit');
+        return true;
+      };
+
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+      return () => sub.remove();
+    }, [tab, toast]),
+  );
 
   return (
     <View style={styles.root}>

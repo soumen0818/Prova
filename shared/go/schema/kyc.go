@@ -114,6 +114,29 @@ type VerificationRecord struct {
 	UpdatedAt string `json:"updatedAt"` // ISO 8601
 }
 
+// QueuedVerification is one row of the compliance review queue.
+//
+// It is a VerificationRecord plus the userId. The app-facing record omits the id because the app
+// already knows its own; a reviewer needs it to act, and it is an opaque hash rather than a name.
+type QueuedVerification struct {
+	UserID string `json:"userId"`
+	VerificationRecord
+}
+
+// IsValidVerificationStatus reports whether s is one of the defined lifecycle states.
+//
+// Used to reject unknown filter values rather than silently returning everything — a queue that
+// quietly ignores its filter shows a reviewer the wrong work.
+func IsValidVerificationStatus(s string) bool {
+	switch VerificationStatus(s) {
+	case VerificationNotStarted, VerificationPending, VerificationInReview,
+		VerificationApproved, VerificationRejected, VerificationExpired:
+		return true
+	default:
+		return false
+	}
+}
+
 // ProviderVerdict is the payload a verification provider posts to the webhook.
 type ProviderVerdict struct {
 	ProviderRef string `json:"providerRef"`

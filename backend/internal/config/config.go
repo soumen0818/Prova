@@ -82,6 +82,13 @@ type Config struct {
 	// verification record; the provider reports its verdict on an HMAC-authenticated webhook.
 	KYCWebhookSecret string        // shared secret for X-Prova-Signature; empty → checks skipped (local dev only)
 	KYCMockDelay     time.Duration // simulated provider latency for the Stage A mock provider
+	// KYCManualReview routes every submission to a human reviewer instead of auto-approving.
+	//
+	// Until a licensed vendor is integrated, nothing in the pipeline actually inspects a document —
+	// so auto-approving would tell a user they are "verified" on the strength of no check at all.
+	// Escalating to the review queue is both the honest behaviour and the one that matches how a
+	// real compliance desk works.
+	KYCManualReview bool
 
 	// ComplianceToken gates the manual KYC decision endpoint (POST /kyc/verifications/{id}/decide) —
 	// without it, anyone who knows/guesses a userId could self-approve their own KYC. Required as
@@ -155,6 +162,7 @@ func Load() Config {
 
 		KYCWebhookSecret: getenv("KYC_WEBHOOK_SECRET", ""), // empty → signature check skipped (dev)
 		KYCMockDelay:     getdur("KYC_MOCK_DELAY_SECONDS", 4*time.Second),
+		KYCManualReview:  getbool("KYC_MANUAL_REVIEW", true),
 		ComplianceToken:  getenv("COMPLIANCE_TOKEN", ""),
 
 		SMTPHost:     getenv("SMTP_HOST", ""),

@@ -1,13 +1,18 @@
+import { CORRIDOR_STATUS_NOTE } from '@prova/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import {
   ChevronRight,
+  Info,
   LogOut,
+  MessageCircle,
   QrCode,
   Settings,
   ShieldCheck,
   UsersRound,
   Wallet,
+  FileText,
+  ScrollText,
 } from 'lucide-react-native';
 import type { ComponentType } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -105,6 +110,21 @@ export function ProfileScreen() {
         />
         <MenuRow Icon={Wallet} label="Add money" onPress={() => router.push('/deposit')} />
         <MenuRow Icon={Settings} label="Settings" onPress={() => router.push('/settings')} />
+        <MenuRow
+          Icon={MessageCircle}
+          label="Chat with us"
+          onPress={() => router.push('/support')}
+        />
+        <MenuRow
+          Icon={FileText}
+          label="Privacy Policy"
+          onPress={() => router.push({ pathname: '/legal', params: { doc: 'privacy' } })}
+        />
+        <MenuRow
+          Icon={ScrollText}
+          label="Terms of Service"
+          onPress={() => router.push({ pathname: '/legal', params: { doc: 'terms' } })}
+        />
       </View>
 
       <Card style={styles.privacyCard}>
@@ -113,6 +133,16 @@ export function ProfileScreen() {
           Your amount is proved compliant on this device and never leaves it — only a commitment is
           written on-chain.
         </Text>
+      </Card>
+
+      {/*
+        A statement of scope, above the sign-out rather than trailing after it. Below the last
+        action it read as a footer nobody attributes to anything; here it sits with the other
+        informational cards, which is what it is.
+      */}
+      <Card style={styles.statusCard}>
+        <Info color={Palette.textSecondary} size={17} strokeWidth={2} />
+        <Text style={styles.statusText}>{CORRIDOR_STATUS_NOTE}</Text>
       </Card>
 
       <Pressable
@@ -138,6 +168,19 @@ function MenuRow({ Icon, label, onPress }: { Icon: IconType; label: string; onPr
 }
 
 const styles = StyleSheet.create({
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+    marginBottom: Spacing.four,
+    paddingVertical: Spacing.four,
+  },
+  statusText: {
+    ...Typography.caption,
+    color: Palette.textSecondary,
+    flex: 1,
+    lineHeight: 20,
+  },
   title: { ...Typography.title, color: Palette.white, marginBottom: Spacing.five },
   flex: { flex: 1 },
   identityCard: {

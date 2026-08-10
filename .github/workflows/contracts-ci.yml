@@ -3,10 +3,12 @@ name: contracts-ci
 on:
   push:
     branches: [main]
-    paths: ['contracts/**', '.github/workflows/contracts-ci.yml']
+    # contracts/pool depends on `prova-prover = { path = "../../circuits/prover" }` — its tests build
+    # real Groth16 proofs rather than replaying fixtures, so a circuits change can break them here.
+    paths: ['contracts/**', 'circuits/**', '.github/workflows/contracts-ci.yml']
   pull_request:
     branches: [main]
-    paths: ['contracts/**', '.github/workflows/contracts-ci.yml']
+    paths: ['contracts/**', 'circuits/**', '.github/workflows/contracts-ci.yml']
 
 defaults:
   run:

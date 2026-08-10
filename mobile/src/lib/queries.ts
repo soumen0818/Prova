@@ -6,6 +6,7 @@ import { QueryClient, useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { env } from '@/config/env';
+import { listActivity } from './activity';
 import { getHealth, getHistory } from './api';
 import { logger } from './logger';
 import { getBalanceMinor, getDenomination } from './balance';
@@ -68,6 +69,16 @@ export function useHistory() {
   return useQuery({ queryKey: ['history'], queryFn: getHistory });
 }
 
+/**
+ * The wallet's own transaction history, read from the device.
+ *
+ * Not a server call, and it cannot become one: the backend never learns an amount, and asking it
+ * "what did I do?" would hand it the link between a user and their notes. See `lib/activity`.
+ */
+export function useActivity() {
+  return useQuery({ queryKey: QK.activity, queryFn: listActivity, staleTime: 0 });
+}
+
 /** On-device spendable balance (minor units). Invalidate `['balance']` after deposit/send. */
 export function useBalance() {
   return useQuery({ queryKey: ['balance'], queryFn: getBalanceMinor, staleTime: 0 });
@@ -125,6 +136,10 @@ export const QK = {
   session: ['session'] as const,
   kyc: ['kyc-verified'] as const,
   history: ['history'] as const,
+  /** The device's own record of deposits, sends and cash-outs. */
+  activity: ['activity'] as const,
+  /** The user's support conversation with the team. */
+  support: ['support'] as const,
   backup: ['backup'] as const,
   /** Shielded-pool balance: spendable vs still-confirming. */
   poolBalance: ['pool-balance'] as const,

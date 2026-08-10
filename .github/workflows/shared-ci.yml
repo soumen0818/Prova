@@ -3,10 +3,22 @@ name: shared-ci
 on:
   push:
     branches: [main]
-    paths: ['shared/**', '.github/workflows/shared-ci.yml']
+    paths:
+      [
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/shared-ci.yml',
+      ]
   pull_request:
     branches: [main]
-    paths: ['shared/**', '.github/workflows/shared-ci.yml']
+    paths:
+      [
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/shared-ci.yml',
+      ]
 
 defaults:
   run:

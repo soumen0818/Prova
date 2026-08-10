@@ -56,7 +56,7 @@ export default function RecipientsScreen() {
               <View style={styles.info}>
                 <Text style={styles.name}>{r.name}</Text>
                 <Text style={styles.handle} numberOfLines={1}>
-                  {r.handle} · {r.country}
+                  {recipientSubtitle(r)}
                 </Text>
               </View>
               <Pressable
@@ -87,6 +87,17 @@ export default function RecipientsScreen() {
       />
     </Screen>
   );
+}
+
+/**
+ * Subtitle under a recipient's name.
+ *
+ * `handle` is legacy — new recipients are saved without it (see lib/recipients) — so it is only
+ * included when an older record actually carries one. Interpolating it unconditionally printed a
+ * stray leading separator for every recipient added since.
+ */
+function recipientSubtitle(r: { handle?: string; country: string }): string {
+  return r.handle ? `${r.handle} · ${r.country}` : r.country;
 }
 
 const styles = StyleSheet.create({

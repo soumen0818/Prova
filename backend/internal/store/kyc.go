@@ -97,6 +97,38 @@ func (s *Store) GetVerificationByProviderRef(ctx context.Context, ref string) (*
 	return v, err
 }
 
+// ListVerifications returns verifications for the compliance console, newest submission first.
+//
+// `status` empty means every status. The queue an operator actually works is `in_review`, but the
+// console also needs to look back at what was decided — a review tool that can only show you the
+// undecided items gives you no way to check your own past decisions.
+func (s *Store) ListVerifications(ctx context.Context, status string, limit int) ([]Verification, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `SELECT `+verificationCols+`
+FROM kyc_verifications
+WHERE ($1 = '' OR status = $1)
+ORDER BY updated_at DESC
+LIMIT $2`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Non-nil: an empty queue must marshal as [] rather than null.
+	out := []Verification{}
+	for rows.Next() {
+		var v Verification
+		if err := rows.Scan(&v.ID, &v.UserID, &v.Status, &v.Tier, &v.Expiry, &v.ReasonCode,
+			&v.ProviderRef, &v.CreatedAt, &v.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 // SetVerificationOutcome records a terminal or intermediate outcome for a verification.
 //
 // Guarded by `id` so a late/duplicate webhook for a superseded submission cannot overwrite a newer

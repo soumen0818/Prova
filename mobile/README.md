@@ -217,6 +217,10 @@ a stub always throws "not available on web — run on Android."
 
 ## Status
 
+Transfers run Prova-to-Prova. Withdrawals to a bank account will follow once a licensed payout
+partner is connected: `cashOut()` in `lib/pool.ts` exists and is unused, because there is nothing
+on the other end of it yet.
+
 Sign-in (email OTP), KYC (identity → documents → credential), PIN + biometric security, cloud
 backup/restore, recipients, and the on-device shielded-pool flow (shield/scan/send/cash-out) are all
 wired against the real backend and the real Rust prover. `send.tsx` currently reads a simpler local

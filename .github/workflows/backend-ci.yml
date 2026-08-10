@@ -3,10 +3,12 @@ name: backend-ci
 on:
   push:
     branches: [main]
-    paths: ['backend/**', '.github/workflows/backend-ci.yml']
+    # shared/go is consumed through `replace github.com/prova/shared => ../shared/go`, so a change
+    # there compiles into this module and must re-run vet, build and tests.
+    paths: ['backend/**', 'shared/go/**', '.github/workflows/backend-ci.yml']
   pull_request:
     branches: [main]
-    paths: ['backend/**', '.github/workflows/backend-ci.yml']
+    paths: ['backend/**', 'shared/go/**', '.github/workflows/backend-ci.yml']
 
 defaults:
   run:

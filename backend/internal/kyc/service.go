@@ -114,6 +114,11 @@ func (s *Service) Get(ctx context.Context, userID string) (*store.Verification, 
 	return v, nil
 }
 
+// List returns verifications for the compliance console. `status` empty means all.
+func (s *Service) List(ctx context.Context, status string, limit int) ([]store.Verification, error) {
+	return s.store.ListVerifications(ctx, status, limit)
+}
+
 // ApplyVerdict records a provider outcome. Idempotent: a replayed or late webhook for an already
 // settled (or superseded) submission is ignored rather than re-applied.
 func (s *Service) ApplyVerdict(ctx context.Context, v Verdict) error {

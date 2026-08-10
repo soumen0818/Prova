@@ -17,6 +17,7 @@ import (
 	"github.com/prova/backend/internal/otp"
 	"github.com/prova/backend/internal/pool"
 	"github.com/prova/backend/internal/ratelimit"
+	"github.com/prova/backend/internal/store"
 	"github.com/prova/backend/internal/transfers"
 )
 
@@ -51,6 +52,12 @@ type handler struct {
 	// Separate from `pool` because it needs the Soroban RPC and the contract id, while the pool
 	// service only reads the indexer's view.
 	shielder *chain.ShieldBuilder
+	// store backs the support conversations; nil disables the /support and /ops/support routes.
+	//
+	// Used directly rather than through a service because support has no domain logic worth a
+	// layer — it is an append and a list, and inventing a service to wrap two queries would be
+	// structure for its own sake.
+	store *store.Store
 }
 
 // Deps are the runtime dependencies the server needs. Any service may be nil (e.g. when
@@ -65,6 +72,8 @@ type Deps struct {
 	Wallet               *chain.Wallet
 	Pool                 *pool.Service
 	Shielder             *chain.ShieldBuilder
+	// Store backs support conversations. Nil (no Postgres) disables those routes with 503.
+	Store *store.Store
 	// Redis backs the rate limiter so limits hold across replicas. Nil falls back to per-instance
 	// in-process counters — degraded, but never open.
 	Redis *redis.Client
@@ -86,6 +95,7 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 		wallet:               deps.Wallet,
 		pool:                 deps.Pool,
 		shielder:             deps.Shielder,
+		store:                deps.Store,
 		limiter:              ratelimit.New(deps.Redis),
 		otp:                  otp.New(deps.Redis),
 		mailer:               deps.Mailer,
@@ -151,6 +161,18 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 	mux.HandleFunc("POST /kyc/credential", h.issueCredential)
 	mux.HandleFunc("POST /kyc/credential/renew", h.renewCredential)
 	mux.HandleFunc("GET /anchors/trusted", h.trustedAnchors)
+
+	// In-app support: the user's side of a conversation with the team.
+	mux.HandleFunc("GET /support/threads/{userId}", h.supportThread)
+	mux.HandleFunc("POST /support/threads/{userId}/messages", h.sendSupportMessage)
+
+	// Operator console. Everything under /ops is gated by COMPLIANCE_TOKEN inside the handler —
+	// grouped by prefix so it is obvious at a glance which routes are staff-only.
+	mux.HandleFunc("GET /ops/kyc/verifications", h.listVerifications)
+	mux.HandleFunc("GET /ops/support/threads", h.listSupportThreads)
+	mux.HandleFunc("GET /ops/support/threads/{userId}", h.opsSupportThread)
+	mux.HandleFunc("POST /ops/support/threads/{userId}/messages", h.replySupportMessage)
+	mux.HandleFunc("POST /ops/support/threads/{userId}/status", h.setSupportThreadStatus)
 
 	mux.HandleFunc("/", h.notFound)
 

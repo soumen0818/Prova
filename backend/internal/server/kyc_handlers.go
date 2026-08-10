@@ -119,6 +119,44 @@ func (h *handler) verificationWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listVerifications is the compliance review queue (GET /ops/kyc/verifications).
+//
+// Gated by the same COMPLIANCE_TOKEN as the decision endpoint, and for the same reason: this returns
+// every userId currently awaiting review, which is the exact list an attacker would need to start
+// guessing at self-approval.
+func (h *handler) listVerifications(w http.ResponseWriter, r *http.Request) {
+	if h.verification == nil {
+		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
+		return
+	}
+	if !h.validComplianceToken(r.Header.Get("Authorization")) {
+		writeError(w, http.StatusUnauthorized, schema.ErrInternal, "missing or invalid compliance token")
+		return
+	}
+	status := r.URL.Query().Get("status")
+	if status != "" && !schema.IsValidVerificationStatus(status) {
+		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "unknown status filter")
+		return
+	}
+
+	records, err := h.verification.List(r.Context(), status, 100)
+	if err != nil {
+		h.logger.Error("list verifications failed", "err", err)
+		writeError(w, http.StatusInternalServerError, schema.ErrInternal, "could not load the queue")
+		return
+	}
+	// Each row carries the userId, which the app-facing VerificationRecord deliberately omits — the
+	// console needs it to act, and it is an opaque hash, not an identity.
+	out := make([]schema.QueuedVerification, 0, len(records))
+	for _, v := range records {
+		out = append(out, schema.QueuedVerification{
+			UserID:             v.UserID,
+			VerificationRecord: v.ToRecord(),
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // decideVerification records a human compliance decision (POST /kyc/verifications/{userId}/decide).
 //
 // This lets its caller approve ANY user's KYC on request, so it is gated by a bearer token

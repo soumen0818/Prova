@@ -12,5 +12,8 @@ export * from './kyc.js';
 export * from './money.js';
 export * from './pool.js';
 export * from './shield.js';
+export * from './support.js';
+export * from './legal.js';
+export * from './product.js';
 export * from './errors.js';
 export * from './validation.js';

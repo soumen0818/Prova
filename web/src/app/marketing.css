@@ -1,0 +1,1286 @@
+/*
+ * Marketing-site styles.
+ *
+ * Kept separate from `globals.css` (tokens + primitives) so the operator console can load the tokens
+ * without dragging in a hero animation it will never render.
+ */
+
+/* ---------------------------------------------------------------------- */
+/* Chrome                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  background: rgba(14, 14, 17, 0.72);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 68px;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.logo-symbol {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.logo-wordmark {
+  width: auto;
+  height: 21px;
+  object-fit: contain;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.nav-links a:hover {
+  color: var(--white);
+}
+
+.btn-sm {
+  padding: 10px 20px;
+  font-size: 14.5px;
+}
+
+@media (max-width: 760px) {
+  .nav-links a:not(.btn) {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hero                                                                     */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * The hero fills one screen and no more.
+ *
+ * `min-height` is measured against the viewport minus the 68px sticky header, so the headline, the
+ * buttons and the phone all land above the fold without the page opening on a scroll. `svh` is the
+ * small-viewport height — on mobile browsers `vh` counts the space *behind* the address bar, so a
+ * `100vh` hero is always taller than the screen it is on, which is the usual reason a hero spills.
+ *
+ * The cap keeps it sane on very tall monitors, where a full-height hero becomes an empty field with
+ * a headline floating in it.
+ */
+.hero {
+  position: relative;
+  min-height: calc(100svh - 68px);
+  max-height: 900px;
+  display: flex;
+  align-items: center;
+  padding: 32px 0;
+  overflow: hidden;
+}
+
+/* Short viewports (laptops in landscape) get their space back rather than being squeezed. */
+@media (max-height: 700px) {
+  .hero {
+    min-height: 0;
+    padding: 56px 0;
+  }
+}
+
+/*
+ * The ambient glow behind the hero. `pointer-events: none` matters: it spans the headline and the
+ * call to action, and an invisible div that eats clicks on your primary button is the kind of bug
+ * nobody finds until conversion drops.
+ */
+.hero-glow {
+  position: absolute;
+  top: -280px;
+  left: 50%;
+  width: 900px;
+  height: 700px;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, var(--glow-olive), transparent 72%);
+  pointer-events: none;
+  animation: drift 18s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  from {
+    transform: translateX(-52%) scale(1);
+  }
+  to {
+    transform: translateX(-48%) scale(1.12);
+  }
+}
+
+.hero-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 44px;
+  }
+}
+
+.hero h1 {
+  font-size: clamp(36px, 5.4vw, 58px);
+  margin: 16px 0 18px;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.hero-sub {
+  font-size: clamp(16px, 1.8vw, 18.5px);
+  color: var(--text-secondary);
+  max-width: 40ch;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.hero-note {
+  margin-top: 16px;
+  font-size: 14.5px;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Phone mock                                                               */
+/* ---------------------------------------------------------------------- */
+
+.phone {
+  justify-self: center;
+  /*
+   * Width is set by aspect ratio, not by eye. A real handset is roughly 0.46 wide-to-tall
+   * (390×844 on the phone this was tested against); at 268px against a ~620px screen the frame
+   * was 0.43 and read as too narrow — a tablet-ish sliver rather than a phone.
+   */
+  width: 281px;
+  border-radius: 38px;
+  padding: 9px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55);
+  animation: float 7s ease-in-out infinite alternate;
+}
+
+@keyframes float {
+  from {
+    transform: translateY(-6px);
+  }
+  to {
+    transform: translateY(10px);
+  }
+}
+
+.phone-screen {
+  background: var(--bg-base);
+  border-radius: 28px;
+  padding: 15px 14px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* Header ----------------------------------------------------------------- */
+
+.ph-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.ph-brand {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ph-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.ph-gear {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  color: var(--white);
+}
+
+/* Balance card — the accent surface, matching Card tone="accent" ---------- */
+
+.ph-balance {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 19px;
+  padding: 12px 13px 11px;
+}
+
+.ph-balance-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ph-balance-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(17, 19, 26, 0.72);
+}
+
+.ph-net {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(17, 19, 26, 0.13);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+}
+
+.ph-balance-value {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+  line-height: 1.1;
+}
+
+.ph-pending {
+  font-size: 10.5px;
+  color: rgba(17, 19, 26, 0.72);
+  margin-top: 3px;
+}
+
+.ph-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.ph-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(17, 19, 26, 0.11);
+  border-radius: var(--radius-pill);
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Section headers -------------------------------------------------------- */
+
+.ph-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.ph-link {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* Recipients ------------------------------------------------------------- */
+
+.ph-recipients {
+  display: flex;
+  gap: 10px;
+}
+
+.ph-recipient {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.ph-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.ph-avatar-add {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  font-size: 18px;
+  font-weight: 400;
+}
+
+/* Activity rows ---------------------------------------------------------- */
+
+.ph-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ph-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 8px 10px;
+}
+
+.ph-dot {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.ph-dot-out {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.ph-dot-in {
+  background: rgba(63, 174, 111, 0.18);
+}
+
+.ph-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ph-row-main span {
+  font-size: 12.5px;
+}
+
+.ph-row-main small {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ph-amt {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ph-amt-in {
+  color: var(--status-up);
+}
+
+/* Proof strip ------------------------------------------------------------ */
+
+.phone-proof {
+  border-radius: 14px;
+  border: 1px solid rgba(230, 249, 78, 0.32);
+  background: rgba(230, 249, 78, 0.07);
+  padding: 8px 10px;
+  font-size: 10.5px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* Tab bar ---------------------------------------------------------------- */
+
+.ph-tabs {
+  display: flex;
+  justify-content: space-around;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 0;
+}
+
+.ph-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ph-tab-on {
+  color: var(--accent);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.8s ease-in-out infinite;
+  flex: none;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sections                                                                 */
+/* ---------------------------------------------------------------------- */
+
+.section {
+  padding: 92px 0;
+  border-top: 1px solid var(--border);
+}
+
+.section-head {
+  max-width: 640px;
+  margin-bottom: 52px;
+}
+
+.section-head h2 {
+  font-size: clamp(30px, 4vw, 44px);
+  margin: 16px 0 16px;
+}
+
+.section-head p {
+  color: var(--text-secondary);
+  font-size: 17px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 860px) {
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.feature {
+  transition:
+    transform 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.feature:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-strong);
+}
+
+.feature-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: rgba(230, 249, 78, 0.1);
+  border: 1px solid rgba(230, 249, 78, 0.28);
+  margin-bottom: 18px;
+}
+
+.feature h3 {
+  font-size: 19px;
+  margin-bottom: 10px;
+}
+
+.feature p {
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+/* Steps ------------------------------------------------------------------ */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  counter-reset: step;
+}
+
+@media (max-width: 900px) {
+  .steps {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+.step {
+  position: relative;
+  padding-top: 26px;
+  border-top: 2px solid var(--border);
+}
+
+.step::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  top: -13px;
+  left: 0;
+  background: var(--bg-base);
+  padding-right: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.step h3 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+
+.step p {
+  font-size: 15.5px;
+  color: var(--text-secondary);
+}
+
+/* Stats ------------------------------------------------------------------ */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.stat-value {
+  font-size: clamp(30px, 4.4vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: 14.5px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+/* CTA -------------------------------------------------------------------- */
+
+.cta {
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  border-radius: 32px;
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(150deg, rgba(230, 249, 78, 0.1), rgba(220, 203, 247, 0.06));
+  padding: 72px 28px;
+}
+
+.cta h2 {
+  font-size: clamp(28px, 4vw, 42px);
+  margin-bottom: 16px;
+}
+
+.cta p {
+  color: var(--text-secondary);
+  max-width: 56ch;
+  margin: 0 auto 30px;
+}
+
+.cta-note {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  max-width: 52ch;
+  margin: 20px auto 0 !important;
+}
+
+.cta-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(230, 249, 78, 0.32);
+  background: rgba(230, 249, 78, 0.07);
+  color: var(--accent);
+  border-radius: var(--radius-pill);
+  padding: 11px 20px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* Footer ----------------------------------------------------------------- */
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 56px 0 40px;
+  margin-top: 92px;
+}
+
+.footer-top {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr;
+  gap: 44px;
+  padding-bottom: 40px;
+}
+
+@media (max-width: 800px) {
+  .footer-top {
+    grid-template-columns: 1fr;
+    gap: 34px;
+  }
+}
+
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 26px;
+}
+
+@media (max-width: 560px) {
+  .footer-cols {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.footer-cols > div {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.footer-cols h4 {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.footer-cols a:hover {
+  color: var(--accent);
+}
+
+.footer-bottom {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  font-size: 14.5px;
+  color: var(--text-muted);
+}
+
+/* Legal pages ------------------------------------------------------------ */
+
+.legal {
+  max-width: 760px;
+  padding: 72px 0 40px;
+}
+
+.legal h1 {
+  font-size: clamp(32px, 5vw, 46px);
+  margin-bottom: 12px;
+}
+
+.legal-updated {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  margin-bottom: 26px;
+}
+
+.legal-intro {
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin-bottom: 44px;
+}
+
+.legal section {
+  margin-bottom: 40px;
+}
+
+.legal h2 {
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+
+.legal p {
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.legal-contact {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  font-size: 14.5px;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Inner pages (About, How it works, Contact)                              */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * Inner-page hero: sized to its content, not to the viewport.
+ *
+ * It must clear `.hero`'s `min-height`, or About/Contact open on a screen of mostly empty space
+ * with a heading floating in it — the full-height rule exists for the home page, where a phone mock
+ * fills the other half.
+ */
+.hero-short {
+  min-height: 0;
+  max-height: none;
+  display: block;
+  padding: 64px 0 48px;
+}
+
+.page-title {
+  font-size: clamp(34px, 5.2vw, 54px);
+  margin: 18px 0 20px;
+  max-width: 18ch;
+}
+
+.page-title em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.page-lede {
+  font-size: clamp(16px, 2vw, 19px);
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+
+/* Long-form prose ------------------------------------------------------- */
+
+.prose {
+  max-width: 720px;
+}
+
+.prose h2 {
+  font-size: clamp(24px, 3.2vw, 32px);
+  margin-bottom: 16px;
+}
+
+.prose > div {
+  margin-bottom: 52px;
+}
+
+.prose p {
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  font-size: 16.5px;
+}
+
+.prose strong {
+  color: var(--white);
+  font-weight: 600;
+}
+
+.inline-link {
+  color: var(--accent);
+  border-bottom: 1px solid rgba(230, 249, 78, 0.35);
+}
+
+.inline-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+.plain-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+}
+
+.plain-list li {
+  margin-bottom: 10px;
+}
+
+/* Numbered flow --------------------------------------------------------- */
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 980px) {
+  .flow {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 580px) {
+  .flow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.flow-step {
+  padding: 24px 22px;
+}
+
+.flow-num {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+
+.flow-step h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.flow-step p {
+  font-size: 15.5px;
+  color: var(--text-secondary);
+}
+
+.flow-time {
+  margin-top: 14px !important;
+  font-size: 14px !important;
+  color: var(--text-muted) !important;
+}
+
+/* Data table ------------------------------------------------------------ */
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 16px 20px;
+  font-size: 15.5px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.data-table thead th {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+}
+
+.data-table td:first-child {
+  color: var(--white);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table td {
+  color: var(--text-secondary);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* FAQ ------------------------------------------------------------------- */
+
+.faq {
+  max-width: 800px;
+  border-top: 1px solid var(--border);
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq-item summary {
+  cursor: pointer;
+  padding: 20px 36px 20px 0;
+  font-size: 17px;
+  font-weight: 600;
+  position: relative;
+  list-style: none;
+}
+
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item summary::after {
+  content: '+';
+  position: absolute;
+  right: 4px;
+  top: 18px;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+}
+
+.faq-item[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.faq-item p {
+  color: var(--text-secondary);
+  padding: 0 40px 22px 0;
+  font-size: 16px;
+}
+
+/* Contact --------------------------------------------------------------- */
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 48px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .contact-grid {
+    grid-template-columns: 1fr;
+    gap: 44px;
+  }
+}
+
+.contact-h2 {
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+
+.form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  padding: 13px 15px;
+  font-size: 15.5px;
+  transition: border-color 0.16s ease;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 130px;
+  line-height: 1.55;
+}
+
+/* Off-screen rather than display:none — see the note in contact-form.tsx. */
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.form-submit {
+  align-self: flex-start;
+}
+
+.form-error {
+  color: var(--status-down);
+  font-size: 14.5px;
+}
+
+.form-note {
+  font-size: 14.5px;
+  color: var(--text-muted);
+}
+
+.form-note a {
+  color: var(--accent);
+}
+
+.form-done {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.form-tick {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(63, 174, 111, 0.15);
+  color: var(--status-up);
+  font-size: 22px;
+}
+
+.form-done h3 {
+  font-size: 19px;
+}
+
+.form-done p {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.contact-details {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.detail h3 {
+  font-size: 15px;
+  margin-bottom: 7px;
+}
+
+.detail p {
+  font-size: 15.5px;
+  color: var(--text-secondary);
+}
+
+.detail-note {
+  font-size: 14.5px !important;
+  color: var(--text-muted) !important;
+  margin-top: 6px;
+  line-height: 1.55;
+}
+
+.detail-warn {
+  border: 1px solid rgba(192, 71, 60, 0.35);
+  background: rgba(192, 71, 60, 0.07);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+
+.detail-warn h3 {
+  color: var(--status-down);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Keeping the hero to one screen at awkward sizes                          */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * Short, wide screens (a 1366×660 laptop, a browser with three toolbars) cannot fit a 620px mock
+ * beside the headline. Scaling the whole frame keeps every element and its proportions — unlike
+ * trimming rows, which would drift the mock away from the screen it is supposed to depict.
+ */
+@media (min-width: 901px) and (max-height: 780px) {
+  .phone {
+    transform-origin: center;
+    scale: 0.86;
+    margin: -44px 0;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 680px) {
+  .phone {
+    scale: 0.74;
+    margin: -82px 0;
+  }
+}
+
+/*
+ * On a phone, the mock goes away.
+ *
+ * Stacked, it pushes the buttons a full screen down — and it is the least useful thing on the page
+ * to someone who is already holding a phone. The headline, the promise and the download button fit
+ * in one view instead, which is what the hero is for.
+ */
+@media (max-width: 900px) {
+  .phone {
+    display: none;
+  }
+
+  .hero-grid {
+    gap: 0;
+  }
+}
+
+/*
+ * Staff entrance to the operator console, sitting in the Product column with the other links.
+ *
+ * Styled as one of them rather than as a button: it inherits the column's size and colour and only
+ * adds the padlock, so it reads as part of the list instead of as a call to action competing with
+ * "Get the app".
+ */
+.footer-ops {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.footer-ops svg {
+  opacity: 0.75;
+  flex: none;
+}
+
+.footer-ops:hover svg {
+  opacity: 1;
+}
+
+/* Contact-form validation states ---------------------------------------- */
+
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-invalid {
+  border-color: var(--status-down) !important;
+}
+
+.field-error {
+  font-size: 13.5px;
+  color: var(--status-down);
+}
+
+.field-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.field-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.field-count-over {
+  color: var(--status-down);
+  font-weight: 600;
+}
+
+.form-required-note {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.req {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* A statement of current scope. Present, readable, and not asking to be the headline. */
+.scope-note {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  margin-bottom: 26px;
+  max-width: 68ch;
+}

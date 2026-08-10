@@ -1,0 +1,770 @@
+/*
+ * Operator console.
+ *
+ * Same tokens as the public site, deliberately plainer: this is a tool somebody works in, not a page
+ * they visit. It favours density, scannability and unambiguous state over motion — nothing here
+ * animates except hover feedback, because a queue that slides around while you read it is harder to
+ * work, not nicer.
+ *
+ * The console imports `globals.css` through the root layout for tokens, but never `marketing.css` —
+ * so any class it needs must be defined here rather than borrowed from the site.
+ */
+
+/* ---------------------------------------------------------------------- */
+/* Shell                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.ops-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  background: var(--bg-base);
+}
+
+@media (max-width: 900px) {
+  .ops-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ops-side {
+  border-right: 1px solid var(--border);
+  padding: 22px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  background: var(--bg-elevated);
+  /* Sticks so the queue can be long without the nav and sign-out scrolling away. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+@media (max-width: 900px) {
+  .ops-side {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+.ops-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 6px;
+}
+
+.ops-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.ops-brand-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ops-brand-sub {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Navigation ------------------------------------------------------------ */
+
+.ops-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ops-nav a {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+
+.ops-nav a:hover {
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--white);
+}
+
+.ops-nav a[aria-current='page'] {
+  background: rgba(230, 249, 78, 0.11);
+  color: var(--accent);
+}
+
+.ops-nav svg {
+  flex: none;
+  opacity: 0.85;
+}
+
+.ops-nav-label {
+  flex: 1;
+}
+
+/* Count beside a nav item. Only rendered when there is work — a "0" everywhere trains you to
+   ignore the number, which defeats the point of having it. */
+.ops-nav-count {
+  min-width: 21px;
+  height: 21px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ops-side-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ops-signed-in {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Main ------------------------------------------------------------------ */
+
+.ops-main {
+  padding: 34px 38px 72px;
+  max-width: 1080px;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .ops-main {
+    padding: 26px 20px 56px;
+  }
+}
+
+.ops-head {
+  margin-bottom: 28px;
+}
+
+.ops-head h1 {
+  font-size: 27px;
+  margin-bottom: 7px;
+}
+
+.ops-head p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  max-width: 70ch;
+}
+
+.ops-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.ops-back:hover {
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Stat cards (Overview)                                                    */
+/* ---------------------------------------------------------------------- */
+
+.ops-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+@media (max-width: 760px) {
+  .ops-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ops-stat {
+  display: block;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 22px 24px;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.ops-stat:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/* A card with work waiting is outlined in the accent, so "something needs me" is legible from
+   across the room rather than requiring you to read the number. */
+.ops-stat-active {
+  border-color: rgba(230, 249, 78, 0.4);
+  background:
+    linear-gradient(160deg, rgba(230, 249, 78, 0.07), transparent 60%), var(--bg-elevated);
+}
+
+.ops-stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ops-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ops-stat-value {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-stat-active .ops-stat-value {
+  color: var(--accent);
+}
+
+.ops-stat-note {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 9px;
+}
+
+.ops-stat-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Cards, rows, lists                                                       */
+/* ---------------------------------------------------------------------- */
+
+.ops-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.ops-card p {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.ops-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ops-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--bg-elevated);
+  transition: border-color 0.14s ease;
+}
+
+.ops-row:hover {
+  border-color: var(--border-strong);
+}
+
+/* An unanswered conversation gets a left edge in the accent — visible while scanning without
+   adding another badge to read. */
+.ops-row-unread {
+  border-left: 3px solid var(--accent);
+}
+
+.ops-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.ops-row-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.ops-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.055);
+  border-radius: 6px;
+  padding: 3px 7px;
+  display: inline-block;
+}
+
+.ops-meta {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin-top: 7px;
+}
+
+.ops-preview {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  max-width: 62ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: center;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Pills                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pill-review {
+  color: var(--status-warn);
+  border-color: rgba(224, 168, 60, 0.45);
+  background: rgba(224, 168, 60, 0.09);
+}
+
+.pill-approved {
+  color: var(--status-up);
+  border-color: rgba(63, 174, 111, 0.45);
+  background: rgba(63, 174, 111, 0.09);
+}
+
+.pill-rejected {
+  color: var(--status-down);
+  border-color: rgba(192, 71, 60, 0.45);
+  background: rgba(192, 71, 60, 0.09);
+}
+
+.pill-unread {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+/* Age of an item, coloured once it is close to the 24-hour promise made in the app. */
+.ops-age-warn {
+  color: var(--status-warn);
+  font-weight: 600;
+}
+
+.ops-age-late {
+  color: var(--status-down);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Filters                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.ops-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops-filters a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition:
+    border-color 0.14s ease,
+    color 0.14s ease,
+    background 0.14s ease;
+}
+
+.ops-filters a:hover {
+  border-color: var(--border-strong);
+  color: var(--white);
+}
+
+.ops-filters a[aria-current='true'] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Forms and buttons                                                        */
+/* ---------------------------------------------------------------------- */
+
+.ops-input,
+.ops-select,
+.ops-textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  padding: 12px 14px;
+  font-size: 15px;
+  transition: border-color 0.14s ease;
+}
+
+.ops-input:focus,
+.ops-textarea:focus,
+.ops-select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.ops-textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.ops-select {
+  width: auto;
+  padding: 9px 12px;
+  font-size: 13.5px;
+}
+
+.ops-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 17px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    color 0.14s ease,
+    background 0.14s ease;
+}
+
+.ops-btn:hover:not(:disabled) {
+  border-color: var(--white);
+}
+
+.ops-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ops-btn-approve {
+  border-color: rgba(63, 174, 111, 0.5);
+  color: var(--status-up);
+}
+
+.ops-btn-approve:hover:not(:disabled) {
+  background: var(--status-up);
+  border-color: var(--status-up);
+  color: #08110c;
+}
+
+.ops-btn-reject {
+  border-color: rgba(192, 71, 60, 0.5);
+  color: var(--status-down);
+}
+
+.ops-btn-reject:hover:not(:disabled) {
+  background: var(--status-down);
+  border-color: var(--status-down);
+  color: #fff;
+}
+
+.ops-btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.ops-btn-primary:hover:not(:disabled) {
+  background: var(--accent-pressed);
+}
+
+.ops-error {
+  color: var(--status-down);
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.ops-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid rgba(192, 71, 60, 0.4);
+  background: rgba(192, 71, 60, 0.08);
+  border-radius: 14px;
+  padding: 16px 18px;
+  font-size: 14.5px;
+  color: var(--text-secondary);
+}
+
+.ops-note {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 15px 17px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-top: 26px;
+}
+
+.ops-note svg {
+  flex: none;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
+/* Empty state ----------------------------------------------------------- */
+
+.ops-empty {
+  text-align: center;
+  padding: 56px 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 18px;
+}
+
+.ops-empty-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+}
+
+.ops-empty h3 {
+  font-size: 17px;
+  margin-bottom: 7px;
+}
+
+.ops-empty p {
+  color: var(--text-muted);
+  font-size: 14.5px;
+  max-width: 44ch;
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Login                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.ops-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(700px 420px at 50% -8%, rgba(160, 160, 40, 0.14), transparent 70%),
+    var(--bg-base);
+}
+
+.ops-login-card {
+  width: 100%;
+  max-width: 396px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 34px;
+}
+
+.ops-login-mark {
+  margin-bottom: 20px;
+}
+
+.ops-login-card h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.ops-login-card > p {
+  color: var(--text-secondary);
+  font-size: 14.5px;
+  margin-bottom: 26px;
+}
+
+.ops-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ops-field label {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.ops-login-card button[type='submit'] {
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Conversation                                                             */
+/* ---------------------------------------------------------------------- */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg-elevated);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.thread-bubble {
+  max-width: 74%;
+  padding: 12px 16px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thread-user {
+  align-self: flex-start;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 6px;
+}
+
+.thread-team {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-bottom-right-radius: 6px;
+}
+
+.thread-time {
+  display: block;
+  font-size: 12px;
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+.thread-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+/* Reply composer --------------------------------------------------------- */
+
+.ops-reply-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 9px;
+}
+
+.ops-reply-foot {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ops-reply-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}

@@ -27,8 +27,22 @@ export const Palette = {
   bgSelected: '#26262A',
 
   white: '#FFFFFF',
-  textSecondary: '#9A9AA0',
-  textMuted: '#6B6B72',
+  /**
+   * Supporting text: descriptions, captions, the sentence under a heading.
+   *
+   * Contrast against `bgBase` sets these values, not taste. The original pair (#9A9AA0 / #6B6B72)
+   * measured 6.8:1 and **3.6:1** — the muted one failed the 4.5:1 minimum for body text outright.
+   * These measure **12.6:1 and 7.8:1**, comfortably past AAA for the secondary tone and well past
+   * AA for the muted one.
+   *
+   * They are deliberately far above the minimum. This app is read one-handed, outdoors, in
+   * sunlight, often by someone who is anxious about money — "technically passes" is the wrong bar.
+   * Hierarchy comes from weight and size (see Typography) rather than from making text dim.
+   *
+   * If you darken either of these, measure the ratio first.
+   */
+  textSecondary: '#D2D2D9',
+  textMuted: '#A5A5AF',
 
   glass: 'rgba(255,255,255,0.07)',
   glassBorder: 'rgba(255,255,255,0.10)',
@@ -107,9 +121,13 @@ export const Typography = {
   title: { fontFamily: FontFamily.semibold, fontSize: 20, lineHeight: 28 },
   section: { fontFamily: FontFamily.semibold, fontSize: 16, lineHeight: 22 },
   body: { fontFamily: FontFamily.medium, fontSize: 15, lineHeight: 22 },
-  caption: { fontFamily: FontFamily.regular, fontSize: 13, lineHeight: 18 },
+  // Caption and micro carry most of the grey text in the app. At 13/12px they were small *and*
+  // dim, which compounds — the fix for legibility is both, so they step up here alongside the
+  // contrast change to textSecondary/textMuted. Medium weight rather than regular on `caption`
+  // because a thin stroke at small sizes is the other half of why grey text disappears.
+  caption: { fontFamily: FontFamily.medium, fontSize: 14, lineHeight: 20 },
   button: { fontFamily: FontFamily.semibold, fontSize: 16, lineHeight: 20 },
-  micro: { fontFamily: FontFamily.medium, fontSize: 12, lineHeight: 16 },
+  micro: { fontFamily: FontFamily.medium, fontSize: 13, lineHeight: 18 },
 } as const;
 
 /** Legacy/platform font roles — kept for `code`/mono usage and web CSS variables. */

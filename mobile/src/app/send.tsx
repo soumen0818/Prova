@@ -136,17 +136,24 @@ export default function SendScreen() {
       setMessage('Securing your transfer…');
       startPoolProgress();
 
-      const hash = await sendPrivately(amt, payee, (stage) => {
-        if (stage === 'submitting') {
-          stopProgress();
-          setProgress(1);
-          setPhase('submitting');
-          setMessage('Submitting to Stellar…');
-        }
-      });
+      const hash = await sendPrivately(
+        amt,
+        payee,
+        (stage) => {
+          if (stage === 'submitting') {
+            stopProgress();
+            setProgress(1);
+            setPhase('submitting');
+            setMessage('Submitting to Stellar…');
+          }
+        },
+        // Local history only — the recipient's name stays on this phone and is never transmitted.
+        selected.name,
+      );
 
       setTxHash(hash);
       await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
+      await queryClient.invalidateQueries({ queryKey: QK.activity });
       setPhase('sent');
       void syncBackup(); // keep the cloud backup's balance snapshot fresh (silent, best-effort)
     } catch (e) {
@@ -350,7 +357,7 @@ export default function SendScreen() {
                   <View style={styles.flex}>
                     <Text style={styles.name}>{r.name}</Text>
                     <Text style={styles.handle} numberOfLines={1}>
-                      {r.handle} · {r.country}
+                      {recipientSubtitle(r)}
                     </Text>
                   </View>
                   <ChevronRight color={Palette.textMuted} size={20} />
@@ -384,7 +391,7 @@ export default function SendScreen() {
           <View style={styles.flex}>
             <Text style={styles.name}>{selected.name}</Text>
             <Text style={styles.handle} numberOfLines={1}>
-              {selected.handle} · {selected.country}
+              {recipientSubtitle(selected)}
             </Text>
           </View>
           {!recipientId ? (
@@ -464,6 +471,17 @@ export default function SendScreen() {
       </Screen>
     </ConnectionGate>
   );
+}
+
+/**
+ * Subtitle under a recipient's name.
+ *
+ * `handle` is legacy — new recipients are saved without it (see lib/recipients) — so it is only
+ * included when an older record actually carries one. Interpolating it unconditionally printed a
+ * stray leading separator for every recipient added since.
+ */
+function recipientSubtitle(r: { handle?: string; country: string }): string {
+  return r.handle ? `${r.handle} · ${r.country}` : r.country;
 }
 
 const styles = StyleSheet.create({

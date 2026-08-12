@@ -410,7 +410,7 @@ export class InsufficientFunds extends Error {
   ) {
     super(
       largestNoteMinor > 0
-        ? 'Your balance is split across notes, and no single one covers this amount.'
+        ? 'This is more than can be sent in one transfer.'
         : 'Not enough spendable balance.',
     );
     this.name = 'InsufficientFunds';

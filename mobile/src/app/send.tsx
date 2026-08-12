@@ -483,9 +483,9 @@ export default function SendScreen() {
 
           {splitNeeded ? (
             <Text style={styles.splitNote}>
-              You can send {formatBalance(money.largestNote, money.denom)} now — the remaining{' '}
-              {formatBalance(amtMinor - money.largestNote, money.denom)} can go in a second
-              transfer. Your balance is held as separate notes, and one transfer spends one note.
+              Send {formatBalance(money.largestNote, money.denom)} now, and the remaining{' '}
+              {formatBalance(amtMinor - money.largestNote, money.denom)} straight after. Money that
+              came in separately has to go out separately.
             </Text>
           ) : null}
 

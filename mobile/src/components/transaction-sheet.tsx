@@ -100,7 +100,7 @@ export function TransactionSheet({
                 value={entry.commitment}
                 copied={copied === 'commitment'}
                 onCopy={() => copy('commitment', entry.commitment!)}
-                hint="The sealed record of this note on the blockchain. It proves the transfer happened without revealing the amount."
+                hint="The sealed record of this payment on the blockchain. It proves the transfer happened without revealing the amount."
               />
             ) : null}
           </View>
@@ -196,7 +196,7 @@ function describe(kind: ActivityEntry['kind']) {
         partyLabel: 'To',
         explain: 'You moved money out of your private balance to a public Stellar address.',
         footnote:
-          'A cash-out is public, because the destination has to be paid openly. The proof still hides which of your notes it came from.',
+          'A cash-out is public, because the destination has to be paid openly. The proof still hides where in your balance it came from.',
       };
     case 'sent':
     default:

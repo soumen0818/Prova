@@ -1,7 +1,17 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Keyboard, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import {
+  Dimensions,
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ViewStyle,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomTabInset, Palette, ScreenPadding, Spacing } from '@/constants/theme';
@@ -46,6 +56,8 @@ export function Screen({
    */
   const scroller = useRef<ScrollView>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  /** Current scroll offset, so a correction can be applied relative to where the view already is. */
+  const scrollY = useRef(0);
 
   /**
    * Whether this screen is the one on top.
@@ -64,9 +76,31 @@ export function Screen({
     if (!scroll) return;
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
       if (!focused.current) return;
-      setKeyboardHeight(e.endCoordinates?.height ?? 0);
-      // After the padding lands, bring the focused field into view.
-      requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
+      const height = e.endCoordinates?.height ?? 0;
+      setKeyboardHeight(height);
+
+      /*
+       * Bring the focused field into view — and only if it is actually hidden.
+       *
+       * This used to scroll to the *end* of the content, which is right only when the focused field
+       * happens to be the last one. On a form whose first field is autofocused it did the opposite
+       * of what it promised: the keyboard opened and the view scrolled away from the very input the
+       * cursor was in, so "Add recipient" opened with its name field off the top of the screen.
+       *
+       * Measuring the focused input and scrolling by the overlap fixes both cases, and does nothing
+       * at all when the field is already visible.
+       */
+      const input = TextInput.State.currentlyFocusedInput();
+      if (!input) return;
+      requestAnimationFrame(() => {
+        input.measureInWindow((_x, y, _width, h) => {
+          const keyboardTop = Dimensions.get('window').height - height;
+          const overlap = y + h + Spacing.four - keyboardTop;
+          if (overlap > 0) {
+            scroller.current?.scrollTo({ y: scrollY.current + overlap, animated: true });
+          }
+        });
+      });
     });
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
     return () => {
@@ -114,6 +148,11 @@ export function Screen({
               keyboardHeight > 0 && { paddingBottom: keyboardHeight + Spacing.six },
             ]}
             showsVerticalScrollIndicator={false}
+            // Tracked so the keyboard correction above can scroll relative to the current position.
+            onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+              scrollY.current = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
             // Forms: Android's `adjustResize` shrinks the window when the keyboard opens, but a
             // ScrollView does not scroll the focused field into view by itself — so a field low on
             // the screen ends up behind the keyboard. The bottom inset gives it somewhere to

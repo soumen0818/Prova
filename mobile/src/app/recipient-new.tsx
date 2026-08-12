@@ -1,16 +1,17 @@
 import { CORRIDOR_STATUS_NOTE, COUNTRIES, type Country } from '@prova/shared';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
-import { useRouter } from 'expo-router';
-import { Check, ChevronDown } from 'lucide-react-native';
+import { Stack, useRouter } from 'expo-router';
+import { Check, ChevronDown, ClipboardPaste, QrCode } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AddressScanner } from '@/components/scan-address';
 import { Button, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { QK } from '@/lib/queries';
+import { QK, useRecipients } from '@/lib/queries';
 import { syncBackup } from '@/lib/cloud-backup';
-import { decodePoolAddress, type Payee } from '@/lib/pool';
+import { decodePoolAddress, encodePoolAddress, poolAddress, type Payee } from '@/lib/pool';
 import { addRecipient } from '@/lib/recipients';
 import { captureError } from '@/lib/reporting';
 import { validateName } from '@/lib/validation';
@@ -43,28 +44,74 @@ export default function NewRecipientScreen() {
   const [name, setName] = useState('');
   const [countryCode, setCountryCode] = useState(DEFAULT_DESTINATION);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  /** Raw text in the address field — what was pasted, scanned, or typed. */
+  const [addrText, setAddrText] = useState('');
   const [poolAddr, setPoolAddr] = useState<Payee | null>(null);
-  const [pasteError, setPasteError] = useState('');
+  const [addrError, setAddrError] = useState('');
+
+  const recipients = useRecipients();
+  // Own address, so the field can refuse it. Sending to yourself is not an error the contract would
+  // catch — it would succeed, and quietly do nothing except cost a fee.
+  const { data: ownAddress } = useQuery({ queryKey: ['pool-address'], queryFn: poolAddress });
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const country = COUNTRIES.find((c) => c.code === countryCode) ?? COUNTRIES[0];
   const nameV = validateName(name);
   const nameError = submitted && !nameV.ok ? (nameV.error ?? '') : '';
-  const addrError =
-    pasteError ||
+  const addrMessage =
+    addrError ||
     (submitted && !poolAddr ? 'A Prova address is needed to send to this person.' : '');
 
-  const onPastePoolAddress = useCallback(async () => {
-    const text = await Clipboard.getStringAsync();
-    const decoded = decodePoolAddress(text);
-    if (!decoded) {
-      setPasteError('That doesn’t look like a Prova address. Copy it again and retry.');
-      return;
-    }
-    setPoolAddr(decoded);
-    setPasteError('');
-  }, []);
+  /**
+   * Validate an address however it arrived — typed, pasted or scanned.
+   *
+   * All three go through here so the rules cannot differ by route. The two that matter beyond
+   * "is it well-formed" are catching your own address and one already saved: neither fails at send
+   * time, they just produce a transfer that does nothing useful.
+   */
+  const applyAddress = useCallback(
+    (text: string) => {
+      setAddrText(text);
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        setPoolAddr(null);
+        setAddrError('');
+        return;
+      }
+
+      const decoded = decodePoolAddress(trimmed);
+      if (!decoded) {
+        setPoolAddr(null);
+        // Name the mistake rather than restating the rule. This app shows a Stellar address too
+        // (Account details), so pasting that one is the obvious error to make — and "not a Prova
+        // address" would leave someone staring at something that looks like an address to them.
+        setAddrError(specificAddressError(trimmed));
+        return;
+      }
+      if (ownAddress && decoded.ownerPk === ownAddress.ownerPk) {
+        setPoolAddr(null);
+        setAddrError('That is your own address — money sent there would come straight back.');
+        return;
+      }
+      const existing = (recipients.data ?? []).find((r) => r.poolOwnerPk === decoded.ownerPk);
+      if (existing) {
+        setPoolAddr(null);
+        setAddrError(`You already have ${existing.name} saved with this address.`);
+        return;
+      }
+
+      setPoolAddr(decoded);
+      setAddrError('');
+    },
+    [ownAddress, recipients.data],
+  );
+
+  const onPasteAddress = useCallback(async () => {
+    applyAddress(await Clipboard.getStringAsync());
+  }, [applyAddress]);
 
   const onSave = useCallback(async () => {
     // Inline errors under each field are the feedback here — see the note in kyc-identity.tsx.
@@ -93,8 +140,28 @@ export default function NewRecipientScreen() {
     }
   }, [name, country, poolAddr, queryClient, router, toast]);
 
+  if (scanning) {
+    return (
+      <>
+        {/* No back arrow while the camera is up — the X inside the scanner is the only way out. */}
+        <Stack.Screen options={{ headerShown: false }} />
+        <AddressScanner
+          onClose={() => setScanning(false)}
+          onScanned={(payee) => {
+            // Routed through the same validation as a paste, so a scanned code cannot skip the
+            // own-address and duplicate checks.
+            applyAddress(encodePoolAddress(payee));
+            setScanning(false);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <Screen scroll>
+      {/* Restores the header the scanner hid. Unmounting its override does not put this back. */}
+      <Stack.Screen options={{ headerShown: true, title: 'New recipient' }} />
       <Text style={styles.subtitle}>
         You need their Prova address to send them money. Ask them to open{' '}
         <Text style={styles.strong}>Account → Receive privately</Text> and send it to you.
@@ -128,26 +195,45 @@ export default function NewRecipientScreen() {
         </Pressable>
       </Field>
 
-      <Field label="Prova address" error={addrError}>
+      <Field label="Prova address" error={addrMessage}>
+        <View style={[styles.addrField, addrMessage ? styles.inputError : null]}>
+          <TextInput
+            style={styles.addrInput}
+            value={addrText}
+            onChangeText={applyAddress}
+            placeholder="prova-pay:…"
+            placeholderTextColor={Palette.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+            numberOfLines={1}
+          />
+          {/* Small, inline: the field is the thing, these are just two ways to fill it. */}
+          <Pressable
+            onPress={onPasteAddress}
+            disabled={busy}
+            hitSlop={8}
+            style={styles.addrIcon}
+            accessibilityLabel="Paste address from clipboard">
+            <ClipboardPaste color={Palette.textSecondary} size={19} strokeWidth={2} />
+          </Pressable>
+          <Pressable
+            onPress={() => setScanning(true)}
+            disabled={busy}
+            hitSlop={8}
+            style={styles.addrIcon}
+            accessibilityLabel="Scan their QR code">
+            <QrCode color={Palette.accent} size={19} strokeWidth={2} />
+          </Pressable>
+        </View>
+
         {poolAddr ? (
-          <View style={styles.addrRow}>
-            <View style={styles.addrOk}>
-              <Check color={Palette.statusUp} size={17} strokeWidth={2.6} />
-            </View>
-            <Text style={styles.addrText} numberOfLines={1}>
-              {poolAddr.ownerPk.slice(0, 10)}…{poolAddr.ownerPk.slice(-6)}
-            </Text>
-            <Text style={styles.addrClear} onPress={() => setPoolAddr(null)}>
-              Clear
-            </Text>
+          <View style={styles.addrOkRow}>
+            <Check color={Palette.statusUp} size={15} strokeWidth={2.6} />
+            <Text style={styles.addrOkText}>Prova address recognised</Text>
           </View>
         ) : (
-          <Button
-            label="Paste from clipboard"
-            variant="secondary"
-            onPress={onPastePoolAddress}
-            disabled={busy}
-          />
+          <Text style={styles.hint}>Scan their code, or paste the address they sent you.</Text>
         )}
       </Field>
 
@@ -172,6 +258,25 @@ export default function NewRecipientScreen() {
       />
     </Screen>
   );
+}
+
+/** Stellar keys are base32, 56 characters, and start with G (public) or S (secret). */
+const STELLAR_KEY = /^[GS][A-Z2-7]{55}$/;
+
+/**
+ * Say what was actually pasted, when we can tell.
+ *
+ * A Prova address and a Stellar address both look like "a long string of characters" to somebody
+ * holding two of them, and this app displays both. Telling them which one they used, and where the
+ * other one lives, is the difference between a fixed mistake and a stuck user.
+ */
+function specificAddressError(text: string): string {
+  if (STELLAR_KEY.test(text)) {
+    return text.startsWith('S')
+      ? 'That is a secret key — never share it with anyone, including us. Delete it and ask them for their Prova address instead.'
+      : 'That is a Stellar wallet address, not a Prova address. Ask them for Account → Receive privately.';
+  }
+  return 'That is not a Prova address. Scan their code, or paste what they sent you.';
 }
 
 /**
@@ -253,6 +358,24 @@ const styles = StyleSheet.create({
   inputError: { borderWidth: 1, borderColor: Palette.statusDown },
   error: { ...Typography.caption, color: Palette.statusDown },
   save: { marginTop: Spacing.two },
+
+  addrField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    backgroundColor: Palette.bgInput,
+    borderRadius: Radius.input,
+    paddingHorizontal: Spacing.four,
+  },
+  addrInput: {
+    ...Typography.body,
+    color: Palette.white,
+    flex: 1,
+    paddingVertical: Spacing.four,
+  },
+  addrIcon: { padding: Spacing.one },
+  addrOkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  addrOkText: { ...Typography.micro, color: Palette.statusUp },
   statusNote: {
     ...Typography.micro,
     color: Palette.textMuted,
@@ -271,26 +394,6 @@ const styles = StyleSheet.create({
   },
   pickerFlag: { fontSize: 20 },
   pickerName: { ...Typography.body, fontSize: 17, color: Palette.white, flex: 1 },
-
-  addrRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    backgroundColor: Palette.bgInput,
-    borderRadius: Radius.input,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.four,
-  },
-  addrOk: {
-    width: 26,
-    height: 26,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(63,174,111,0.16)',
-  },
-  addrText: { ...Typography.body, color: Palette.white, flex: 1 },
-  addrClear: { ...Typography.caption, color: Palette.accent, fontWeight: '600' },
 
   backdrop: {
     position: 'absolute',

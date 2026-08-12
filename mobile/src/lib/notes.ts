@@ -185,11 +185,39 @@ export async function earliestUnfoldedIndex(): Promise<number | null> {
 }
 
 /**
+ * Queue index for a note this wallet recorded itself, before the feed has confirmed it.
+ *
+ * Deliberately the largest safe integer so it sorts last and — more importantly — cannot drag
+ * `earliestUnfoldedIndex()` backwards and force a rescan from the start of the feed on every poll.
+ */
+export const LOCAL_QUEUE_INDEX = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Record a note this wallet created itself, without waiting to rediscover it.
+ *
+ * Used for the change from a spend. The wallet already knows that note's commitment, value and
+ * nonce — waiting to trial-decrypt it back off the feed left the balance reading **zero** for up to
+ * a scan interval after a send, because the input was already marked spent and the change was not
+ * yet known. Money appearing to vanish is the worst thing a wallet can show, however briefly.
+ *
+ * Stored with a placeholder nullifier and queue index, which the scan fills in when the feed
+ * catches up (see `mergeNotes`). It is written as unfolded, so it is counted as confirming rather
+ * than spendable — which is exactly what it is.
+ */
+export async function addLocalNote(note: OwnedNote): Promise<void> {
+  const store = await readStore();
+  if (store.notes.some((n) => n.commitment === note.commitment)) return;
+  store.notes = [...store.notes, note].sort((a, b) => a.queueIndex - b.queueIndex);
+  await writeStore(store);
+}
+
+/**
  * Merge freshly discovered notes and advance the cursor.
  *
  * Keyed on commitment and idempotent: rescanning the same range must not duplicate a note, or the
  * balance would silently inflate. Known notes keep their existing state and only gain newly-learned
- * facts (a leaf index once folded).
+ * facts (a leaf index once folded, and the real nullifier/queue index for a note this wallet
+ * recorded itself).
  */
 export async function mergeNotes(found: OwnedNote[], cursor: number): Promise<void> {
   const store = await readStore();
@@ -207,6 +235,12 @@ export async function mergeNotes(found: OwnedNote[], cursor: number): Promise<vo
       leafIndex: existing.leafIndex ?? note.leafIndex,
       // Spent is one-way too: once gone, always gone.
       spent: existing.spent || note.spent,
+      // A note this wallet recorded itself (see `addLocalNote`) carries placeholders until the feed
+      // confirms it. Those must be adopted, not preserved: without the real nullifier the note can
+      // never be reconciled as spent, and without the real queue index the cursor arithmetic is
+      // working from a number that does not exist in the feed.
+      nullifier: existing.nullifier || note.nullifier,
+      queueIndex: existing.queueIndex === LOCAL_QUEUE_INDEX ? note.queueIndex : existing.queueIndex,
     });
   }
 

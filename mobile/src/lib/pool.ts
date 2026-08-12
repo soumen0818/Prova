@@ -523,6 +523,9 @@ async function spend(args: SpendArgs): Promise<string> {
   // so out1 carries zero and the change still returns here.
   const change = input.amount - amountMinor;
   const recipientAmount = publicMinor > 0 ? 0 : amountMinor;
+  // Held rather than generated inline: this is the nonce of our own change note, and we need it to
+  // record that note locally the moment the spend lands.
+  const changeRho = secureRandomHex(32);
 
   onProgress?.('proving');
   const proof = await poolSpendProve({
@@ -542,7 +545,7 @@ async function spend(args: SpendArgs): Promise<string> {
     out2: {
       amount: change,
       owner_pk: keys.owner_pk,
-      rho: secureRandomHex(32),
+      rho: changeRho,
       enc_pk_x: keys.enc_pk_x,
       enc_pk_y: keys.enc_pk_y,
     },
@@ -581,6 +584,29 @@ async function spend(args: SpendArgs): Promise<string> {
   // Mark the input spent immediately rather than waiting for the next scan, so the balance cannot
   // briefly show money that is already gone. The chain confirms it on the following poll.
   await markSpent([input.nullifier]);
+
+  // Record our own change note at the same time.
+  //
+  // Without this the balance read **zero** between a send and the next scan: the input was already
+  // spent and the change had not yet been trial-decrypted back off the feed. Sending 100 out of
+  // 1,100 made the whole balance disappear for up to a scan interval, with nothing shown as
+  // confirming to explain it. The wallet generated this note — it does not need to rediscover it.
+  if (change > 0) {
+    const { addLocalNote, LOCAL_QUEUE_INDEX } = await import('./notes');
+    await addLocalNote({
+      commitment: proof.out_c2,
+      amount: change,
+      rho: changeRho,
+      // Both are filled in by the scan once the feed catches up; see `mergeNotes`.
+      nullifier: '',
+      queueIndex: LOCAL_QUEUE_INDEX,
+      // Unfolded: real money that cannot move until the folder runs, which is what "confirming"
+      // means everywhere else in the app.
+      leafIndex: null,
+      spent: false,
+      seenAt: Math.floor(Date.now() / 1000),
+    });
+  }
 
   // Both output commitments are recorded: c2 is our change coming home, and logging it here is what
   // stops the next scan announcing our own change as money received.

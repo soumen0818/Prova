@@ -168,6 +168,31 @@ export async function recordIncoming(
   return fresh.length;
 }
 
+/**
+ * How one entry is labelled, shared by every screen that lists activity.
+ *
+ * Kept in the data layer rather than in a screen so Home and the Activity tab cannot describe the
+ * same transaction differently — which is exactly what happened when Home read the server's
+ * transfer list and Activity read this one.
+ */
+export function describeActivity(kind: ActivityKind): {
+  label: string;
+  sign: string;
+  positive: boolean;
+} {
+  switch (kind) {
+    case 'added':
+      return { label: 'Added to private balance', sign: '+', positive: true };
+    case 'received':
+      return { label: 'Received', sign: '+', positive: true };
+    case 'withdrawn':
+      return { label: 'Cashed out', sign: '\u2212', positive: false };
+    case 'sent':
+    default:
+      return { label: 'Sent privately', sign: '\u2212', positive: false };
+  }
+}
+
 /** Wipe history (wallet reset / sign-out). */
 export async function clearActivity(): Promise<void> {
   await writeStore({ ...EMPTY });

@@ -348,22 +348,33 @@ export default function SendScreen() {
           </Card>
         ) : (
           <View style={styles.pickList}>
-            {list.map((r) => (
-              <Pressable key={r.id} onPress={() => setPicked(r)}>
-                <Card style={styles.pickRow}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{initials(r.name)}</Text>
-                  </View>
-                  <View style={styles.flex}>
-                    <Text style={styles.name}>{r.name}</Text>
-                    <Text style={styles.handle} numberOfLines={1}>
-                      {recipientSubtitle(r)}
-                    </Text>
-                  </View>
-                  <ChevronRight color={Palette.textMuted} size={20} />
-                </Card>
-              </Pressable>
-            ))}
+            {list.map((r) => {
+              // Recipients saved before the address became mandatory — and any restored from an
+              // older backup — have no pool address, so they cannot be paid. Previously they looked
+              // identical here and failed only after the amount was entered and the biometric
+              // passed, which is the worst moment to learn it.
+              const payable = payableRecipient(r);
+              return (
+                <Pressable
+                  key={r.id}
+                  onPress={() => payable && setPicked(r)}
+                  disabled={!payable}
+                  accessibilityState={{ disabled: !payable }}>
+                  <Card style={payable ? styles.pickRow : styles.pickRowDisabled}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>{initials(r.name)}</Text>
+                    </View>
+                    <View style={styles.flex}>
+                      <Text style={styles.name}>{r.name}</Text>
+                      <Text style={styles.handle} numberOfLines={1}>
+                        {payable ? recipientSubtitle(r) : 'No Prova address — add it to send'}
+                      </Text>
+                    </View>
+                    {payable ? <ChevronRight color={Palette.textMuted} size={20} /> : null}
+                  </Card>
+                </Pressable>
+              );
+            })}
           </View>
         )}
         <Button
@@ -473,6 +484,11 @@ export default function SendScreen() {
   );
 }
 
+/** Whether this recipient can actually be paid: the pool address is the only field that moves money. */
+function payableRecipient(r: Recipient): boolean {
+  return !!(r.poolOwnerPk && r.poolEncPkX && r.poolEncPkY);
+}
+
 /**
  * Subtitle under a recipient's name.
  *
@@ -496,6 +512,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
     padding: Spacing.four,
+  },
+  pickRowDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.four,
+    opacity: 0.45,
   },
   recipientCard: {
     flexDirection: 'row',

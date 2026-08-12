@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import {
+  ArrowDownLeft,
   ArrowDownToLine,
   ArrowUpRight,
   ChevronRight,
@@ -12,9 +13,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
+import { describeActivity } from '@/lib/activity';
 import { formatBalance } from '@/lib/balance';
 import { useRequireKyc } from '@/hooks/use-require-kyc';
-import { useHistory, useKycVerified, useRecipients } from '@/lib/queries';
+import { useActivity, useKycVerified, useRecipients } from '@/lib/queries';
 import { useMoney } from '@/hooks/use-money';
 import { initials, type Recipient } from '@/lib/recipients';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
@@ -28,10 +30,14 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
   const money = useMoney();
   const recipients = useRecipients();
   const kyc = useKycVerified();
-  const history = useHistory();
+  const activity = useActivity();
 
   const verified = kyc.data === true;
-  const recent = (history.data ?? []).slice(0, 3);
+  // The same on-device log the Activity tab reads. Home used to read the server's transfer list,
+  // which is always empty in pool mode — so it said "No transfers yet" to someone who had just
+  // watched money move. Two screens describing the same account differently is worse than either
+  // being wrong on its own.
+  const recent = (activity.data ?? []).slice(0, 3);
 
   return (
     <Screen scroll>
@@ -137,29 +143,54 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
       {recent.length === 0 ? (
         <Card style={styles.emptyCard}>
           <Text style={styles.emptyText}>
-            No transfers yet — your private sends will show here.
+            Nothing yet — money you add, send or receive shows up here.
           </Text>
         </Card>
       ) : (
         <View style={styles.activityList}>
-          {recent.map((t) => (
-            <View key={t.transferId} style={styles.activityRow}>
-              <View style={styles.activityIcon}>
-                <ArrowUpRight color={Palette.white} size={18} strokeWidth={2} />
+          {recent.map((entry) => {
+            const meta = describeActivity(entry.kind);
+            return (
+              <View key={entry.id} style={styles.activityRow}>
+                <View style={styles.activityIcon}>
+                  {meta.positive ? (
+                    <ArrowDownLeft color={Palette.statusUp} size={18} strokeWidth={2} />
+                  ) : (
+                    <ArrowUpRight color={Palette.white} size={18} strokeWidth={2} />
+                  )}
+                </View>
+                <View style={styles.activityMain}>
+                  <Text style={styles.activityTitle}>{meta.label}</Text>
+                  <Text style={styles.activityDate}>{formatWhen(entry.at)}</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.activityStatus,
+                    { color: meta.positive ? Palette.statusUp : Palette.white },
+                  ]}>
+                  {meta.sign}
+                  {formatBalance(entry.amountMinor, money.denom, String(entry.amountMinor / 100))}
+                </Text>
               </View>
-              <View style={styles.activityMain}>
-                <Text style={styles.activityTitle}>Private transfer</Text>
-                <Text style={styles.activityDate}>{t.createdAt.slice(0, 10)}</Text>
-              </View>
-              <Text style={[styles.activityStatus, { color: statusColor(t.status) }]}>
-                {t.status}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </Screen>
   );
+}
+
+/** Relative for the recent past, a date after that — the same rule the Activity tab uses. */
+function formatWhen(atSeconds: number): string {
+  const date = new Date(atSeconds * 1000);
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60_000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60 * 24) {
+    const hours = Math.floor(minutes / 60);
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 function BalanceButton({
@@ -192,12 +223,6 @@ function RecipientChip({ recipient, onPress }: { recipient: Recipient; onPress: 
       </Text>
     </Pressable>
   );
-}
-
-function statusColor(status: string): string {
-  if (status === 'confirmed') return Palette.statusUp;
-  if (status === 'rejected' || status === 'failed') return Palette.statusDown;
-  return Palette.textSecondary;
 }
 
 const styles = StyleSheet.create({

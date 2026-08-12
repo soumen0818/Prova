@@ -10,7 +10,7 @@ import { debit, formatBalance, getBalanceMinor, settlementDenomination } from '@
 import { syncBackup } from '@/lib/cloud-backup';
 import { useMoney, usesPool } from '@/hooks/use-money';
 import { getStoredCredential, isExpired } from '@/lib/kyc';
-import { formatAmount, minorPerUnit, tierLimit } from '@prova/shared';
+import { formatAmount, minorPerUnit, parseAmountToMinor, tierLimit } from '@prova/shared';
 import { hasPin } from '@/lib/pin';
 import { InsufficientFunds, sendPrivately, type Payee } from '@/lib/pool';
 import { isProverAvailable, prove } from '@/lib/prover';
@@ -18,6 +18,7 @@ import { useRecipients, QK } from '@/lib/queries';
 import { initials, type Recipient } from '@/lib/recipients';
 import { getSecret, SecureKey } from '@/lib/secure-store';
 import { secureRandomU64 } from '@/lib/wallet';
+import { ConfirmSendSheet } from '@/components/confirm-send';
 import { ConnectionGate } from '@/components/connection-gate';
 import { Loader } from '@/components/loader';
 import { PaymentResult } from '@/components/payment-result';
@@ -45,6 +46,8 @@ export default function SendScreen() {
   const [credential, setCredential] = useState<KycCredential | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [showPinPrompt, setShowPinPrompt] = useState(false);
+  /** Review step: what is being sent, and to whom, before anything is authorised. */
+  const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [txHash, setTxHash] = useState('');
@@ -106,13 +109,26 @@ export default function SendScreen() {
     }
   };
 
-  const amt = Number(amount);
-  const amountValid = Number.isInteger(amt) && amt >= 1 && amt <= 9999;
   // Spending denomination: what the balance is actually held in, falling back to what this build
   // settles in for an account that has not been funded yet (nothing is affordable then anyway).
   const spendDenom = money.denom ?? settlementDenomination();
-  const amtMinor = Math.round(amt * minorPerUnit(spendDenom));
+
+  // Parsed from the typed string, never `Number(text) * 100`: floating point turns 10.07 into
+  // 1006.9999999999999, which is a different amount of money than the person asked to send.
+  const parsedMinor = parseAmountToMinor(amount, spendDenom);
+  const amtMinor = parsedMinor ?? 0;
+  const amt = amtMinor / minorPerUnit(spendDenom);
+  const withinTier = amt <= tierLimit(credential?.kycLevel ?? 0);
+  const amountValid = parsedMinor !== null && parsedMinor > 0 && withinTier;
+
   const canAfford = amountValid && amtMinor <= money.spendable;
+  /**
+   * The circuit spends exactly one note, so the ceiling on a single transfer is the largest note —
+   * not the total. Checked here, before anything is proved, because the alternative is a rejection
+   * after the user has entered an amount and authenticated.
+   */
+  const fitsOneNote = amtMinor <= money.largestNote;
+  const splitNeeded = canAfford && !fitsOneNote;
 
   /**
    * Pool-mode send: the real shielded pool, wired to `sendPrivately()`. The balance comes from the
@@ -137,7 +153,9 @@ export default function SendScreen() {
       startPoolProgress();
 
       const hash = await sendPrivately(
-        amt,
+        // Minor units throughout: the pool layer speaks the same units every screen displays, so
+        // there is no whole-unit conversion left to get wrong.
+        amtMinor,
         payee,
         (stage) => {
           if (stage === 'submitting') {
@@ -162,7 +180,12 @@ export default function SendScreen() {
         // Not a proving/network failure — a precondition that failed before anything was submitted.
         // Send the user back to the amount screen with a specific, actionable message rather than a
         // full-page "transfer failed", which would be misleading (nothing was ever attempted).
-        setError(e.message);
+        setError(
+          e.largestNoteMinor > 0
+            ? `Your balance is split across notes. The most you can send in one transfer is ` +
+                `${formatBalance(e.largestNoteMinor, money.denom)}.`
+            : 'Not enough spendable balance.',
+        );
         setPhase('idle');
         return;
       }
@@ -178,7 +201,7 @@ export default function SendScreen() {
       setReason(ambiguous ? 'timeout' : 'unknown');
       setPhase(ambiguous ? 'processing' : 'error');
     }
-  }, [amt, selected, queryClient]);
+  }, [amtMinor, selected, queryClient, money.denom]);
 
   // The legacy per-transfer path (circuit v2) — unchanged, still used when this build's money lives
   // in the local counter (`EXPO_PUBLIC_DEPOSIT_MODE=simulated`) rather than the shielded pool.
@@ -275,6 +298,17 @@ export default function SendScreen() {
       return;
     }
 
+    // Everything checks out — show what is about to happen and let the user confirm it.
+    //
+    // The step-up that follows is a fingerprint prompt, and the OS dialog can only show a single
+    // line of text: it cannot say how much, or to whom. Without this sheet the last thing a person
+    // sees before their money leaves is a generic "Approve this transfer".
+    setConfirming(true);
+  }, [amountValid, amt, amtMinor, secret, credential, money.spendable]);
+
+  /** Confirmed on the review sheet: take the step-up, then spend. */
+  const onConfirmed = useCallback(async () => {
+    setConfirming(false);
     // Payment step-up: biometric if available, otherwise the PIN; if neither is set up, proceed.
     if (await canUseBiometrics()) {
       const ok = await authenticate('Approve this transfer');
@@ -288,7 +322,7 @@ export default function SendScreen() {
     } else {
       await runTransfer();
     }
-  }, [amountValid, amt, amtMinor, secret, credential, money.spendable, runTransfer]);
+  }, [runTransfer]);
 
   const busy = phase === 'proving' || phase === 'submitting';
   const list = useMemo(() => recipients ?? [], [recipients]);
@@ -420,8 +454,12 @@ export default function SendScreen() {
             <TextInput
               style={styles.amountInput}
               value={amount}
-              onChangeText={setAmount}
-              keyboardType="number-pad"
+              // Sanitised as typed rather than validated afterwards: strip anything that is not a
+              // digit or a single decimal point, and cap the decimals at what the denomination
+              // actually has. Someone typing 10.005 is stopped at 10.00 instead of being told off
+              // once they finish.
+              onChangeText={(text) => setAmount(sanitiseAmount(text, spendDenom.exponent))}
+              keyboardType="decimal-pad"
               placeholder="0"
               placeholderTextColor={Palette.textMuted}
               editable={!busy}
@@ -432,6 +470,36 @@ export default function SendScreen() {
             Available: {formatBalance(money.spendable, money.denom, 'nothing added yet')}
             {amountValid && !canAfford ? '  ·  Insufficient balance' : ''}
           </Text>
+
+          {/*
+            Shown only when it bites. Repeating the same figure twice would just be noise; the two
+            differ exactly when the balance is split across notes, which is the case worth naming.
+          */}
+          {usesPool && money.largestNote > 0 && money.largestNote < money.spendable ? (
+            <Text style={styles.balanceHint}>
+              Most you can send at once: {formatBalance(money.largestNote, money.denom)}
+            </Text>
+          ) : null}
+
+          {splitNeeded ? (
+            <Text style={styles.splitNote}>
+              You can send {formatBalance(money.largestNote, money.denom)} now — the remaining{' '}
+              {formatBalance(amtMinor - money.largestNote, money.denom)} can go in a second
+              transfer. Your balance is held as separate notes, and one transfer spends one note.
+            </Text>
+          ) : null}
+
+          {parsedMinor !== null && !withinTier ? (
+            <Text style={styles.splitNote}>
+              Your verification level allows up to{' '}
+              {formatBalance(
+                tierLimit(credential?.kycLevel ?? 0) * minorPerUnit(spendDenom),
+                money.denom,
+              )}{' '}
+              per transfer.
+            </Text>
+          ) : null}
+
           {usesPool && money.pending > 0 ? (
             <Text style={styles.balanceHint}>
               {formatBalance(money.pending, money.denom)} still confirming — not yet spendable
@@ -442,7 +510,7 @@ export default function SendScreen() {
         <Button
           label={busy ? message : 'Send privately'}
           onPress={onSend}
-          disabled={busy || !amountValid || !canAfford}
+          disabled={busy || !amountValid || !canAfford || splitNeeded}
         />
 
         {busy ? (
@@ -469,6 +537,15 @@ export default function SendScreen() {
           </Text>
         ) : null}
 
+        <ConfirmSendSheet
+          visible={confirming}
+          amount={formatBalance(amtMinor, money.denom, String(amtMinor / 100))}
+          recipientName={selected.name}
+          country={selected.country}
+          onCancel={() => setConfirming(false)}
+          onConfirm={onConfirmed}
+        />
+
         <PinPromptModal
           visible={showPinPrompt}
           title="Approve this transfer"
@@ -482,6 +559,21 @@ export default function SendScreen() {
       </Screen>
     </ConnectionGate>
   );
+}
+
+/**
+ * Keep the amount field to a well-formed number as it is typed.
+ *
+ * Strips anything that is not a digit or a decimal point, keeps only the first point, and caps the
+ * decimals at what the denomination has. Correcting the input beats rejecting it afterwards — the
+ * person never gets to a state the app then has to complain about.
+ */
+function sanitiseAmount(text: string, exponent: number): string {
+  const cleaned = text.replace(/[^0-9.]/g, '');
+  const [whole, ...rest] = cleaned.split('.');
+  if (rest.length === 0) return whole;
+  if (exponent === 0) return whole;
+  return `${whole}.${rest.join('').slice(0, exponent)}`;
 }
 
 /** Whether this recipient can actually be paid: the pool address is the only field that moves money. */
@@ -549,6 +641,12 @@ const styles = StyleSheet.create({
     color: Palette.white,
     flex: 1,
     padding: 0,
+  },
+  splitNote: {
+    ...Typography.caption,
+    color: Palette.lilac,
+    lineHeight: 20,
+    marginTop: Spacing.two,
   },
   balanceHint: { ...Typography.micro, color: Palette.textMuted },
   progressWrap: { marginTop: Spacing.five, gap: Spacing.three },

@@ -37,6 +37,7 @@ import {
 } from './api';
 import { getStoredCredential, isExpired } from './kyc';
 import {
+  largestSpendableNote,
   markFolded,
   markSpent,
   mergeNotes,
@@ -260,14 +261,24 @@ const STROOPS_PER_MINOR = STROOPS_PER_UNIT / 100;
  * goes through this. Do not "simplify" it to STROOPS_PER_UNIT — that is the bug that once printed a
  * 1,000 XLM deposit as 100,000,000.
  */
-const MINOR_PER_UNIT = 100;
 
 /** Spendable and confirming balances, in the app's minor units. Never conflate the two in the UI. */
-export async function poolBalance(): Promise<{ spendable: number; pending: number }> {
-  const [spendable, pending] = await Promise.all([spendableBalance(), pendingBalance()]);
+export async function poolBalance(): Promise<{
+  spendable: number;
+  pending: number;
+  largestNote: number;
+}> {
+  const [spendable, pending, largest] = await Promise.all([
+    spendableBalance(),
+    pendingBalance(),
+    largestSpendableNote(),
+  ]);
   return {
     spendable: Math.floor(spendable / STROOPS_PER_MINOR),
     pending: Math.floor(pending / STROOPS_PER_MINOR),
+    // The ceiling on a single transfer. Reported alongside the total so a screen can tell the user
+    // what is actually sendable now, rather than letting the circuit refuse it afterwards.
+    largestNote: Math.floor(largest / STROOPS_PER_MINOR),
   };
 }
 
@@ -296,16 +307,16 @@ export interface ShieldPlan {
  * The resulting transaction must be submitted by the **user's own account**, because it moves their
  * tokens and needs their authorisation. That is not a privacy loss: a deposit is public by design.
  */
-export async function prepareShield(amount: number): Promise<ShieldPlan> {
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error('Deposit amount must be a positive whole number.');
+export async function prepareShield(amountMinor: number): Promise<ShieldPlan> {
+  if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
+    throw new Error('Deposit amount must be a positive number of minor units.');
   }
   const keys = await poolIdentity();
 
   // Everything inside the pool is denominated in the token's own smallest unit, because that is
   // what the contract moves and what it verifies the proof against. Proving in whole units while
   // transferring stroops made the two disagree, and the contract rejected it as InvalidProof.
-  const minor = amount * STROOPS_PER_UNIT;
+  const minor = amountMinor * STROOPS_PER_MINOR;
 
   const out = await poolShieldProve({
     amount: minor,
@@ -350,11 +361,11 @@ export interface ShieldResult {
  * (a few seconds). `poolBalance()` reports it as pending until then.
  */
 export async function shieldToPool(
-  amount: number,
+  amountMinor: number,
   onProgress?: (stage: 'proving' | 'approving' | 'submitting') => void,
 ): Promise<ShieldResult> {
   onProgress?.('proving');
-  const plan = await prepareShield(amount);
+  const plan = await prepareShield(amountMinor);
 
   onProgress?.('approving');
   const { shieldIntoPool } = await import('./onchain');
@@ -366,7 +377,7 @@ export async function shieldToPool(
   const { recordActivity } = await import('./activity');
   await recordActivity({
     kind: 'added',
-    amountMinor: amount * MINOR_PER_UNIT,
+    amountMinor,
     txHash: result.txHash,
     commitment: plan.commitment,
   });
@@ -385,15 +396,21 @@ export interface Payee {
   encPkY: string;
 }
 
+/**
+ * No single note covers the requested amount.
+ *
+ * Both values are in the app's minor units. The message is deliberately plain: the screen that
+ * catches this knows the denomination and formats the numbers, and a currency string assembled down
+ * here would be wrong for any build that settles in something else.
+ */
 export class InsufficientFunds extends Error {
   constructor(
-    readonly requested: number,
-    readonly largestNote: number,
+    readonly requestedMinor: number,
+    readonly largestNoteMinor: number,
   ) {
     super(
-      largestNote > 0
-        ? `Your balance is split across notes. The largest single note is ${largestNote}, ` +
-            `so ${requested} cannot be sent in one payment yet.`
+      largestNoteMinor > 0
+        ? 'Your balance is split across notes, and no single one covers this amount.'
         : 'Not enough spendable balance.',
     );
     this.name = 'InsufficientFunds';
@@ -410,13 +427,13 @@ export class InsufficientFunds extends Error {
  * show it.
  */
 export async function sendPrivately(
-  amount: number,
+  amountMinor: number,
   payee: Payee,
   onProgress?: (stage: 'selecting' | 'proving' | 'submitting') => void,
   /** Shown in the user's own history only; never transmitted. */
   counterparty?: string,
 ): Promise<string> {
-  return spend({ amount, payee, onProgress, kind: 'sent', counterparty });
+  return spend({ amountMinor, payee, onProgress, kind: 'sent', counterparty });
 }
 
 /**
@@ -427,7 +444,7 @@ export async function sendPrivately(
  * nobody (including the relayer) can redirect the payment.
  */
 export async function cashOut(
-  amount: number,
+  amountMinor: number,
   destination: string,
   destinationField: string,
   onProgress?: (stage: 'selecting' | 'proving' | 'submitting') => void,
@@ -436,9 +453,9 @@ export async function cashOut(
   // The change note comes back to us; nothing is paid to a third party inside the pool.
   const self: Payee = { ownerPk: keys.owner_pk, encPkX: keys.enc_pk_x, encPkY: keys.enc_pk_y };
   return spend({
-    amount,
+    amountMinor,
     payee: self,
-    publicAmount: amount,
+    publicMinorUnits: amountMinor,
     destination,
     destinationField,
     onProgress,
@@ -448,10 +465,11 @@ export async function cashOut(
 }
 
 interface SpendArgs {
-  amount: number;
+  /** In the app's minor units (exponent 2), matching what every screen displays. */
+  amountMinor: number;
   payee: Payee;
-  /** > 0 for an unshield. */
-  publicAmount?: number;
+  /** > 0 for an unshield, in the same minor units. */
+  publicMinorUnits?: number;
   destination?: string;
   destinationField?: string;
   onProgress?: (stage: 'selecting' | 'proving' | 'submitting') => void;
@@ -463,36 +481,37 @@ interface SpendArgs {
 /** The shared path behind both a private transfer and a cash-out. */
 async function spend(args: SpendArgs): Promise<string> {
   const {
-    amount,
+    amountMinor,
     payee,
-    publicAmount = 0,
+    publicMinorUnits = 0,
     destination,
     destinationField,
     onProgress,
     kind,
     counterparty,
   } = args;
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error('Amount must be a positive whole number.');
+  if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
+    throw new Error('Amount must be a positive number of minor units.');
   }
 
   onProgress?.('selecting');
   const keys = await poolIdentity();
 
-  // Notes hold minor units (see prepareShield), so convert before selecting and before the
-  // change arithmetic below — mixing the two would silently pick the wrong note.
-  const amountMinor = amount * STROOPS_PER_UNIT;
-  const publicMinor = publicAmount * STROOPS_PER_UNIT;
+  // Notes hold the token's smallest unit (see prepareShield), while callers speak the app's minor
+  // units. Convert once, here, before selecting a note and before the change arithmetic below —
+  // mixing the two would silently pick the wrong note.
+  const amountStroops = amountMinor * STROOPS_PER_MINOR;
+  const publicStroops = publicMinorUnits * STROOPS_PER_MINOR;
 
   // One input note only — the spend circuit is 1-in-2-out. If no single note covers the amount we
   // surface that specifically, because "insufficient funds" would be misleading when the balance is
   // there but fragmented.
-  const input = await selectNoteFor(amountMinor);
+  const input = await selectNoteFor(amountStroops);
   if (!input) {
     const { spendableNotes } = await import('./notes');
     const notes = await spendableNotes();
     const largest = notes.reduce((m, n) => Math.max(m, n.amount), 0);
-    throw new InsufficientFunds(amount, largest);
+    throw new InsufficientFunds(amountMinor, Math.floor(largest / STROOPS_PER_MINOR));
   }
   if (input.leafIndex === null) {
     throw new Error('That money is still confirming. Try again in a few seconds.');
@@ -521,8 +540,8 @@ async function spend(args: SpendArgs): Promise<string> {
 
   // out1 goes to the payee, out2 is the change back to us. An unshield sends its value out publicly,
   // so out1 carries zero and the change still returns here.
-  const change = input.amount - amountMinor;
-  const recipientAmount = publicMinor > 0 ? 0 : amountMinor;
+  const change = input.amount - amountStroops;
+  const recipientAmount = publicStroops > 0 ? 0 : amountStroops;
   // Held rather than generated inline: this is the nonce of our own change note, and we need it to
   // record that note locally the moment the spend lands.
   const changeRho = secureRandomHex(32);
@@ -550,7 +569,7 @@ async function spend(args: SpendArgs): Promise<string> {
       enc_pk_y: keys.enc_pk_y,
     },
     esk: secureRandomHex(32),
-    public_amount: publicMinor,
+    public_amount: publicStroops,
     destination: destinationField ?? '',
     kyc_level: credential.kycLevel,
     expiry: credential.expiry,
@@ -578,7 +597,7 @@ async function spend(args: SpendArgs): Promise<string> {
       enc2Rho: proof.enc2_rho,
     },
     currentTime: Math.floor(Date.now() / 1000),
-    ...(publicMinor > 0 ? { amount: publicMinor, destination } : {}),
+    ...(publicStroops > 0 ? { amount: publicStroops, destination } : {}),
   });
 
   // Mark the input spent immediately rather than waiting for the next scan, so the balance cannot
@@ -613,7 +632,7 @@ async function spend(args: SpendArgs): Promise<string> {
   const { recordActivity } = await import('./activity');
   await recordActivity({
     kind,
-    amountMinor: amount * MINOR_PER_UNIT,
+    amountMinor,
     txHash,
     counterparty,
     commitment: proof.out_c1,

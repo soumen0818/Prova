@@ -22,6 +22,13 @@ export interface PoolBalance {
   spendable: number;
   /** Arrived but still confirming — real money, not yet movable. */
   pending: number;
+  /**
+   * The largest single note, in minor units: the most that can leave in one transfer.
+   *
+   * Lower than `spendable` whenever the balance is split across notes, because the spend circuit
+   * takes exactly one input.
+   */
+  largestNote: number;
 }
 
 /**

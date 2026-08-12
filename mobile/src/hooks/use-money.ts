@@ -32,6 +32,13 @@ export interface Money {
    * tree; a spend proves membership, and an unfolded commitment is not yet a leaf.
    */
   pending: number;
+  /**
+   * The most that can be sent in a single transfer, in minor units.
+   *
+   * Equal to `spendable` unless the balance is split across notes — the spend circuit takes one
+   * input note, so the total is not always sendable at once.
+   */
+  largestNote: number;
   /** What the amounts are denominated in — `null` until money has actually arrived. */
   denom: Denomination | null | undefined;
   isLoading: boolean;
@@ -51,12 +58,14 @@ export function useMoney(): Money {
   if (usesPool) {
     const spendable = pool.data?.spendable ?? 0;
     const pending = pool.data?.pending ?? 0;
+    const largestNote = pool.data?.largestNote ?? 0;
     // Pool notes are denominated in whatever the contract custodies, which is this build's
     // settlement asset. The recorded denomination is only written by the simulated-credit path, so
     // it is not the source of truth here — but "no money at all" still means no unit to show.
     return {
       spendable,
       pending,
+      largestNote,
       denom: spendable + pending > 0 ? settlementDenomination() : null,
       isLoading: pool.isLoading,
     };
@@ -64,6 +73,8 @@ export function useMoney(): Money {
   return {
     spendable: local.data ?? 0,
     pending: 0,
+    // Simulated mode is a single counter, not notes, so the whole balance is always sendable.
+    largestNote: local.data ?? 0,
     denom: denom.data,
     isLoading: local.isLoading || denom.isLoading,
   };

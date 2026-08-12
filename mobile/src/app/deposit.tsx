@@ -115,7 +115,10 @@ export default function DepositScreen() {
     }
     setBusyShield(true);
     try {
-      const res = await shieldToPool(amt, (stage) => setShieldStage(SHIELD_STAGES[stage]));
+      // Minor units: the pool layer speaks what the screens display (see lib/pool).
+      const res = await shieldToPool(amt * minorPerUnit(settlementDenomination()), (stage) =>
+        setShieldStage(SHIELD_STAGES[stage]),
+      );
       await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
       await queryClient.invalidateQueries({ queryKey: QK.denomination });
       await queryClient.invalidateQueries({ queryKey: QK.activity });

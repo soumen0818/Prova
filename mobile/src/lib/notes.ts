@@ -158,6 +158,17 @@ export async function spendableBalance(): Promise<number> {
   return (await spendableNotes()).reduce((sum, n) => sum + n.amount, 0);
 }
 
+/**
+ * The biggest single spendable note, in minor units.
+ *
+ * This — not the total — is the most that can leave in one transfer, because the spend circuit
+ * takes exactly one input note. A screen that offers the total is offering something the circuit
+ * cannot do.
+ */
+export async function largestSpendableNote(): Promise<number> {
+  return (await spendableNotes()).reduce((max, n) => Math.max(max, n.amount), 0);
+}
+
 /** Incoming balance still confirming, in minor units. */
 export async function pendingBalance(): Promise<number> {
   return (await pendingNotes()).reduce((sum, n) => sum + n.amount, 0);

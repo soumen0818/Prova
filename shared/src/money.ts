@@ -89,6 +89,29 @@ export function fiatDenomination(code: string): Denomination {
   return { code: upper, kind: 'fiat', exponent: FIAT_EXPONENTS[upper] ?? DEFAULT_EXPONENT };
 }
 
+/**
+ * Parse what a person typed into whole minor units, or `null` if it is not a valid amount.
+ *
+ * Deliberately string arithmetic, never `Number(text) * 100`. Floating point cannot represent most
+ * decimal fractions exactly — `10.07 * 100` is `1006.9999999999999`, which rounds to a different
+ * amount of money than the person typed. Splitting on the decimal point and padding keeps every
+ * value exact.
+ *
+ * Rejects more decimals than the denomination has, rather than silently rounding: if someone types
+ * 10.005 they should be told it is not a valid amount, not quietly charged 10.00 or 10.01.
+ */
+export function parseAmountToMinor(input: string, d: Denomination): number | null {
+  const text = input.trim();
+  if (text === '' || text === '.' || !/^\d*(\.\d*)?$/.test(text)) return null;
+
+  const [whole, fraction = ''] = text.split('.');
+  if (fraction.length > d.exponent) return null;
+
+  const minor = Number((whole || '0') + fraction.padEnd(d.exponent, '0'));
+  // Beyond this, arithmetic on the value stops being exact — reject rather than lose precision.
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
 /** Minor units in one whole unit, e.g. 100 for `AED`, 1 for `JPY`, 1000 for `KWD`. */
 export function minorPerUnit(d: Denomination): number {
   return 10 ** d.exponent;

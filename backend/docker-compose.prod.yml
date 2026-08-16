@@ -72,12 +72,26 @@ services:
     build:
       context: ..
       dockerfile: web/Dockerfile
-    env_file:
-      - path: .env
-        required: false
+    #
+    # Deliberately NO `env_file`. The backend's .env is shared by every service here, and handing it
+    # to this one would do two bad things:
+    #
+    #   1. Its PORT=8080 (the Go API's port) overrides the image's PORT=3000, so Next listens on the
+    #      wrong port and Caddy proxies into nothing — a 502 with a perfectly healthy container.
+    #   2. This is the internet-facing process. It would inherit RELAYER_KEY, SMTP_PASSWORD and
+    #      POSTGRES_PASSWORD — none of which it uses. Listing the five variables it actually needs
+    #      keeps the blast radius of a compromise here to the console itself.
     environment:
       NODE_ENV: production
+      PORT: 3000
       PROVA_API_URL: http://api:8080
+      # No defaults: sign-in fails closed, so a missing value would present a login page that can
+      # never accept anything. Better to refuse to start.
+      OPS_EMAIL: ${OPS_EMAIL:?set OPS_EMAIL in .env}
+      OPS_PASSWORD: ${OPS_PASSWORD:?set OPS_PASSWORD in .env}
+      OPS_SESSION_SECRET: ${OPS_SESSION_SECRET:?set OPS_SESSION_SECRET in .env}
+      # Must equal the backend's own COMPLIANCE_TOKEN, or every /ops call is rejected.
+      COMPLIANCE_TOKEN: ${COMPLIANCE_TOKEN:?set COMPLIANCE_TOKEN in .env}
     depends_on:
       - api
     restart: unless-stopped

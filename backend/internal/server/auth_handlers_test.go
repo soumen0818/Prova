@@ -19,7 +19,30 @@ import (
 // post here. These assert that every endpoint rejects malformed input *before* doing any work, and
 // that it uses the shared rules rather than a private copy that could drift.
 
+// stubMailer stands in for SMTP: configured, and it swallows whatever it is handed.
+//
+// The email endpoints refuse outright when no mail service is present (there is deliberately no
+// fixed-code fallback), so tests about validation and rate limiting need a mailer to get past that
+// gate — otherwise they would all be asserting the same 501.
+type stubMailer struct{ sent int }
+
+func (m *stubMailer) Send(context.Context, string, string, string) error {
+	m.sent++
+	return nil
+}
+
+func (m *stubMailer) SendHTML(context.Context, string, string, string, string) error {
+	m.sent++
+	return nil
+}
+func (m *stubMailer) Configured() bool { return true }
+
 func authHandler() http.Handler {
+	return New(slog.Default(), config.Load(), Deps{Mailer: &stubMailer{}})
+}
+
+// The handler as deployed without SMTP: used to assert that it refuses rather than falling back.
+func authHandlerWithoutMailer() http.Handler {
 	return New(slog.Default(), config.Load(), Deps{})
 }
 
@@ -83,23 +106,35 @@ func TestEmailOTPVerifyValidatesBothFields(t *testing.T) {
 }
 
 // Emails are normalised so one person cannot end up with two accounts that differ only by case.
+//
+// Asserted through validation rather than a successful sign-in: there is no fixed code to post any
+// more, and a real one only exists after it has been issued and emailed.
 func TestEmailOTPVerifyNormalizesTheAddress(t *testing.T) {
 	h := authHandler()
-	code := config.Load().DevOTP
 
-	rec := post(t, h, "/auth/otp/verify", `{"email":"  User@Example.COM ","code":"`+code+`"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("→ %d, want 200", rec.Code)
+	// Padded and mixed-case must be accepted as an *address* — rejected on the code (401), never on
+	// the address (400), which is what a normalisation failure would produce.
+	rec := post(t, h, "/auth/otp/verify", `{"email":"  User@Example.COM ","code":"123456"}`)
+	if rec.Code == http.StatusBadRequest {
+		t.Fatalf("a padded, mixed-case address was rejected as malformed (%d)", rec.Code)
 	}
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("→ %d, want 401 (address fine, code wrong)", rec.Code)
 	}
-	if body["email"] != "user@example.com" {
-		t.Errorf("email = %q, want normalised", body["email"])
+}
+
+// Without a mail service there is no code anyone could have received, so both endpoints refuse
+// rather than falling back to a fixed one printed in the source.
+func TestEmailSignInRefusedWithoutMailer(t *testing.T) {
+	h := authHandlerWithoutMailer()
+
+	req := post(t, h, "/auth/otp/request", `{"email":"user@example.com"}`)
+	if req.Code != http.StatusNotImplemented {
+		t.Errorf("request without SMTP → %d, want 501", req.Code)
 	}
-	if body["token"] == "" {
-		t.Error("a session token must be returned")
+	ver := post(t, h, "/auth/otp/verify", `{"email":"user@example.com","code":"000000"}`)
+	if ver.Code != http.StatusNotImplemented {
+		t.Errorf("verify without SMTP → %d, want 501", ver.Code)
 	}
 }
 

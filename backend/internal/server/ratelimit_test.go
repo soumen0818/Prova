@@ -18,7 +18,9 @@ import (
 // drained without anyone noticing.
 
 func rlHandler() http.Handler {
-	return New(slog.Default(), config.Load(), Deps{})
+	// A configured mailer, so requests reach the limiter: the email endpoints refuse outright when
+	// no mail service is present, which would mask what these tests are measuring.
+	return New(slog.Default(), config.Load(), Deps{Mailer: &stubMailer{}})
 }
 
 // postFrom sends from a specific source address, so per-IP limits can be exercised independently.

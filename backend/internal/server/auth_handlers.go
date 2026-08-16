@@ -37,7 +37,8 @@ import (
 //
 // Without SMTP:
 //
-//   - development falls back to the fixed cfg.DevOTP, so the flow works offline;
+//   - email sign-in has NO fixed-code fallback in any environment: without a mail service the
+//     endpoints refuse, because a code that is printed in the source is a way in for everyone;
 //   - production refuses to sign anyone in, rather than accepting a code that was never sent.
 //
 // SMS for the phone step has no provider yet and still returns 501 — the gap stays explicit.
@@ -75,15 +76,12 @@ func (h *handler) otpRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	email := schema.NormalizeEmail(req.Email)
 
-	// No mailer: development keeps working offline with the fixed code; production refuses rather
-	// than pretending to have sent something.
+	// No mailer: refuse, in every environment. There is deliberately no fixed-code fallback — one
+	// that survived into a deployment where SMTP was merely misconfigured would let anybody sign in
+	// as anybody with a code printed in the source.
 	if !h.mailer.Configured() {
-		if !h.authIsDev() {
-			writeError(w, http.StatusNotImplemented, schema.ErrInternal,
-				"Email sign-in is not available right now. Please try again later.")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "sent", "devCode": h.cfg.DevOTP})
+		writeError(w, http.StatusNotImplemented, schema.ErrInternal,
+			"Email sign-in is unavailable: no mail service is configured. Please try again later.")
 		return
 	}
 
@@ -128,18 +126,11 @@ func (h *handler) otpVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	email := schema.NormalizeEmail(req.Email)
 
+	// Same rule as issuing: with no mail service there is no code we could have sent, so there is
+	// nothing legitimate to accept here.
 	if !h.mailer.Configured() {
-		if !h.authIsDev() {
-			writeError(w, http.StatusNotImplemented, schema.ErrInternal,
-				"Email sign-in is not available right now. Please try again later.")
-			return
-		}
-		if strings.TrimSpace(req.Code) != h.cfg.DevOTP {
-			writeError(w, http.StatusUnauthorized, schema.ErrUnauthenticated,
-				"That code isn't right. Please check and try again.")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"token": randomToken(), "email": email})
+		writeError(w, http.StatusNotImplemented, schema.ErrInternal,
+			"Email sign-in is unavailable: no mail service is configured. Please try again later.")
 		return
 	}
 

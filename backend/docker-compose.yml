@@ -92,9 +92,27 @@ services:
       STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
       SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
       CONTRACT_ID: ${CONTRACT_ID:-}
+      # Nothing in this role actually uses Redis — it backs the rate limiter and transfer
+      # idempotency, and the indexer serves no HTTP. But without the URL it dials localhost, fails,
+      # and logs "redis unavailable" on every boot, which is a red herring for anyone debugging a
+      # stuck fold. Point it at the real one so the warning means something when it appears.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # The folder runs in THIS role (see cmd/api/main.go — it starts under RunsIndexer), and every
+      # fold is a ZK proof, so the indexer needs the prover just as much as the API does.
+      #
+      # Without it the failure is silent and total: deposits land in the contract's queue, the folder
+      # wakes every 8 s, cannot produce a proof, and no note is ever folded into the Merkle tree. The
+      # tree stays empty, /pool/path returns nothing, and every send fails — while the API looks
+      # perfectly healthy, because the API's own copy of the prover is present and unused for this.
+      PROVER_BIN: /opt/prover/prova-prover
+    volumes:
+      - prover-bin:/opt/prover:ro
     depends_on:
       redis:
         condition: service_started
+      # Wait for the binary to exist rather than racing it into the volume.
+      prover-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

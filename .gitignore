@@ -12,6 +12,10 @@
 .env
 .env.*
 !.env.example
+# The production template is placeholders only and is referenced by Docs/deployment.md. Without this
+# it is swallowed by `.env.*` above, so a fresh clone hits "No such file or directory" at the copy
+# step — which is exactly what happened on the first EC2 deploy.
+!.env.production.example
 
 # Node
 node_modules/

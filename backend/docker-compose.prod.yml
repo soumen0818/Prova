@@ -1,0 +1,87 @@
+# Prova backend — single-machine production stack (EC2 or any VPS).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# The `-f` flags are not optional: naming files explicitly stops Docker auto-merging
+# docker-compose.override.yml, which is the DEVELOPMENT overlay. That one hardcodes the Postgres
+# password as `prova:prova` and publishes Postgres on a host port — harmless on a laptop, an open
+# database on a public address.
+#
+# What this overlay changes, and why each matters on a machine with a public IP:
+#
+#   - Postgres and Redis publish NO host ports. They are reachable only over the internal compose
+#     network, by the API and indexer. Redis in particular runs with no password by default, and a
+#     published Redis port is one of the most reliably exploited mistakes on the internet.
+#   - The API binds to 127.0.0.1 only, so nothing reaches it except the reverse proxy on the same
+#     machine. Without this, anyone can skip TLS by talking to :8080 directly.
+#   - The Postgres password comes from the environment and has no default: an unset value stops the
+#     stack rather than quietly starting it with a known one.
+#   - Caddy terminates TLS and obtains certificates automatically.
+#
+# The indexer runs exactly once here. It hosts the folder, which batches queued notes into the
+# Merkle tree; a second one competing over the same queue is a bad day.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prova
+      # No default — see the note above.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: prova
+    # Deliberately no `ports:`. Reachable on the compose network, and nowhere else.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U prova']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    # `!reset`, not `[]`: Compose MERGES list fields across files, so an empty list leaves the base
+    # file's published port in place. Verified with `docker compose config` — without the reset,
+    # Redis stayed reachable on a host port with no password.
+    ports: !reset []
+
+  api:
+    environment:
+      DATABASE_URL: postgres://prova:${POSTGRES_PASSWORD}@postgres:5432/prova?sslmode=disable
+    # Loopback only: Caddy is the single way in from outside. Reset first, or this is *added* to
+    # the base file's 0.0.0.0 mapping rather than replacing it, and the API stays public.
+    ports: !override
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  indexer:
+    environment:
+      DATABASE_URL: postgres://prova:${POSTGRES_PASSWORD}@postgres:5432/prova?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # TLS and the only port open to the world. Certificates are obtained and renewed automatically,
+  # which matters beyond convenience: the app refuses plain HTTP, and an expired certificate would
+  # look to users exactly like the backend being down.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddydata:
+  caddyconfig:

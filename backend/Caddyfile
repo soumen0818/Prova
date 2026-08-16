@@ -1,0 +1,26 @@
+# TLS and reverse proxy for the Prova backend.
+#
+# Caddy obtains and renews a Let's Encrypt certificate for API_DOMAIN by itself, provided the domain
+# resolves to this machine and ports 80 and 443 are reachable. HTTP is redirected to HTTPS
+# automatically — the mobile app will not talk to a plain-HTTP backend, and neither should anything
+# else carrying a sign-in code.
+
+{$API_DOMAIN} {
+	# The API listens on loopback (see docker-compose.prod.yml); `api` resolves on the compose
+	# network, so nothing has to be exposed to the host for this hop.
+	reverse_proxy api:8080
+
+	# Forward the caller's real address. The backend reads it for per-IP rate limiting, and with
+	# TRUST_PROXY_HEADERS=true it trusts these headers — which is only safe because this proxy sets
+	# them itself and is the sole route in.
+	header_up X-Forwarded-For {remote_host}
+	header_up X-Real-IP {remote_host}
+
+	encode gzip
+
+	# Health checks are noise in an access log and are polled constantly.
+	log {
+		output stdout
+		format console
+	}
+}

@@ -8,6 +8,13 @@ import type { NextConfig } from 'next';
  */
 const nextConfig: NextConfig = {
   /*
+   * Bundle a self-contained server into `.next/standalone`, so the runtime image can ship without
+   * node_modules. Next traces exactly the files that are reached at runtime; copying the whole
+   * dependency tree instead would put ~400 MB on a 2 GB server for no benefit.
+   */
+  output: 'standalone',
+
+  /*
    * Dev and production builds get separate output directories.
    *
    * They shared `.next` by default, which meant running `next build` while `next dev` was running

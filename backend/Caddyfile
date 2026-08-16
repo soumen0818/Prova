@@ -8,17 +8,30 @@
 {$API_DOMAIN} {
 	# The API listens on loopback (see docker-compose.prod.yml); `api` resolves on the compose
 	# network, so nothing has to be exposed to the host for this hop.
+	# Caddy sets X-Forwarded-For and X-Forwarded-Proto on proxied requests by itself. The backend
+	# reads the first for per-IP rate limiting, and with TRUST_PROXY_HEADERS=true it trusts them —
+	# safe only because this proxy sets them and is the sole route in.
+	#
+	# (`header_up` is a subdirective of reverse_proxy, not a site-level one. Writing it here as a
+	# bare directive is a config error that puts Caddy in a restart loop.)
 	reverse_proxy api:8080
-
-	# Forward the caller's real address. The backend reads it for per-IP rate limiting, and with
-	# TRUST_PROXY_HEADERS=true it trusts these headers — which is only safe because this proxy sets
-	# them itself and is the sole route in.
-	header_up X-Forwarded-For {remote_host}
-	header_up X-Real-IP {remote_host}
 
 	encode gzip
 
 	# Health checks are noise in an access log and are polled constantly.
+	log {
+		output stdout
+		format console
+	}
+}
+
+# The website and the operator console. A separate hostname on the same machine and the same Caddy:
+# requests are routed by the Host header, so one IP serves both.
+{$WEB_DOMAIN} {
+	reverse_proxy web:3000
+
+	encode gzip
+
 	log {
 		output stdout
 		format console

@@ -63,6 +63,25 @@ services:
       postgres:
         condition: service_healthy
 
+  # Marketing site + operator console. Same machine, ~200 MB, reachable only through Caddy.
+  #
+  # It calls the API over the internal network (PROVA_API_URL=http://api:8080), so COMPLIANCE_TOKEN
+  # — the secret that can approve anybody's KYC — never crosses the public internet, and the console
+  # never needs the API exposed.
+  web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PROVA_API_URL: http://api:8080
+    depends_on:
+      - api
+    restart: unless-stopped
+
   # TLS and the only port open to the world. Certificates are obtained and renewed automatically,
   # which matters beyond convenience: the app refuses plain HTTP, and an expired certificate would
   # look to users exactly like the backend being down.
@@ -77,8 +96,10 @@ services:
       - caddyconfig:/config
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      WEB_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN in .env}
     depends_on:
       - api
+      - web
     restart: unless-stopped
 
 volumes:

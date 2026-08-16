@@ -73,6 +73,16 @@ type Config struct {
 	// UX. The floor is proving time (~1.5 s) plus a ledger close (~5 s on testnet); below that, folds
 	// simply queue behind each other.
 	PoolFoldInterval time.Duration
+	// IndexerLookback is how many ledgers back a *fresh* indexer scan starts from. It applies only
+	// when there is no stored position; afterwards the indexer resumes from where it left off.
+	//
+	// This is the setting that decides which existing notes a new deployment can see, and getting it
+	// wrong is quiet and expensive: notes older than the window are never indexed, so the tree stays
+	// empty, /pool/path returns nothing, and wallets that still hold those notes locally show a
+	// balance they cannot spend. The default (20,000 ≈ 27 hours on testnet's ~5 s ledgers) suits a
+	// pool that has always been indexed; point a new backend at an existing pool and it needs to
+	// reach back to the pool contract's deployment instead.
+	IndexerLookback uint32
 
 	// Phase 3 — KYC credential issuance (anchor side).
 	ProverBin  string // path to the prova-prover CLI (signs credentials, matches the circuit)
@@ -156,6 +166,7 @@ func Load() Config {
 		PoolFoldKeyCache: getenv("POOL_FOLD_KEY_CACHE", ""),
 		PoolSetupSeed:    getuint("POOL_SETUP_SEED", 42),
 		PoolFoldInterval: getdur("POOL_FOLD_INTERVAL_SECONDS", 8*time.Second),
+		IndexerLookback:  getu32("INDEXER_LOOKBACK_LEDGERS", 20_000),
 
 		ProverBin:  getenv("PROVER_BIN", "prova-prover"),
 		AnchorSeed: getenv("ANCHOR_SEED", ""), // empty → the CLI's built-in dev anchor key
@@ -193,6 +204,16 @@ func getenv(key, fallback string) string {
 func getdur(key string, fallback time.Duration) time.Duration {
 	if secs, err := strconv.Atoi(os.Getenv(key)); err == nil && secs > 0 {
 		return time.Duration(secs) * time.Second
+	}
+	return fallback
+}
+
+// getu32 reads a non-negative ledger count from the environment. Values that do not fit in a uint32
+// fall back rather than wrapping — a lookback that silently became a small number would resume the
+// exact bug this setting exists to fix.
+func getu32(key string, fallback uint32) uint32 {
+	if n, err := strconv.ParseUint(os.Getenv(key), 10, 32); err == nil && n > 0 {
+		return uint32(n)
 	}
 	return fallback
 }

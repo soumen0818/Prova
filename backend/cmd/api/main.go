@@ -133,7 +133,7 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 
 		// Indexer is constructed here (needs the store); main starts it only in the indexer role.
 		events := chain.NewEventsClient(cfg.SorobanRPCURL, cfg.ContractID)
-		idx = indexer.New(events, st, logger, 15*time.Second, 20_000)
+		idx = indexer.New(events, st, logger, 15*time.Second, cfg.IndexerLookback)
 
 		// Shielded pool. Without POOL_CONTRACT_ID there is no pool to index, and the /pool routes
 		// answer 503 — which is honest: a wallet cannot build a spend proof without these.
@@ -156,7 +156,7 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 			}
 			deps.Pool = poolpkg.NewService(st, prover, relayer)
 			poolEvents := chain.NewPoolEventsClient(cfg.SorobanRPCURL, cfg.PoolContractID)
-			poolIdx = poolpkg.NewIndexer(poolEvents, st, logger, 5*time.Second, 20_000)
+			poolIdx = poolpkg.NewIndexer(poolEvents, st, logger, 5*time.Second, cfg.IndexerLookback)
 
 			// The folder is what makes queued notes spendable. It is trusted with nothing — the
 			// proof enforces correctness and the contract supplies the leaves from its own queue —

@@ -27,10 +27,56 @@
   <a href="#documentation-map">Docs</a>
 </p>
 
+<p align="center">
+  <a href="https://expo.dev/artifacts/eas/Wv1PIuvxQDP00X-jSE_rkZJ6aT-bdJ3IvySozIrSzBs.apk">
+    <img alt="Download the Prova Android APK — version 1.0.0, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.0.0%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  </a>
+</p>
+
+<p align="center">
+  <sub>Android 8+ · <b>arm64</b> · Stellar <b>testnet</b> — balances are test assets with no monetary value</sub>
+</p>
+
+---
+
+## Download the app
+
+<table>
+  <tr>
+    <td align="center" width="150">
+      <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
+      <br><br>
+      <a href="https://expo.dev/artifacts/eas/Wv1PIuvxQDP00X-jSE_rkZJ6aT-bdJ3IvySozIrSzBs.apk">
+        <img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+      </a>
+    </td>
+    <td>
+      <table>
+        <tr><td><b>Version</b></td><td>1.0.0 · 86 MB</td></tr>
+        <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
+        <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
+        <tr><td><b>Website</b></td><td><a href="https://provapay.duckdns.org">provapay.duckdns.org</a></td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+Android will ask you to allow installing from outside the Play Store. Prova is not on the Play Store
+yet — a payments app has to clear their financial-services review first.
+
+**arm64 only, deliberately.** The zero-knowledge prover that builds every spend proof is a native
+Rust library with no 32-bit build, so a `armeabi-v7a` device would install the app, run it, and then
+fail at the exact moment it tried to send. Shipping one architecture makes that impossible rather
+than surprising. Every phone from roughly 2015 onward is arm64.
+
+> Balances are testnet assets with **no monetary value**, and the test network can be reset at any
+> time. Try it freely; do not treat anything in it as savings.
+
 ---
 
 ## Table of contents
 
+- [Download the app](#download-the-app)
 - [Overview](#overview)
 - [The problem](#the-problem)
 - [The solution](#the-solution)

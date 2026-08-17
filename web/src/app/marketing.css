@@ -51,7 +51,14 @@
   color: var(--text-secondary);
 }
 
-.nav-links a:hover {
+/*
+ * Plain nav links brighten on hover — but NOT the "Get the app" button.
+ *
+ * `.nav-links a:hover` (0,2,1) outranks `.btn-primary` (0,1,0), so without the exclusion the button
+ * had its dark label repainted white on hover: white text on the yellow accent, effectively
+ * invisible. `.btn` keeps its own hover, which changes the background and leaves the label alone.
+ */
+.nav-links a:not(.btn):hover {
   color: var(--white);
 }
 

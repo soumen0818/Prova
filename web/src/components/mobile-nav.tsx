@@ -55,7 +55,10 @@ export function MobileNav({ links }: { links: { href: string; label: string }[] 
         </span>
       </button>
 
-      <div id="mobile-nav-panel" className={`mobile-nav-panel${open ? ' is-open' : ''}`} hidden={!open}>
+      <div
+        id="mobile-nav-panel"
+        className={`mobile-nav-panel${open ? ' is-open' : ''}`}
+        hidden={!open}>
         {links.map((link) => (
           <Link key={link.href} href={link.href} className="mobile-nav-link">
             {link.label}

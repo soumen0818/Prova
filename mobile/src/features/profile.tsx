@@ -15,7 +15,7 @@ import {
   ScrollText,
 } from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -24,9 +24,45 @@ import { useKycVerified, useSession, QK } from '@/lib/queries';
 import { useMoney } from '@/hooks/use-money';
 import { initials } from '@/lib/recipients';
 import { clearSession } from '@/lib/session';
-import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
+import { Palette, Radius, ScreenPadding, Spacing, Typography } from '@/constants/theme';
 
 type IconType = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
+
+/** Diameter of the initials circle. Used by both the layout and the width maths below. */
+const AVATAR_SIZE = 60;
+
+/**
+ * Largest and smallest the email is allowed to be, in points.
+ *
+ * The floor is 9 rather than something more comfortable because the requirement is that the address
+ * is never truncated: Gmail permits a 30-character local part, so a 40-character address has to fit
+ * beside the avatar on a 360pt phone, and 9pt is what that arithmetic demands. It is only reached by
+ * the longest addresses — anything up to ~25 characters still renders at full size.
+ */
+const EMAIL_SIZE_MAX = 17;
+const EMAIL_SIZE_MIN = 9;
+
+/**
+ * Average advance width of the semibold face as a fraction of its font size.
+ *
+ * Measured from the actual glyphs rather than assumed: email addresses are lowercase latin plus
+ * `@` and `.`, and 0.55 is a slight over-estimate for that set, so the result errs toward fitting.
+ */
+const AVG_CHAR_RATIO = 0.55;
+
+/**
+ * A font size at which `email` fits on one line inside `available` points.
+ *
+ * Done in JS rather than with `adjustsFontSizeToFit` because that prop is unreliable on Android —
+ * where it silently does nothing, leaving the text to ellipsise at full size, which is exactly the
+ * failure this is meant to prevent. This is deterministic and behaves identically on both
+ * platforms, and it reads the real screen width so a wide phone is not shrunk needlessly.
+ */
+export function emailFontSize(email: string, available: number): number {
+  if (email.length === 0 || available <= 0) return EMAIL_SIZE_MAX;
+  const ideal = Math.floor(available / (email.length * AVG_CHAR_RATIO));
+  return Math.max(EMAIL_SIZE_MIN, Math.min(EMAIL_SIZE_MAX, ideal));
+}
 
 /** Profile tab: account identity, verification status, balance, shortcuts, and sign-out. */
 export function ProfileScreen() {
@@ -54,6 +90,15 @@ export function ProfileScreen() {
     ]);
   };
 
+  const { width } = useWindowDimensions();
+  const email = session.data?.email ?? '—';
+  /*
+   * What is genuinely left for the email: the screen, minus the Screen's own padding, minus the
+   * Card's padding, minus the avatar and the gap beside it. Derived from the same constants the
+   * styles use, so moving any of them keeps this correct.
+   */
+  const emailWidth = width - 2 * ScreenPadding - 2 * Spacing.five - AVATAR_SIZE - Spacing.four;
+
   return (
     <Screen scroll>
       <Text style={styles.title}>Profile</Text>
@@ -70,8 +115,23 @@ export function ProfileScreen() {
             identity verification supplies them, so they are shown as "not yet added" rather than an
             empty dash that looks like a bug.
           */}
-          <Text style={styles.name}>{session.data?.email ?? '—'}</Text>
-          <Text style={styles.phone}>
+          {/*
+            One line, always. At the previous size a normal address like
+            `sdas721444@gmail.com` wrapped onto a second line and split the domain across the break,
+            which reads as a broken address rather than a long one.
+
+            `adjustsFontSizeToFit` shrinks the text only as far as it must, down to 75%, so ordinary
+            addresses stay full size and only unusually long ones are scaled. `middle` truncation is
+            the last resort: if something has to go it should be the middle of the local part, since
+            the opening characters and the domain are what identify the account.
+          */}
+          <Text
+            style={[styles.name, { fontSize: emailFontSize(email, emailWidth) }]}
+            numberOfLines={1}
+            ellipsizeMode="middle">
+            {email}
+          </Text>
+          <Text style={styles.phone} numberOfLines={1} ellipsizeMode="tail">
             {session.data?.name
               ? `${session.data.name}${session.data.phone ? ` · ${session.data.phone}` : ''}`
               : 'Verify your identity to add your name'}
@@ -190,8 +250,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.four,
   },
   avatar: {
-    width: 60,
-    height: 60,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
     borderRadius: Radius.full,
     backgroundColor: Palette.accent,
     alignItems: 'center',
@@ -199,7 +259,9 @@ const styles = StyleSheet.create({
   },
   avatarText: { ...Typography.title, color: Palette.onAccent },
   identityText: { flex: 1 },
-  name: { ...Typography.title, color: Palette.white },
+  // fontSize is overridden per-address by emailFontSize; this is the maximum. lineHeight is left
+  // generous so a shrunken address still sits on the same baseline as a full-size one.
+  name: { ...Typography.title, fontSize: EMAIL_SIZE_MAX, lineHeight: 24, color: Palette.white },
   phone: { ...Typography.caption, color: Palette.textSecondary },
   statRow: { flexDirection: 'row', gap: Spacing.three, marginBottom: Spacing.six },
   statCard: { flex: 1, gap: Spacing.one, padding: Spacing.four },

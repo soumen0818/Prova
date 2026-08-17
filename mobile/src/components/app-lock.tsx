@@ -18,6 +18,21 @@ type LockState = 'checking' | 'locked' | 'unlocked';
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * How long the app may be away from the foreground before returning to it re-locks.
+ *
+ * Without this the app locked on *every* return to `active`, which is not only harsh but wrong:
+ * Android backgrounds the app to show a system dialog, so granting the camera permission during KYC
+ * bounced the user straight into the lock screen — indistinguishable from being signed out, in the
+ * middle of verifying their identity. The same happened for the share sheet, the notification
+ * shade, and a glance at another app.
+ *
+ * 30 seconds is long enough to cover any permission prompt or momentary switch, and short enough
+ * that a phone genuinely handed to someone else is still protected. The 5-minute idle timer above
+ * is the other half of this and is unaffected.
+ */
+const BACKGROUND_GRACE_MS = 30 * 1000;
+
+/**
  * Gates the app behind device authentication. Locks whenever a wallet exists and at least one
  * factor is set up (a PIN or device biometrics), and re-locks when the app returns from background
  * **or after a period of inactivity**. Unlock with biometrics (auto-prompted) or by entering the
@@ -50,6 +65,8 @@ export function AppLock({
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const autoPrompted = useRef(false);
+  /** When the app last left the foreground, or null while it is in front. See BACKGROUND_GRACE_MS. */
+  const backgroundedAt = useRef<number | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Bumped on user activity to restart the idle timer without re-rendering the whole tree. */
   const [idleNonce, setIdleNonce] = useState(0);
@@ -123,13 +140,27 @@ export function AppLock({
     };
   }, [unlockBiometric, onResolved]);
 
-  // Re-lock when the app returns to the foreground.
+  // Re-lock when the app comes back from a long enough time in the background.
+  //
+  // The timestamp is what makes this correct: a permission dialog or app switcher returns within a
+  // second or two and must not lock, while a phone put down for a minute must. Reacting to `active`
+  // alone cannot tell those apart, because they look identical from here.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
+        const leftAt = backgroundedAt.current;
+        backgroundedAt.current = null;
+        // No recorded departure means this is the first activation, which the mount effect already
+        // handled — re-evaluating here would lock the app immediately on every cold start.
+        if (leftAt === null) return;
+        if (Date.now() - leftAt < BACKGROUND_GRACE_MS) return;
         autoPrompted.current = false;
         setTimedOut(false);
         evaluate();
+      } else if (backgroundedAt.current === null) {
+        // 'background' and 'inactive' both count as leaving. Only the first is recorded, so a
+        // transition through 'inactive' into 'background' does not restart the clock.
+        backgroundedAt.current = Date.now();
       }
     });
     return () => sub.remove();

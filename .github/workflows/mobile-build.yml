@@ -1,0 +1,92 @@
+name: mobile-build
+
+# Builds an installable Android APK on EAS whenever the app changes.
+#
+# Separate from mobile-ci.yml on purpose. That one runs on every push and pull request because lint
+# and typecheck are free; this one spends EAS build credits, so it runs only on pushes to main that
+# actually touch the app — and never on pull requests.
+#
+# `shared/` is included in the paths because mobile consumes @prova/shared through a file:
+# dependency: a change there ships inside the APK just as surely as a change under mobile/.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      [
+        'mobile/**',
+        'shared/src/**',
+        'shared/package.json',
+        'shared/tsconfig.json',
+        '.github/workflows/mobile-build.yml',
+      ]
+  # Lets you build without pushing anything — a re-run after a failed build, or an APK from the
+  # current main on demand.
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile'
+        required: true
+        default: preview
+        type: choice
+        options: [preview, production]
+
+# One build at a time. Pushing three commits in a row should produce one APK from the last of them,
+# not three builds racing each other through the credit balance.
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: EAS build (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # EAS reads app.json to resolve config plugins, and those are resolved from node_modules —
+      # so the install is required even though the build itself happens on EAS's machines.
+      #
+      # @prova/shared is NOT built here. It is a file: dependency that npm links, and the APK's copy
+      # is compiled on the build server by the eas-build-post-install hook in mobile/package.json.
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Build APK on EAS
+        working-directory: mobile
+        # --no-wait returns as soon as the build is queued. Waiting would bill GitHub Actions minutes
+        # for 20-30 minutes of sitting idle while EAS does the work; the URL below is where progress
+        # actually lives.
+        run: |
+          eas build \
+            --platform android \
+            --profile ${{ github.event.inputs.profile || 'preview' }} \
+            --non-interactive \
+            --no-wait
+
+      - name: Where to find it
+        run: |
+          {
+            echo "### Android build queued"
+            echo ""
+            echo "Profile: \`${{ github.event.inputs.profile || 'preview' }}\`"
+            echo ""
+            echo "Builds and their download links:"
+            echo "https://expo.dev/accounts/soumen0818/projects/prova-mobile/builds"
+            echo ""
+            echo "The APK link changes with every build, so update \`APK_URL\` in"
+            echo "\`web/src/lib/site.ts\` and the README when you publish a new one."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -56,10 +56,16 @@ export default function NewRecipientScreen() {
   const { data: ownAddress } = useQuery({ queryKey: ['pool-address'], queryFn: poolAddress });
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  /*
+   * Shows the name error once the user has left the field, rather than only after Continue.
+   * Otherwise a value the rule rejects — "Ravi 2", "123" — draws no reaction at all while typing,
+   * which reads as no validation rather than as deferred validation.
+   */
+  const [nameTouched, setNameTouched] = useState(false);
 
   const country = COUNTRIES.find((c) => c.code === countryCode) ?? COUNTRIES[0];
   const nameV = validateName(name);
-  const nameError = submitted && !nameV.ok ? (nameV.error ?? '') : '';
+  const nameError = (submitted || nameTouched) && !nameV.ok ? (nameV.error ?? '') : '';
   const addrMessage =
     addrError ||
     (submitted && !poolAddr ? 'A Prova address is needed to send to this person.' : '');
@@ -172,6 +178,7 @@ export default function NewRecipientScreen() {
           style={[styles.input, nameError ? styles.inputError : null]}
           value={name}
           onChangeText={setName}
+          onBlur={() => setNameTouched(true)}
           placeholder="Amma Devi"
           placeholderTextColor={Palette.textMuted}
           autoCapitalize="words"

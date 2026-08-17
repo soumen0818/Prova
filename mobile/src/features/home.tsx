@@ -9,6 +9,7 @@ import {
   ShieldCheck,
 } from 'lucide-react-native';
 import type { ComponentType } from 'react';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, GlassIconButton, Screen } from '@/components/ui';
@@ -49,7 +50,22 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
           is the wrong signal. The product promise leads instead.
         */}
         <View>
-          <Text style={styles.greeting}>Prova</Text>
+          {/*
+            The wordmark as artwork rather than text, so the brand letterforms are the real ones
+            instead of whatever the system font approximates. This is the transparent 29 KB export;
+            `assets/Brand core/Wordmark.png` is the same artwork at print resolution (4.9 MB) and has
+            no business inside an APK.
+
+            accessibilityLabel carries the word itself — a screen reader would otherwise announce
+            nothing where the app's name used to be.
+          */}
+          <Image
+            source={require('@/assets/images/brand-wordmark.png')}
+            style={styles.wordmark}
+            contentFit="contain"
+            accessible
+            accessibilityLabel="Prova"
+          />
           <Text style={styles.subGreeting}>Send money home, privately</Text>
         </View>
         <GlassIconButton accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
@@ -232,7 +248,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Spacing.five,
   },
-  greeting: { ...Typography.title, fontSize: 24, color: Palette.white },
+  // 1024x338 source → 3.03:1. Height drives the size; width follows the ratio exactly so the
+  // letterforms are never stretched.
+  wordmark: { width: 97, height: 32, marginBottom: 2 },
   subGreeting: { ...Typography.caption, color: Palette.textSecondary },
   balanceCard: { gap: Spacing.four, marginBottom: Spacing.five },
   balanceTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

@@ -51,13 +51,22 @@ export function KycIdentityStep({ onCaptured }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  /*
+   * Fields the user has finished with, so an error can be shown before they press Continue.
+   *
+   * Waiting for submit meant someone could type "Ravi 2", see no complaint at all, and reasonably
+   * conclude the field was not validated — the rule was doing its job silently and only spoke up
+   * after the button. Blur is the right moment: it never interrupts mid-word, and once a field has
+   * been touched its error updates live so it clears the instant the input becomes valid.
+   */
+  const [touched, setTouched] = useState<{ name?: boolean; phone?: boolean }>({});
 
   const country = useMemo(() => findCountry(countryCode) ?? COUNTRIES[0], [countryCode]);
   const nameCheck = validateName(name);
   const phoneCheck = validateNationalPhone(national, countryCode);
 
-  const nameError = submitted && !nameCheck.ok ? nameCheck.error : '';
-  const phoneError = submitted && !phoneCheck.ok ? phoneCheck.error : '';
+  const nameError = (submitted || touched.name) && !nameCheck.ok ? nameCheck.error : '';
+  const phoneError = (submitted || touched.phone) && !phoneCheck.ok ? phoneCheck.error : '';
 
   const e164 = toE164(national, countryCode);
 
@@ -93,6 +102,7 @@ export function KycIdentityStep({ onCaptured }: Props) {
           style={[styles.input, nameError ? styles.inputError : null]}
           value={name}
           onChangeText={setName}
+          onBlur={() => setTouched((t) => ({ ...t, name: true }))}
           placeholder="As printed on your ID"
           placeholderTextColor={Palette.textMuted}
           autoCapitalize="words"
@@ -122,6 +132,7 @@ export function KycIdentityStep({ onCaptured }: Props) {
             // Strip non-digits as they type and cap at this country's length, so the field cannot
             // hold something the server would reject.
             onChangeText={(t) => setNational(t.replace(/\D/g, '').slice(0, country.nationalDigits))}
+            onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
             keyboardType="number-pad"
             placeholder={'0'.repeat(country.nationalDigits)}
             placeholderTextColor={Palette.textMuted}

@@ -26,6 +26,7 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_STELLAR_NETWORK": "testnet",

@@ -38,7 +38,7 @@ export const REPO_URL = 'https://github.com/soumen0818/Prova';
  * honestly absent.
  */
 export const APK_URL: string =
-  'https://expo.dev/artifacts/eas/Wv1PIuvxQDP00X-jSE_rkZJ6aT-bdJ3IvySozIrSzBs.apk';
+  'https://expo.dev/artifacts/eas/HTcp0oUXq-2yYCbm0KElwUq4hDQimkW7xVdr2Oj4FRs.apk';
 
 /**
  * Shown next to the download so people know what they are installing.
@@ -47,4 +47,4 @@ export const APK_URL: string =
  * arm64 because that is what the build ships: the ZK prover has no 32-bit binary, so an older device
  * would install and then fail at the moment it tried to send. Saying so beats a silent failure.
  */
-export const APK_VERSION = '1.0.0 · Android (arm64) · testnet · 86 MB';
+export const APK_VERSION = '1.1.0 · Android (arm64) · testnet · 86 MB';

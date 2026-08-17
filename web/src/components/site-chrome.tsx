@@ -1,6 +1,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 
+import { GetAppButton } from '@/components/get-app-button';
+import { MobileNav } from '@/components/mobile-nav';
+
 import { CONTACT_EMAIL } from '@/lib/site';
 
 import { StaffDoor } from './staff-door';
@@ -41,16 +44,17 @@ export function SiteHeader() {
           />
         </Link>
 
+        {/* Wide screens: everything inline. Narrow: the disclosure menu below takes over. */}
         <nav className="nav-links">
           {NAV_LINKS.map((link) => (
             <Link key={link.href} href={link.href}>
               {link.label}
             </Link>
           ))}
-          <Link className="btn btn-primary btn-sm" href="/#get-the-app">
-            Get the app
-          </Link>
+          <GetAppButton className="btn btn-primary btn-sm" />
         </nav>
+
+        <MobileNav links={NAV_LINKS} />
       </div>
     </header>
   );

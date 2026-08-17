@@ -1,5 +1,6 @@
 import { CORRIDOR_STATUS_NOTE } from '@prova/shared';
 
+import { GetAppButton } from '@/components/get-app-button';
 import { GetTheApp } from '@/components/get-the-app';
 import { PhoneMock } from '@/components/phone-mock';
 import { RevealOnScroll } from '@/components/reveal';
@@ -39,9 +40,7 @@ export default function HomePage() {
               <div
                 className="hero-actions reveal in"
                 style={{ '--delay': '160ms' } as React.CSSProperties}>
-                <a className="btn btn-primary" href="#get-the-app">
-                  Get the app
-                </a>
+                <GetAppButton className="btn btn-primary" />
                 <a className="btn btn-ghost" href="#how">
                   See how it works
                 </a>

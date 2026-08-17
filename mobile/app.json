@@ -46,7 +46,9 @@
       "expo-secure-store",
       "react-native-cloud-storage",
       "@react-native-google-signin/google-signin",
-      "./plugins/with-prova-android.js"
+      "./plugins/with-prova-android.js",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

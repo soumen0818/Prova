@@ -85,17 +85,41 @@ jobs:
             --cidr "${{ steps.ip.outputs.ip }}/32"
 
       - name: Load the deploy key
+        # Secrets come through `env` rather than being interpolated into the script. `${{ }}` pastes
+        # the value into the shell source, so a key containing a quote would break the script — and
+        # anything it expanded to would be run.
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
         run: |
+          # Name the missing secret. Without this a blank one surfaces as a bare "exit code 1" from
+          # whichever command happened to touch it first, which says nothing about the cause.
+          : "${SSH_KEY:?SSH_PRIVATE_KEY secret is not set — add it under Settings → Secrets → Actions}"
+          : "${HOST:?EC2_HOST secret is not set — add it under Settings → Secrets → Actions}"
+
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy.pem
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy.pem
           chmod 600 ~/.ssh/deploy.pem
-          # Trust on first use. The alternative is pinning the host key in a secret, which is
-          # stronger but breaks silently whenever the instance is rebuilt.
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Check the key parses before using it. A truncated paste — missing the BEGIN/END lines is
+          # the usual one — otherwise fails later as an unhelpful "Permission denied (publickey)".
+          if ! ssh-keygen -y -f ~/.ssh/deploy.pem > /dev/null 2>&1; then
+            echo "::error::SSH_PRIVATE_KEY is not a readable private key. Paste the whole .pem file, including the BEGIN and END lines."
+            exit 1
+          fi
+
+          # Trust on first use. Pinning the host key in a secret is stronger but breaks silently
+          # whenever the instance is rebuilt. stderr is kept: this step failing must be readable.
+          if ! ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts; then
+            echo "::error::Could not read the host key from $HOST. Is EC2_HOST the right address, and did the security-group step run?"
+            exit 1
+          fi
 
       - name: Pull and restart
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
         run: |
-          ssh -i ~/.ssh/deploy.pem ubuntu@${{ secrets.EC2_HOST }} bash -euo pipefail <<'REMOTE'
+          ssh -i ~/.ssh/deploy.pem "ubuntu@$HOST" bash -euo pipefail <<'REMOTE'
             cd prova
             # `reset --hard` rather than `pull`: the server is a deploy target, not a workspace, and
             # it should mirror the repo exactly. Twice now a hand-edit made on the box blocked a

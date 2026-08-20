@@ -10,7 +10,9 @@
 set -euo pipefail
 
 HOST=${PROVA_HOST:-ubuntu@15.206.34.34}
-KEY=${PROVA_KEY:-$HOME/Downloads/prova-backend.pem}
+# ~/.ssh, not ~/Downloads: a key sitting in the downloads folder gets tidied away or deleted, and an
+# EC2 private key cannot be re-downloaded — AWS shows it once, at creation, and keeps no copy.
+KEY=${PROVA_KEY:-$HOME/.ssh/prova-backend.pem}
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
 # One machine serves two hostnames, and BOTH are checked below. Checking only the API meant a broken

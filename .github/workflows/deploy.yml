@@ -46,6 +46,16 @@ on:
         '.github/workflows/deploy.yml',
       ]
   workflow_dispatch:
+    inputs:
+      pool_contract_id:
+        description: 'New POOL_CONTRACT_ID (leave blank to keep the current one)'
+        required: false
+        type: string
+      reset_pool:
+        description: 'Empty the pool tables — REQUIRED when changing the pool contract'
+        required: false
+        default: false
+        type: boolean
 
 # One deploy at a time. NOT cancel-in-progress: a cancelled run could stop between opening the
 # security group and closing it, leaving port 22 exposed with nobody watching.
@@ -118,8 +128,13 @@ jobs:
       - name: Pull and restart
         env:
           HOST: ${{ secrets.EC2_HOST }}
+          POOL_ID: ${{ github.event.inputs.pool_contract_id }}
+          RESET_POOL: ${{ github.event.inputs.reset_pool }}
         run: |
-          ssh -i ~/.ssh/deploy.pem "ubuntu@$HOST" bash -euo pipefail <<'REMOTE'
+          # Forwarded so the remote shell sees them; the heredoc is quoted, so nothing expands here.
+          ssh -i ~/.ssh/deploy.pem "ubuntu@$HOST" \
+            POOL_ID="${POOL_ID:-}" RESET_POOL="${RESET_POOL:-false}" \
+            bash -euo pipefail <<'REMOTE'
             cd prova
             # `reset --hard` rather than `pull`: the server is a deploy target, not a workspace, and
             # it should mirror the repo exactly. Twice now a hand-edit made on the box blocked a
@@ -127,9 +142,35 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             cd backend
+            C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+
+            # .env is gitignored, so a contract swap cannot arrive by git. This is the only channel
+            # that reaches it — which is why changing pools used to need a hand-run scp.
+            if [ -n "${POOL_ID:-}" ]; then
+              echo "==> pointing the backend at pool $POOL_ID"
+              if grep -q '^POOL_CONTRACT_ID=' .env; then
+                sed -i "s|^POOL_CONTRACT_ID=.*|POOL_CONTRACT_ID=$POOL_ID|" .env
+              else
+                printf '\nPOOL_CONTRACT_ID=%s\n' "$POOL_ID" >> .env
+              fi
+            fi
+
+            # Emptying these is not optional when the pool changes. Notes indexed from the old
+            # contract would be folded into the new one's tree, and the mirror would be wrong from
+            # its very first block — the same class of bug, in the opposite direction.
+            if [ "${RESET_POOL:-false}" = "true" ]; then
+              echo "==> emptying the pool tables"
+              $C exec -T postgres psql -U prova -d prova -c \
+                'TRUNCATE pool_notes, pool_roots, pool_nullifiers, pool_cursor;'
+            fi
+
             # Rebuilds images whose sources changed and recreates containers whose config changed.
             # This one command covers the API, the indexer, the folder AND the website.
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            $C up -d --build
+            # A changed .env is not a changed image, so these two need recreating explicitly.
+            if [ -n "${POOL_ID:-}" ] || [ "${RESET_POOL:-false}" = "true" ]; then
+              $C up -d --force-recreate api indexer
+            fi
             # Reclaim disk from superseded images; a 2 GB box fills up otherwise.
             docker image prune -f
           REMOTE

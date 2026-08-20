@@ -34,7 +34,7 @@ Steps 1 and 2 are done. Steps 3 and 4 are not.
 
 ### Verified against live testnet
 
-The pool contract is **deployed and live**: `CCIKEXCOFG4PLRQEG4OD3QG76LGEWO6RZFX6WGBPRWEZZQ2SJ5UMJ2G5`
+The pool contract is **deployed and live**: `CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`
 (see [DEPLOYMENTS.md](../contracts/DEPLOYMENTS.md)). Its on-chain interface was fetched and matches
 the source.
 

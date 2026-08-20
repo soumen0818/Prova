@@ -6,23 +6,39 @@ Tracked deployments of the `prova-verifier` and `prova-pool` contracts per envir
 
 | Field | Value |
 | --- | --- |
-| Contract ID | `CCOWLFXXKLFCBPES25273CX6VRQHG5S2OAXSOI4W7GR5KZZSW62K44ZX` |
+| Contract ID | `CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX` |
 | Network | `Test SDF Network ; September 2015` |
 | Deployer | `prova-test` |
 | Admin | `prova-admin` (`GBGSKDFXWQHKLNW6YE4AEOUW7WC35YOST4UCROPDDBEJEC3WAVVJFK7R`) |
 | Token custodied | **native XLM** via SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
-| Explorer | https://stellar.expert/explorer/testnet/contract/CCOWLFXXKLFCBPES25273CX6VRQHG5S2OAXSOI4W7GR5KZZSW62K44ZX |
-| Deploy tx | https://stellar.expert/explorer/testnet/tx/f42daa1bcf1265f82a4452de53bd2313f8519fe40d83315f4f7505c18c04436a |
-| Initialize tx | https://stellar.expert/explorer/testnet/tx/159b5de89e35f041b7e359bae7e0efa4cae854c7cd52c6768f2e1283780847ed |
-| Post-deploy checks | `admin` ✓ · `is_paused` false ✓ · `queue_depth` 0 ✓ · `next_index` 0 ✓ |
+| Explorer | https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX |
+| Deploy tx | https://stellar.expert/explorer/testnet/tx/649c41b9fcece29afd8ee3af4a080d5580d4adef1c45339078b692cd158ad60a |
+| Initialize tx | https://stellar.expert/explorer/testnet/tx/e84b49ec9da4f4514868e8607460453a5de7b8ecf85756026de9a229241bfb45 |
+| Post-deploy checks | `is_paused` false ✓ · `queue_depth` 0 ✓ · `next_index` 0 ✓ |
 
-**Why XLM and not SRT.** The earlier pool custodied SRT, and SRT turned out to be unobtainable on
-testnet: SDF's anchor accepts SEP-12 customer info (status `ACCEPTED`, no outstanding fields) but
-never delivers the asset — a deposit represents a fiat transfer that never arrives in a sandbox —
-its SEP-24 web UI is an unfinished demo whose landing route is placeholder text, and the DEX has
-**zero SRT sellers**. With no route to the asset, the shield/spend flow could not be exercised at
-all. XLM has a faucet that always works, needs no trustline, and removes the anchor from the demo
-path — which is honest, since a working anchor leg needs a licensed partner (Phase 5).
+**Why this replaced the pool below.** A backend cannot serve a pool whose tree it cannot reconstruct.
+The previous pool had folded 2 leaves during development; when the EC2 deployment started with an
+empty database it could not re-index them, because notes are learned from chain events and Soroban
+RPC serves only a rolling ~7-day window. Every fold proof it built carried the empty-tree root, the
+contract compared it against its real 2-leaf root and rejected it, and a real 5,000 XLM deposit sat
+at "confirming" indefinitely.
+
+Deploying a fresh pool makes the contract's tree and the backend's mirror agree at zero. The folder
+now refuses loudly when they disagree rather than retrying forever — see `errTreeGap` in
+`backend/internal/pool/folder.go`.
+
+**When a pool is redeployed, the backend's pool tables must be truncated in the same change.** Left
+in place, notes indexed from the old contract are folded into the new one's tree, and the mirror is
+wrong from the first block.
+
+## Testnet — Phase 4 shielded pool (XLM, superseded CBLLKI…)
+
+Replaced because its tree could not be rebuilt from a fresh database — see the entry above.
+
+| Field | Value |
+| --- | --- |
+| Contract ID | `CCOWLFXXKLFCBPES25273CX6VRQHG5S2OAXSOI4W7GR5KZZSW62K44ZX` |
+| State when retired | `next_index` 2 · `queue_depth` 1 (one deposit permanently unfoldable) |
 
 ## Testnet — Phase 4 shielded pool (SRT, superseded)
 

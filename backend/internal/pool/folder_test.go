@@ -20,6 +20,22 @@ type fakeTree struct {
 	pendErr  error
 	foldErr  error
 	pendCall int
+	// queueIdx is the contract's position for the oldest pending note. A pointer so that "unset"
+	// means "in sync" — otherwise every existing test would have to state a queue index just to
+	// stay on the healthy path, and the zero value would be indistinguishable from a real 0.
+	queueIdx *int64
+	queueErr error
+}
+
+func (f *fakeTree) LowestPendingQueueIndex(_ context.Context) (int64, error) {
+	if f.queueErr != nil {
+		return 0, f.queueErr
+	}
+	if f.queueIdx != nil {
+		return *f.queueIdx, nil
+	}
+	// In sync: the contract's next slot is exactly what this tree has folded.
+	return int64(len(f.folded)), nil
 }
 
 func (f *fakeTree) PendingLeaves(_ context.Context, limit int) ([]string, error) {
@@ -208,5 +224,38 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not stop on cancellation")
+	}
+}
+
+// A backend started against a pool that already has folded notes cannot fold, and must say so.
+//
+// This is the failure that stranded a real deposit: the contract had 2 leaves, a fresh database had
+// 0, and every proof built from the short tree was rejected. The folder retried every 8 seconds for
+// half an hour while the balance sat at "confirming" and the logs said only "fold failed".
+//
+// Waiting cannot fix it — the missing notes were learned from chain events, and Soroban RPC serves
+// only a rolling ~7-day window — so the folder must refuse loudly rather than retry silently.
+func TestFolderRefusesWhenTheLocalTreeIsMissingLeaves(t *testing.T) {
+	contractHasFolded := int64(2)
+	tree := &fakeTree{
+		pending:  []string{"aa"},
+		folded:   nil, // fresh database: nothing folded locally
+		queueIdx: &contractHasFolded,
+	}
+	prover := &fakeProver{}
+	submitter := &fakeSubmitter{}
+	f := newFolder(tree, prover, submitter)
+
+	err := f.foldOnce(context.Background())
+	if !errors.Is(err, errTreeGap) {
+		t.Fatalf("foldOnce() = %v, want errTreeGap", err)
+	}
+	// Proving is expensive and submitting costs a fee. Neither should be attempted for a batch
+	// that cannot possibly be accepted.
+	if prover.calls != 0 {
+		t.Errorf("prover was called %d times, want 0", prover.calls)
+	}
+	if submitter.calls != 0 {
+		t.Errorf("submitter was called %d times, want 0", submitter.calls)
 	}
 }

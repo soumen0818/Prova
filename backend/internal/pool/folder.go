@@ -49,6 +49,7 @@ type Folder struct {
 type TreeSource interface {
 	PendingLeaves(ctx context.Context, limit int) ([]string, error)
 	FoldedLeaves(ctx context.Context) ([]string, error)
+	LowestPendingQueueIndex(ctx context.Context) (int64, error)
 }
 
 // FoldProver produces the proof that a batch appends correctly.
@@ -98,6 +99,10 @@ func (f *Folder) Run(ctx context.Context) {
 // errNothingToFold is the common, uninteresting case: an empty queue.
 var errNothingToFold = errors.New("nothing to fold")
 
+// errTreeGap means this backend is missing leaves the contract has already folded, so no proof it
+// builds can be accepted — retrying cannot fix it and neither can waiting.
+var errTreeGap = errors.New("local tree is missing leaves the contract already has")
+
 // foldOnce folds up to one batch.
 func (f *Folder) foldOnce(ctx context.Context) error {
 	pending, err := f.tree.PendingLeaves(ctx, schema.MerkleBatch)
@@ -114,6 +119,27 @@ func (f *Folder) foldOnce(ctx context.Context) error {
 	leaves, err := f.tree.FoldedLeaves(ctx)
 	if err != nil {
 		return fmt.Errorf("read tree: %w", err)
+	}
+
+	// A gap here is NOT the transient case above, and it is the reason to check separately.
+	//
+	// The contract appends at its own next free slot, so the oldest queued note's position tells us
+	// how many leaves the contract believes are folded. If this backend has fewer, it is missing
+	// leaves — and it cannot recover them, because notes are learned from chain events and Soroban
+	// RPC only serves a rolling ~7-day window. Every proof built from a short tree is rejected, and
+	// the folder retries forever while deposits sit at "confirming".
+	//
+	// That is exactly how a fresh database pointed at an already-used pool behaves. Left as a plain
+	// "fold failed" it looks like a transient error and hides for as long as anyone is willing to
+	// wait, so it is called out by name.
+	if idx, idxErr := f.tree.LowestPendingQueueIndex(ctx); idxErr == nil && idx != int64(len(leaves)) {
+		f.logger.Error("pool tree is out of sync with the contract — folding cannot succeed",
+			"folded_locally", len(leaves),
+			"contract_expects", idx,
+			"missing_leaves", idx-int64(len(leaves)),
+			"why", "this database was started against a pool that already had folded notes; their events have aged out of RPC retention and cannot be re-indexed",
+			"fix", "point the backend at a freshly deployed pool contract, or restore a database that has the missing leaves")
+		return errTreeGap
 	}
 
 	started := time.Now()

@@ -126,6 +126,25 @@ SELECT commitment FROM pool_notes WHERE leaf_index IS NOT NULL ORDER BY leaf_ind
 	return out, rows.Err()
 }
 
+// LowestPendingQueueIndex is the queue position of the oldest unfolded note, or ErrNotFound when
+// nothing is waiting.
+//
+// The folder compares it against how many leaves it has folded. They must be equal: the contract
+// appends at its own next free slot, so a gap means this backend is missing leaves the contract
+// already has, and every proof it builds will be rejected. See Folder.foldOnce.
+func (s *Store) LowestPendingQueueIndex(ctx context.Context) (int64, error) {
+	var idx int64
+	err := s.pool.QueryRow(ctx, `
+SELECT queue_index FROM pool_notes WHERE leaf_index IS NULL ORDER BY queue_index ASC LIMIT 1`).Scan(&idx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return idx, nil
+}
+
 // PendingLeaves returns up to `limit` queued-but-unfolded commitments, oldest first — exactly the
 // batch the folder should submit next, in the order the contract will consume it.
 func (s *Store) PendingLeaves(ctx context.Context, limit int) ([]string, error) {

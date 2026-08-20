@@ -239,8 +239,8 @@ Two Soroban (Rust) contracts, both live and verified on **Stellar testnet** toda
 
 ### `prova-pool` — the shielded pool (real token custody)
 
-> **Contract ID:** `CCIKEXCOFG4PLRQEG4OD3QG76LGEWO6RZFX6WGBPRWEZZQ2SJ5UMJ2G5`
-> **Network:** Stellar Testnet · **Explorer:** [view on Stellar Expert ↗](https://stellar.expert/explorer/testnet/contract/CCIKEXCOFG4PLRQEG4OD3QG76LGEWO6RZFX6WGBPRWEZZQ2SJ5UMJ2G5)
+> **Contract ID:** `CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`
+> **Network:** Stellar Testnet · **Explorer:** [view on Stellar Expert ↗](https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX)
 
 Custodies real tokens and moves value privately between notes. Verified on-chain: `admin` matches
 the deployed admin key, `root` matches the circuit's independently-computed empty-tree root,

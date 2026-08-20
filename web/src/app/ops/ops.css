@@ -40,12 +40,79 @@
   height: 100vh;
 }
 
+/*
+ * On a phone the sidebar becomes a compact header bar, not a stacked copy of itself.
+ *
+ * Unstacking the grid was not enough: the column kept its full-height layout, so a 3-item vertical
+ * nav, the "signed in as" line and a full-width sign-out button consumed the entire first screen.
+ * The operator had to scroll past the chrome to reach the thing they opened the console to read.
+ *
+ * `order` rearranges without touching the markup: brand and sign-out share the top row, and the nav
+ * becomes a horizontal strip beneath them that scrolls if it ever outgrows the width.
+ */
 @media (max-width: 900px) {
   .ops-side {
     position: static;
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .ops-brand {
+    order: 1;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .ops-side-foot {
+    order: 2;
+    /* Cancels the desktop rule that pushes this to the bottom of the column. */
+    margin-top: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* "Signed in as the Prova team" is reassurance, not information, and the row has no space for it. */
+  .ops-signed-in {
+    display: none;
+  }
+
+  .ops-side-foot form,
+  .ops-side-foot .ops-btn {
+    /* Overrides the inline width:100% that makes sense in a column and not in a row. */
+    width: auto !important;
+  }
+
+  .ops-side-foot .ops-btn {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+
+  .ops-nav {
+    order: 3;
+    width: 100%;
+    flex-direction: row;
+    gap: 6px;
+    /* A fourth item would scroll rather than wrap into a second row of chrome. */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ops-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ops-nav a {
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 14px;
   }
 }
 

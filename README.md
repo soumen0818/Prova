@@ -74,9 +74,30 @@ than surprising. Every phone from roughly 2015 onward is arm64.
 
 ---
 
+## Trying it
+
+Two phones, since a transfer needs someone to receive it. Everything runs on Stellar **testnet** —
+the balances are test assets with no monetary value.
+
+1. **Install** the app and allow installing from outside the Play Store.
+2. **Sign in** with your email. A 6-digit code arrives by email, then you choose a PIN.
+3. **Verify your identity** — your name, your phone, a photo of your ID and a selfie. It goes to a
+   reviewer, who approves it at [/ops](https://provapay.duckdns.org/ops). No vendor is connected
+   yet, so this step is manual.
+4. **Add money** — free testnet funds, then "Make it private" to move them into the shielded pool.
+5. **Add the person you are sending to** — scan their QR from Profile → Account details → Receive
+   privately, or paste the address they send you.
+6. **Send.** It appears in Activity on both phones.
+
+A step-by-step version for people who are not developers lives on
+[provapay.duckdns.org](https://provapay.duckdns.org/#get-the-app).
+
+---
+
 ## Table of contents
 
 - [Download the app](#download-the-app)
+- [Trying it](#trying-it)
 - [Overview](#overview)
 - [The problem](#the-problem)
 - [The solution](#the-solution)

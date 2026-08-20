@@ -1,0 +1,134 @@
+name: deploy
+
+# Deploys the backend and the website to EC2 on every push to main that touches them.
+#
+# ---------------------------------------------------------------------------
+# HOW IT REACHES THE SERVER
+# ---------------------------------------------------------------------------
+# Port 22 stays CLOSED. GitHub's runners have no fixed address, so instead of allowlisting them the
+# workflow opens the security group for the one runner's IP, deploys, and closes it again — the
+# window is the length of a deploy, and only that IP fits through it.
+#
+# The teardown runs with `if: always()`, so a failed deploy still closes the hole. Concurrency is
+# deliberately NOT cancel-in-progress for the same reason: cancelling mid-run could kill the job
+# between opening and closing.
+#
+# ---------------------------------------------------------------------------
+# REQUIRED SECRETS  (Settings → Secrets and variables → Actions)
+# ---------------------------------------------------------------------------
+#   SSH_PRIVATE_KEY         contents of prova-backend.pem, whole file including BEGIN/END lines
+#   EC2_HOST                the instance's public IP, e.g. 15.206.34.34
+#   AWS_ACCESS_KEY_ID       an IAM user that may edit only this security group (policy below)
+#   AWS_SECRET_ACCESS_KEY
+#
+# The IAM user needs nothing else. Least-privilege policy:
+#
+#   {
+#     "Version": "2012-10-17",
+#     "Statement": [{
+#       "Effect": "Allow",
+#       "Action": [
+#         "ec2:AuthorizeSecurityGroupIngress",
+#         "ec2:RevokeSecurityGroupIngress"
+#       ],
+#       "Resource": "arn:aws:ec2:ap-south-1:*:security-group/sg-080782707d22c3008"
+#     }]
+#   }
+
+on:
+  push:
+    branches: [main]
+    paths:
+      [
+        'backend/**',
+        'web/**',
+        'shared/**',
+        '.github/workflows/deploy.yml',
+      ]
+  workflow_dispatch:
+
+# One deploy at a time. NOT cancel-in-progress: a cancelled run could stop between opening the
+# security group and closing it, leaving port 22 exposed with nobody watching.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  SECURITY_GROUP_ID: sg-080782707d22c3008
+  API_URL: https://provapayment.duckdns.org
+  WEB_URL: https://provapay.duckdns.org
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find this runner's public IP
+        id: ip
+        run: echo "ip=$(curl -fsS --max-time 15 https://api.ipify.org)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Open SSH for this runner only
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$SECURITY_GROUP_ID" \
+            --protocol tcp --port 22 \
+            --cidr "${{ steps.ip.outputs.ip }}/32"
+
+      - name: Load the deploy key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy.pem
+          chmod 600 ~/.ssh/deploy.pem
+          # Trust on first use. The alternative is pinning the host key in a secret, which is
+          # stronger but breaks silently whenever the instance is rebuilt.
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull and restart
+        run: |
+          ssh -i ~/.ssh/deploy.pem ubuntu@${{ secrets.EC2_HOST }} bash -euo pipefail <<'REMOTE'
+            cd prova
+            # `reset --hard` rather than `pull`: the server is a deploy target, not a workspace, and
+            # it should mirror the repo exactly. Twice now a hand-edit made on the box blocked a
+            # pull and stopped a deploy dead. .env is gitignored, so configuration is untouched.
+            git fetch origin main
+            git reset --hard origin/main
+            cd backend
+            # Rebuilds images whose sources changed and recreates containers whose config changed.
+            # This one command covers the API, the indexer, the folder AND the website.
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            # Reclaim disk from superseded images; a 2 GB box fills up otherwise.
+            docker image prune -f
+          REMOTE
+
+      - name: Verify both hosts are serving
+        run: |
+          fail=0
+          for target in "API:$API_URL/healthz" "WEB:$WEB_URL/"; do
+            name=${target%%:*}; url=${target#*:}
+            ok=0
+            for _ in $(seq 1 30); do
+              if curl -fsSL --max-time 10 -o /dev/null "$url"; then ok=1; break; fi
+              sleep 5
+            done
+            if [ "$ok" = 1 ]; then echo "  ✓ $name $url"; else echo "  ✗ $name $url did not answer"; fail=1; fi
+          done
+          exit $fail
+
+      # Always. A failed deploy must not leave port 22 open to the internet.
+      - name: Close SSH again
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$SECURITY_GROUP_ID" \
+            --protocol tcp --port 22 \
+            --cidr "${{ steps.ip.outputs.ip }}/32" || true

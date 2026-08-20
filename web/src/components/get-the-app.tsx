@@ -52,6 +52,45 @@ export function GetTheApp() {
             Store yet — a payments app has to clear their financial-services review first, and we
             would rather ship it there properly than not at all.
           </p>
+
+          {/*
+            What happens after the download, in the order it happens.
+
+            Written for someone who has never used the app and is not going to read documentation:
+            six lines, no screenshots, no jargon. Sending needs a second phone, and finding that out
+            halfway through is the kind of surprise that ends a trial — so it is said at the top
+            rather than buried at the step where it bites.
+          */}
+          {ready ? (
+            <div className="steps-inline">
+              <h3 className="steps-inline-title">What happens next</h3>
+              <p className="steps-inline-lead">
+                About five minutes. You will need a second phone for the last step, because sending
+                money needs someone to receive it.
+              </p>
+              <ol className="steps-inline-list">
+                <li>
+                  <b>Sign in</b> with your email. We send you a 6-digit code, then you pick a PIN.
+                </li>
+                <li>
+                  <b>Verify your identity</b> — your name, your phone, a photo of your ID and a
+                  selfie. Your documents never leave your phone. Approval takes a few minutes while
+                  someone reviews it.
+                </li>
+                <li>
+                  <b>Add money.</b> Test funds are free and instant. Tap <i>Make it private</i> to
+                  move them into the shielded pool.
+                </li>
+                <li>
+                  <b>Add who you are sending to.</b> On their phone: Profile → Account details →
+                  Receive privately. Scan their code or paste their address.
+                </li>
+                <li>
+                  <b>Send.</b> Enter an amount, confirm, and unlock with your PIN or fingerprint.
+                </li>
+              </ol>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

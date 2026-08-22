@@ -1,6 +1,7 @@
+import { encodePayLink } from '@prova/shared';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
 import { Card, Screen } from '@/components/ui';
@@ -17,16 +18,44 @@ import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 export default function ReceiveScreen() {
   const toast = useToast();
   const [encoded, setEncoded] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     poolAddress()
-      .then((addr) => active && setEncoded(encodePoolAddress(addr)))
-      .catch(() => active && setEncoded(null));
+      .then((addr) => {
+        if (!active) return;
+        setEncoded(encodePoolAddress(addr));
+        setLink(encodePayLink(addr));
+      })
+      .catch(() => {
+        if (!active) return;
+        setEncoded(null);
+        setLink(null);
+      });
     return () => {
       active = false;
     };
   }, []);
+
+  /*
+   * Sharing sends the LINK, not the raw address.
+   *
+   * Tapping it opens Prova straight on the recipient form with this address filled in; without the
+   * app it opens the site, which offers the download. Either way nothing reaches our server — the
+   * address sits in the URL fragment, which is never transmitted.
+   *
+   * The QR and the copy button still carry the bare address, because a scanner expects one and
+   * because someone pasting into another wallet should get an address rather than a URL.
+   */
+  const onShare = async () => {
+    if (!link) return;
+    try {
+      await Share.share({ message: link });
+    } catch {
+      // The user dismissing the sheet is not a failure worth reporting.
+    }
+  };
 
   const onCopy = async () => {
     if (!encoded) return;
@@ -52,6 +81,12 @@ export default function ReceiveScreen() {
           )}
         </View>
         <Pressable
+          onPress={onShare}
+          disabled={!link}
+          style={({ pressed }) => [styles.sharePill, pressed && styles.pressed]}>
+          <Text style={styles.shareText}>Share link</Text>
+        </Pressable>
+        <Pressable
           onPress={onCopy}
           disabled={!encoded}
           style={({ pressed }) => [styles.copyPill, pressed && styles.pressed]}>
@@ -66,6 +101,14 @@ const styles = StyleSheet.create({
   card: { alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.six },
   label: { ...Typography.section, color: Palette.white },
   hint: { ...Typography.micro, color: Palette.textMuted, textAlign: 'center' },
+  sharePill: {
+    backgroundColor: Palette.accent,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.six,
+    paddingVertical: Spacing.three,
+    marginBottom: Spacing.two,
+  },
+  shareText: { ...Typography.button, color: Palette.onAccent },
   qrWrap: { marginVertical: Spacing.four },
   qrBox: { padding: Spacing.four, backgroundColor: '#FFFFFF', borderRadius: Radius.input },
   qrPlaceholder: { width: 232, height: 232, backgroundColor: Palette.bgElevated },

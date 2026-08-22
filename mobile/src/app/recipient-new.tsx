@@ -1,9 +1,9 @@
 import { CORRIDOR_STATUS_NOTE, COUNTRIES, type Country } from '@prova/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, ChevronDown, ClipboardPaste, QrCode } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AddressScanner } from '@/components/scan-address';
@@ -38,6 +38,12 @@ const DEFAULT_DESTINATION = 'IN';
  */
 export default function NewRecipientScreen() {
   const router = useRouter();
+  /*
+   * An address handed in by a shared pay link (see app/pay.tsx). Pre-fills the field and nothing
+   * else: the user still names the person and presses Continue, so a link can never add a payee on
+   * its own. The same validation runs on it as on a paste — a link is untrusted input like any other.
+   */
+  const { address: linkedAddress } = useLocalSearchParams<{ address?: string }>();
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -46,9 +52,15 @@ export default function NewRecipientScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   /** Raw text in the address field — what was pasted, scanned, or typed. */
-  const [addrText, setAddrText] = useState('');
-  const [poolAddr, setPoolAddr] = useState<Payee | null>(null);
-  const [addrError, setAddrError] = useState('');
+  /**
+   * Raw text in the address field — what was pasted, scanned, typed, or arrived in a pay link.
+   *
+   * This is the ONLY address state. What the text means is derived below rather than stored, which
+   * matters because the checks depend on data that loads asynchronously: storing the verdict at the
+   * moment of typing meant a paste that landed before `ownAddress` resolved silently skipped the
+   * own-address check and never re-ran it.
+   */
+  const [addrText, setAddrText] = useState(() => linkedAddress ?? '');
 
   const recipients = useRecipients();
   // Own address, so the field can refuse it. Sending to yourself is not an error the contract would
@@ -66,9 +78,6 @@ export default function NewRecipientScreen() {
   const country = COUNTRIES.find((c) => c.code === countryCode) ?? COUNTRIES[0];
   const nameV = validateName(name);
   const nameError = (submitted || nameTouched) && !nameV.ok ? (nameV.error ?? '') : '';
-  const addrMessage =
-    addrError ||
-    (submitted && !poolAddr ? 'A Prova address is needed to send to this person.' : '');
 
   /**
    * Validate an address however it arrived — typed, pasted or scanned.
@@ -77,43 +86,45 @@ export default function NewRecipientScreen() {
    * "is it well-formed" are catching your own address and one already saved: neither fails at send
    * time, they just produce a transfer that does nothing useful.
    */
-  const applyAddress = useCallback(
-    (text: string) => {
-      setAddrText(text);
-      const trimmed = text.trim();
+  /**
+   * What the typed text actually is: a payable address, or the reason it is not.
+   *
+   * Recomputed on every render, so it is always judged against the latest `ownAddress` and saved
+   * recipients rather than whatever had loaded when the text was entered.
+   */
+  const { payee: poolAddr, error: addrError } = useMemo((): {
+    payee: Payee | null;
+    error: string;
+  } => {
+    const trimmed = addrText.trim();
+    if (!trimmed) return { payee: null, error: '' };
 
-      if (!trimmed) {
-        setPoolAddr(null);
-        setAddrError('');
-        return;
-      }
+    const decoded = decodePoolAddress(trimmed);
+    if (!decoded) {
+      // Name the mistake rather than restating the rule. This app shows a Stellar address too
+      // (Account details), so pasting that one is the obvious error to make — and "not a Prova
+      // address" would leave someone staring at something that looks like an address to them.
+      return { payee: null, error: specificAddressError(trimmed) };
+    }
+    if (ownAddress && decoded.ownerPk === ownAddress.ownerPk) {
+      return {
+        payee: null,
+        error: 'That is your own address — money sent there would come straight back.',
+      };
+    }
+    const existing = (recipients.data ?? []).find((r) => r.poolOwnerPk === decoded.ownerPk);
+    if (existing) {
+      return { payee: null, error: `You already have ${existing.name} saved with this address.` };
+    }
+    return { payee: decoded, error: '' };
+  }, [addrText, ownAddress, recipients.data]);
 
-      const decoded = decodePoolAddress(trimmed);
-      if (!decoded) {
-        setPoolAddr(null);
-        // Name the mistake rather than restating the rule. This app shows a Stellar address too
-        // (Account details), so pasting that one is the obvious error to make — and "not a Prova
-        // address" would leave someone staring at something that looks like an address to them.
-        setAddrError(specificAddressError(trimmed));
-        return;
-      }
-      if (ownAddress && decoded.ownerPk === ownAddress.ownerPk) {
-        setPoolAddr(null);
-        setAddrError('That is your own address — money sent there would come straight back.');
-        return;
-      }
-      const existing = (recipients.data ?? []).find((r) => r.poolOwnerPk === decoded.ownerPk);
-      if (existing) {
-        setPoolAddr(null);
-        setAddrError(`You already have ${existing.name} saved with this address.`);
-        return;
-      }
+  /** Every entry point — paste, scan, typing, pay link — goes through the same single input. */
+  const applyAddress = setAddrText;
 
-      setPoolAddr(decoded);
-      setAddrError('');
-    },
-    [ownAddress, recipients.data],
-  );
+  const addrMessage =
+    addrError ||
+    (submitted && !poolAddr ? 'A Prova address is needed to send to this person.' : '');
 
   const onPasteAddress = useCallback(async () => {
     applyAddress(await Clipboard.getStringAsync());

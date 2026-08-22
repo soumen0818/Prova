@@ -5,6 +5,7 @@ export const SCHEMA_VERSION = '0.1.0';
 
 export * from './proof.js';
 export * from './ivms101.js';
+export * from './address.js';
 export * from './api.js';
 export * from './events.js';
 export * from './credential.js';

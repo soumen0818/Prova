@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.prova.app",
+      "sha256_cert_fingerprints": [
+        "B1:E3:81:54:48:5C:F9:1E:E0:8C:55:77:F7:D0:FD:96:FC:12:0F:0D:CC:34:E9:D6:93:5C:5C:B6:D1:22:58:F9"
+      ]
+    }
+  }
+]

@@ -67,9 +67,30 @@ func (s *Store) Close() { s.pool.Close() }
 // Ping checks the Postgres connection is alive — used by the readiness probe.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
+/*
+ * migrationLock is an arbitrary constant identifying the advisory lock migrations serialise on.
+ *
+ * Any int64 works as long as nothing else in this database picks the same one; advisory locks share
+ * a single namespace per database.
+ */
+const migrationLock int64 = 0x50524f5641 // "PROVA"
+
 // Migrate applies the embedded SQL migrations (backend/migrations/*.sql) in filename order. Each
-// file is idempotent (IF NOT EXISTS), so re-running on every boot — and across replicas — is safe.
-// These are the same files you can run by hand against a managed database (e.g. Supabase).
+// file is idempotent (IF NOT EXISTS), so re-running on every boot is safe. These are the same files
+// you can run by hand against a managed database (e.g. Supabase).
+//
+// ---------------------------------------------------------------------------
+// WHY THE LOCK
+// ---------------------------------------------------------------------------
+// `api` and `indexer` are separate containers that boot together, and both migrate. "IF NOT EXISTS"
+// is not a substitute for serialising them: two sessions running CREATE TABLE IF NOT EXISTS at the
+// same instant both find nothing, both create, and the loser fails with a duplicate-key error on
+// pg_type. That failure is not cosmetic — main.go leaves the store nil when Migrate returns an
+// error, and an indexer with no store starts no folder. Deposits then sit at "confirming" forever
+// while the API looks perfectly healthy, because the API happened to win the race.
+//
+// pg_advisory_lock makes the second container wait rather than collide. It is released when the
+// connection is returned, so a crash mid-migration cannot leave it held.
 func (s *Store) Migrate(ctx context.Context) error {
 	entries, err := fs.ReadDir(migrations.FS, ".")
 	if err != nil {
@@ -82,12 +103,30 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 	}
 	sort.Strings(names)
+
+	// One connection for the whole run: an advisory lock belongs to the session that took it, so
+	// taking it on one pooled connection and migrating on another would protect nothing.
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLock); err != nil {
+		return fmt.Errorf("take migration lock: %w", err)
+	}
+	// Explicit unlock so the lock goes back immediately rather than whenever the pooled connection
+	// happens to be recycled. Releasing the connection would also drop it.
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrationLock)
+	}()
+
 	for _, name := range names {
 		sqlBytes, rerr := migrations.FS.ReadFile(name)
 		if rerr != nil {
 			return fmt.Errorf("read migration %s: %w", name, rerr)
 		}
-		if _, eerr := s.pool.Exec(ctx, string(sqlBytes)); eerr != nil {
+		if _, eerr := conn.Exec(ctx, string(sqlBytes)); eerr != nil {
 			return fmt.Errorf("apply migration %s: %w", name, eerr)
 		}
 	}

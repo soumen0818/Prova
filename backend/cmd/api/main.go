@@ -38,12 +38,22 @@ func main() {
 	// Indexer role — reconcile on-chain events into history. Run exactly one of these across the
 	// fleet (RUN_MODE=indexer), so scaling the API doesn't spawn duplicate indexers.
 	if cfg.RunsIndexer() {
-		if idx != nil {
-			go idx.Run(ctx)
-			logger.Info("indexer started", "rpc", cfg.SorobanRPCURL)
-		} else {
-			logger.Warn("indexer role selected but store unavailable — indexer not started")
+		/*
+		 * An indexer with no store does nothing at all, so refuse to run as one.
+		 *
+		 * This used to log a warning and carry on: the process stayed up, healthy to Docker, and
+		 * quietly indexed nothing and folded nothing. Deposits sat at "confirming" indefinitely
+		 * while the API — which had won the migration race and did have a store — looked perfectly
+		 * fine. Exiting hands the decision to the restart policy, which will bring it back once
+		 * Postgres is reachable, and makes the failure visible instead of silent.
+		 */
+		if idx == nil {
+			logger.Error("indexer role selected but the store is unavailable — exiting so this is " +
+				"visible rather than running as an indexer that indexes nothing")
+			os.Exit(1)
 		}
+		go idx.Run(ctx)
+		logger.Info("indexer started", "rpc", cfg.SorobanRPCURL)
 		// The pool indexer runs alongside it. Exactly one replica: leaf indices are assigned in
 		// queue order, and two writers racing on the same range would corrupt that ordering.
 		if poolIdx != nil {

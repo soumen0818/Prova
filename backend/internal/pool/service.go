@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/prova/backend/internal/store"
 	"github.com/prova/shared/schema"
@@ -168,6 +169,16 @@ func (s *Service) Status(ctx context.Context) (*schema.PoolStatus, error) {
 		return nil, err
 	}
 	st := &schema.PoolStatus{QueueDepth: depth, Batch: schema.MerkleBatch}
+
+	// The folder's own report. A failure to read it must not fail the endpoint — the queue depth and
+	// tree size are still worth serving, and this is diagnostics.
+	if fs, ferr := s.store.FolderStatus(ctx); ferr == nil {
+		st.FoldError = fs.LastError
+		st.FoldFailures = fs.ConsecutiveFailures
+		if fs.LastSuccessAt != nil {
+			st.LastFoldAt = fs.LastSuccessAt.UTC().Format(time.RFC3339)
+		}
+	}
 
 	root, err := s.store.LatestPoolRoot(ctx)
 	switch {

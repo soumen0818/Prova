@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -301,4 +302,48 @@ INSERT INTO pool_cursor (id, cursor, last_ledger) VALUES (TRUE, $1, $2)
 ON CONFLICT (id) DO UPDATE SET cursor = EXCLUDED.cursor, last_ledger = EXCLUDED.last_ledger, updated_at = now()`,
 		cursor, lastLedger)
 	return err
+}
+
+// FolderStatus is the folder's last known state, for /pool/status.
+type FolderStatus struct {
+	LastAttemptAt       *time.Time
+	LastSuccessAt       *time.Time
+	LastError           string
+	ConsecutiveFailures int
+}
+
+// RecordFoldAttempt writes the outcome of one fold attempt.
+//
+// Persisted rather than kept in memory because the folder and the API are separate containers: a
+// field on the Folder struct is invisible to the endpoint anyone would look at. `errMsg` empty means
+// success, which clears the error and resets the failure count.
+func (s *Store) RecordFoldAttempt(ctx context.Context, errMsg string) error {
+	// Bounded because this is served publicly — a reason, not a stack trace.
+	const maxLen = 300
+	if len(errMsg) > maxLen {
+		errMsg = errMsg[:maxLen]
+	}
+	_, err := s.pool.Exec(ctx, `
+INSERT INTO pool_folder_status (id, last_attempt_at, last_success_at, last_error, consecutive_failures)
+VALUES (true, now(), CASE WHEN $1 = '' THEN now() ELSE NULL END, $1, CASE WHEN $1 = '' THEN 0 ELSE 1 END)
+ON CONFLICT (id) DO UPDATE SET
+    last_attempt_at = now(),
+    last_success_at = CASE WHEN $1 = '' THEN now() ELSE pool_folder_status.last_success_at END,
+    last_error = $1,
+    consecutive_failures = CASE WHEN $1 = '' THEN 0 ELSE pool_folder_status.consecutive_failures + 1 END`,
+		errMsg)
+	return err
+}
+
+// FolderStatus reads the folder's last known state. A pool that has never folded returns zeroes.
+func (s *Store) FolderStatus(ctx context.Context) (FolderStatus, error) {
+	var st FolderStatus
+	err := s.pool.QueryRow(ctx, `
+SELECT last_attempt_at, last_success_at, last_error, consecutive_failures
+  FROM pool_folder_status WHERE id = true`).
+		Scan(&st.LastAttemptAt, &st.LastSuccessAt, &st.LastError, &st.ConsecutiveFailures)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FolderStatus{}, nil
+	}
+	return st, err
 }

@@ -50,6 +50,11 @@ type TreeSource interface {
 	PendingLeaves(ctx context.Context, limit int) ([]string, error)
 	FoldedLeaves(ctx context.Context) ([]string, error)
 	LowestPendingQueueIndex(ctx context.Context) (int64, error)
+	// RecordFoldAttempt publishes the outcome so /pool/status can show it. Empty means success.
+	//
+	// Written to the database rather than held in memory because the folder and the API run in
+	// separate containers — a field here would be invisible to the endpoint anyone looks at.
+	RecordFoldAttempt(ctx context.Context, errMsg string) error
 }
 
 // FoldProver produces the proof that a batch appends correctly.
@@ -83,16 +88,32 @@ func (f *Folder) Run(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		if err := f.foldOnce(ctx); err != nil && !errors.Is(err, errNothingToFold) {
+		err := f.foldOnce(ctx)
+		switch {
+		case err == nil:
+			f.report(ctx, "")
+		case errors.Is(err, errNothingToFold):
+			// An empty queue is not an outcome worth recording — it would overwrite the reason a
+			// previous failure left behind, every few seconds, and erase the evidence.
+		default:
 			// Nothing is advanced locally on failure. The chain is the source of truth and the
 			// indexer reads the result back, so a failed fold costs a retry and nothing else.
 			f.logger.Warn("fold failed", "err", err)
+			f.report(ctx, err.Error())
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// report publishes an attempt's outcome, never failing the fold loop because of it.
+func (f *Folder) report(ctx context.Context, errMsg string) {
+	if err := f.tree.RecordFoldAttempt(ctx, errMsg); err != nil {
+		// Losing the status light must not stop the thing it is reporting on.
+		f.logger.Warn("could not record fold status", "err", err)
 	}
 }
 

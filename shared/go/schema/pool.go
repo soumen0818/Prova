@@ -305,6 +305,22 @@ type PoolStatus struct {
 	QueueDepth int64 `json:"queueDepth"`
 	// Batch is how many a single fold can carry (MerkleBatch).
 	Batch int `json:"batch"`
+
+	/*
+	 * The folder's last outcome, so a stall explains itself.
+	 *
+	 * QueueDepth says something is waiting; it cannot say whether the folder is working through it
+	 * or failing on it every few seconds. Twice a stuck deposit has needed shell access on a box
+	 * behind a security group to answer that. These fields put the reason where anyone can read it.
+	 *
+	 * FoldError is a short reason, never a stack trace — this is a public endpoint.
+	 */
+	FoldError string `json:"foldError,omitempty"`
+	// FoldFailures is how many attempts have failed in a row: 0 is healthy, a climbing number is a
+	// stall rather than a blip.
+	FoldFailures int `json:"foldFailures,omitempty"`
+	// LastFoldAt is when a fold last SUCCEEDED (RFC 3339). Absent on a pool that has never folded.
+	LastFoldAt string `json:"lastFoldAt,omitempty"`
 }
 
 // PoolSpendOutputs are the two notes a spend creates, with their encrypted payloads.

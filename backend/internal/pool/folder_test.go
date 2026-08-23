@@ -25,6 +25,14 @@ type fakeTree struct {
 	// stay on the healthy path, and the zero value would be indistinguishable from a real 0.
 	queueIdx *int64
 	queueErr error
+	// reports records what the folder published about each attempt, so the tests can assert that a
+	// failure is actually surfaced rather than only logged.
+	reports []string
+}
+
+func (f *fakeTree) RecordFoldAttempt(_ context.Context, errMsg string) error {
+	f.reports = append(f.reports, errMsg)
+	return nil
 }
 
 func (f *fakeTree) LowestPendingQueueIndex(_ context.Context) (int64, error) {
@@ -257,5 +265,47 @@ func TestFolderRefusesWhenTheLocalTreeIsMissingLeaves(t *testing.T) {
 	}
 	if submitter.calls != 0 {
 		t.Errorf("submitter was called %d times, want 0", submitter.calls)
+	}
+}
+
+// A stalled folder must explain itself somewhere the API can read.
+//
+// The folder and the API run in different containers, so a failure that only reaches the log is
+// invisible to /pool/status — which is the one place anyone looks when a deposit will not confirm.
+// Twice that has meant shell access on a server behind a security group to answer "why".
+func TestFoldFailureIsPublished(t *testing.T) {
+	tree := &fakeTree{pending: []string{"aa"}}
+	prover := &fakeProver{err: errors.New("prover exploded")}
+	f := newFolder(tree, prover, &fakeSubmitter{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go f.Run(ctx)
+	// One tick is enough: the loop reports before waiting.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	if len(tree.reports) == 0 {
+		t.Fatal("a failed fold published nothing — the stall would be invisible")
+	}
+	if tree.reports[0] == "" {
+		t.Fatal("a failed fold reported success")
+	}
+	if !strings.Contains(tree.reports[0], "prover exploded") {
+		t.Errorf("report = %q, want it to carry the cause", tree.reports[0])
+	}
+}
+
+// An empty queue must not overwrite the reason a previous failure left behind — that is the evidence.
+func TestAnEmptyQueueDoesNotEraseTheLastError(t *testing.T) {
+	tree := &fakeTree{} // nothing pending
+	f := newFolder(tree, &fakeProver{}, &fakeSubmitter{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go f.Run(ctx)
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	if len(tree.reports) != 0 {
+		t.Fatalf("an empty queue published %q — it should stay silent", tree.reports)
 	}
 }

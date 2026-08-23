@@ -28,7 +28,13 @@ import { getSecret, SecureKey, setSecret } from './secure-store';
 
 const DIR_NAME = 'prova';
 const FILE_NAME = 'activity.enc';
-const STORE_VERSION = 1;
+/*
+ * Bumped to 2 alongside the note store — see the note there.
+ *
+ * The activity log is derived from notes, so leaving it behind would show a history of transfers in
+ * a pool that no longer exists, next to a balance of zero.
+ */
+const STORE_VERSION = 2;
 const NONCE_LEN = 12;
 /** Entries kept. Old history is nice to have; an unbounded file on a phone is not. */
 const MAX_ENTRIES = 500;

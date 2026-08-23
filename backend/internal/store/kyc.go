@@ -27,8 +27,13 @@ type Verification struct {
 	Expiry      int64
 	ReasonCode  string
 	ProviderRef string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// Email is the account this submission belongs to, for the reviewer's benefit only.
+	//
+	// Empty for rows written before accounts existed, and by any client that does not send it.
+	// Nothing about the decision depends on it — it is shown, never checked.
+	Email     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Audit event names (append-only log).
@@ -53,27 +58,30 @@ type AuditEntry struct {
 	Actor          string
 }
 
-const verificationCols = `id, user_id, status, tier, expiry, reason_code, provider_ref, created_at, updated_at`
+const verificationCols = `id, user_id, status, tier, expiry, reason_code, provider_ref, COALESCE(email, ''), created_at, updated_at`
 
 // StartVerification creates (or replaces) the active verification for a user and returns it.
 //
 // A user has exactly one active verification: resubmitting overwrites the previous attempt's state
 // while the audit log preserves every attempt. Callers must check `Retryable` before allowing a
 // resubmit — a terminal rejection (e.g. sanctions) must never be retried.
-func (s *Store) StartVerification(ctx context.Context, id, userID string, tier int, providerRef string) (*Verification, error) {
+func (s *Store) StartVerification(ctx context.Context, id, userID string, tier int, providerRef, email string) (*Verification, error) {
 	row := s.pool.QueryRow(ctx, `
-INSERT INTO kyc_verifications (id, user_id, status, tier, provider_ref)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO kyc_verifications (id, user_id, status, tier, provider_ref, email)
+VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
 ON CONFLICT (user_id) DO UPDATE SET
     id = EXCLUDED.id,
     status = EXCLUDED.status,
     tier = EXCLUDED.tier,
     provider_ref = EXCLUDED.provider_ref,
+    -- Keep whatever we already knew if this submission omits it, rather than blanking the reviewer's
+    -- only handle on the person.
+    email = COALESCE(EXCLUDED.email, kyc_verifications.email),
     expiry = 0,
     reason_code = '',
     updated_at = now()
 RETURNING `+verificationCols,
-		id, userID, schema.VerificationPending, tier, providerRef)
+		id, userID, schema.VerificationPending, tier, providerRef, email)
 	return scanVerification(row)
 }
 
@@ -161,7 +169,8 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 func scanVerification(row scanner) (*Verification, error) {
 	var v Verification
 	if err := row.Scan(
-		&v.ID, &v.UserID, &v.Status, &v.Tier, &v.Expiry, &v.ReasonCode, &v.ProviderRef, &v.CreatedAt, &v.UpdatedAt,
+		&v.ID, &v.UserID, &v.Status, &v.Tier, &v.Expiry, &v.ReasonCode, &v.ProviderRef, &v.Email,
+		&v.CreatedAt, &v.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}

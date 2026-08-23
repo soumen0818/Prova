@@ -60,7 +60,7 @@ func NewService(st *store.Store, p Provider, issuer Issuer, logger *slog.Logger)
 //
 // Refuses to restart when the previous rejection was terminal, so a sanctioned or duplicate identity
 // cannot simply resubmit.
-func (s *Service) Start(ctx context.Context, userID string, tier int) (*store.Verification, error) {
+func (s *Service) Start(ctx context.Context, userID string, tier int, email string) (*store.Verification, error) {
 	if tier < schema.TierBasic {
 		tier = schema.TierStandard
 	}
@@ -77,7 +77,7 @@ func (s *Service) Start(ctx context.Context, userID string, tier int) (*store.Ve
 		return nil, fmt.Errorf("provider start: %w", err)
 	}
 
-	v, err := s.store.StartVerification(ctx, newUUID(), userID, tier, ref)
+	v, err := s.store.StartVerification(ctx, newUUID(), userID, tier, ref, email)
 	if err != nil {
 		return nil, err
 	}

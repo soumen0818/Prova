@@ -15,6 +15,14 @@ export interface Session {
   /** Normalised email — the account identifier, proved at sign-in. */
   email: string;
   /**
+   * Bearer token for authenticated requests, issued when the sign-in code was verified.
+   *
+   * Optional because sessions saved by earlier builds do not have one — those callers get a 401 on
+   * the routes that need it, and signing in again is the fix. Stored with the rest of the session in
+   * the enclave, never in plain storage: whoever holds it is the account.
+   */
+  token?: string;
+  /**
    * Legal name, captured during identity verification. Absent until then.
    *
    * Deliberately not shown around the app: it is compliance data the anchor requires, not a display

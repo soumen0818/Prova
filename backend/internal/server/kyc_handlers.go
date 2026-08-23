@@ -24,10 +24,6 @@ const maxKYCBody = 1 << 16
 
 // startVerification begins a KYC verification for a wallet (POST /kyc/verifications).
 func (h *handler) startVerification(w http.ResponseWriter, r *http.Request) {
-	if h.verification == nil {
-		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
-		return
-	}
 	var req schema.StartVerificationRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, schema.ErrInternal, "invalid JSON body")
@@ -48,7 +44,26 @@ func (h *handler) startVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v, err := h.verification.Start(r.Context(), string(req.UserID), req.Tier)
+	/*
+	 * The signed-in account, taken from the session rather than the request body.
+	 *
+	 * The body used to carry an email that nothing could check, so the queue showed whatever the
+	 * client typed. Reading it from the session makes it what it looks like: the address that
+	 * proved control of an inbox. `ownsWallet` also binds this wallet to the account, so nobody
+	 * else can submit against it afterwards.
+	 */
+	email, ok := h.ownsWallet(w, r, string(req.UserID))
+	if !ok {
+		return
+	}
+
+	// Availability is checked after authentication: an anonymous caller should not be able to map
+	// which services this deployment runs.
+	if h.verification == nil {
+		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
+		return
+	}
+	v, err := h.verification.Start(r.Context(), string(req.UserID), req.Tier, email)
 	if errors.Is(err, kyc.ErrNotRetryable) {
 		// Terminal rejection (sanctions/duplicate/underage) — resubmission must not be possible.
 		writeError(w, http.StatusForbidden, schema.ErrKYCRequired, "this verification cannot be retried")
@@ -64,14 +79,21 @@ func (h *handler) startVerification(w http.ResponseWriter, r *http.Request) {
 
 // getVerification returns the current status (GET /kyc/verifications/{userId}).
 func (h *handler) getVerification(w http.ResponseWriter, r *http.Request) {
-	if h.verification == nil {
-		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
-		return
-	}
 	userID := r.PathValue("userId")
 	if !schema.IsValidUserID(userID) {
 		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
 			"userId must be a 32-byte hex wallet identifier")
+		return
+	}
+	// Status was readable by anyone who knew an identifier, which leaked whether a given wallet had
+	// been verified, rejected, or never tried.
+	if _, ok := h.ownsWallet(w, r, userID); !ok {
+		return
+	}
+	// Availability is checked last on purpose: an anonymous caller should not be able to map which
+	// services this deployment runs.
+	if h.verification == nil {
+		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
 		return
 	}
 	v, err := h.verification.Get(r.Context(), userID)
@@ -92,10 +114,6 @@ func (h *handler) getVerification(w http.ResponseWriter, r *http.Request) {
 // Authenticated with an HMAC-SHA256 signature over the raw body and idempotent in the service, so a
 // replayed verdict cannot forge or duplicate an approval.
 func (h *handler) verificationWebhook(w http.ResponseWriter, r *http.Request) {
-	if h.verification == nil {
-		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
-		return
-	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxKYCBody))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, schema.ErrInternal, "could not read body")
@@ -151,6 +169,7 @@ func (h *handler) listVerifications(w http.ResponseWriter, r *http.Request) {
 	for _, v := range records {
 		out = append(out, schema.QueuedVerification{
 			UserID:             v.UserID,
+			Email:              v.Email,
 			VerificationRecord: v.ToRecord(),
 		})
 	}
@@ -210,10 +229,6 @@ func (h *handler) decideVerification(w http.ResponseWriter, r *http.Request) {
 // The caller cannot assert its own approval: the level and expiry come from the verification record,
 // never from the request body.
 func (h *handler) issueCredential(w http.ResponseWriter, r *http.Request) {
-	if h.verification == nil {
-		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
-		return
-	}
 	var req schema.StartVerificationRequest // reuse: only userId is read
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
@@ -225,6 +240,18 @@ func (h *handler) issueCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The credential is what the circuit accepts as proof of KYC, so this is the most sensitive
+	// route here: anyone who could call it for another wallet could collect that wallet's identity.
+	if _, ok := h.ownsWallet(w, r, string(req.UserID)); !ok {
+		return
+	}
+
+	// Availability is checked after authentication: an anonymous caller should not be able to map
+	// which services this deployment runs.
+	if h.verification == nil {
+		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
+		return
+	}
 	cred, err := h.verification.IssueCredential(r.Context(), string(req.UserID))
 	switch {
 	case errors.Is(err, kyc.ErrNotApproved), errors.Is(err, kyc.ErrNotFound):
@@ -241,10 +268,6 @@ func (h *handler) issueCredential(w http.ResponseWriter, r *http.Request) {
 // renewCredential re-issues before expiry (POST /kyc/credential/renew). Re-screening at renewal is
 // what bounds sanctions exposure, since an on-phone credential cannot be revoked remotely.
 func (h *handler) renewCredential(w http.ResponseWriter, r *http.Request) {
-	if h.verification == nil {
-		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
-		return
-	}
 	var req schema.StartVerificationRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, schema.ErrBadRequest, "invalid JSON body")
@@ -255,6 +278,17 @@ func (h *handler) renewCredential(w http.ResponseWriter, r *http.Request) {
 	if !schema.IsValidUserID(string(req.UserID)) {
 		writeError(w, http.StatusBadRequest, schema.ErrBadRequest,
 			"userId must be a 32-byte hex wallet identifier")
+		return
+	}
+	// Renewal mints a fresh credential, so it needs the same ownership check as issuance.
+	if _, ok := h.ownsWallet(w, r, string(req.UserID)); !ok {
+		return
+	}
+
+	// Availability is checked after authentication: an anonymous caller should not be able to map
+	// which services this deployment runs.
+	if h.verification == nil {
+		writeError(w, http.StatusServiceUnavailable, schema.ErrInternal, "verification unavailable")
 		return
 	}
 	cred, err := h.verification.Renew(r.Context(), string(req.UserID))

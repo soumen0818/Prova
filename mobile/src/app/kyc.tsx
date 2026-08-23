@@ -20,7 +20,7 @@ import { syncBackup } from '@/lib/cloud-backup';
 import { collectCredential, daysRemaining, getStoredCredential } from '@/lib/kyc';
 import { poolUserId } from '@/lib/pool';
 import { KycIdentityStep, type CapturedIdentity } from '@/features/kyc-identity';
-import { patchSession } from '@/lib/session';
+import { getSession, patchSession } from '@/lib/session';
 import { QK } from '@/lib/queries';
 import { captureError } from '@/lib/reporting';
 import { Palette, Spacing, Typography } from '@/constants/theme';
@@ -95,16 +95,19 @@ export default function KycScreen() {
         const v = await getVerification(uid);
         setRecord(v);
         if (v.status === 'approved') {
-          stopPolling();
           const cred = await collectCredential(uid);
           if (cred) {
+            // Stop only once the credential is actually in hand. Stopping before the attempt meant a
+            // single failed collection ended the polling for good, leaving an approved user on a
+            // screen that asked them to "pull again" — with nothing on it to pull.
+            stopPolling();
             setCredential(cred);
             setPhase('verified');
             await queryClient.invalidateQueries({ queryKey: QK.kyc });
             toast.success('Verified ✅');
             void syncBackup(); // carry the credential into the cloud backup (silent)
           } else {
-            setError('Approved, but the credential could not be collected. Pull again shortly.');
+            setError('Approved — finishing up. This will complete on its own in a moment.');
           }
         } else if (v.status === 'rejected') {
           stopPolling();
@@ -153,20 +156,32 @@ export default function KycScreen() {
     };
   }, []);
 
-  // Poll only while an outcome is still pending.
+  // Poll while an outcome is still pending — or while an approval is waiting to be collected.
   useEffect(() => {
-    const inFlight = record?.status === 'pending' || record?.status === 'in_review';
+    /*
+     * `approved` counts as in-flight until the credential is actually stored.
+     *
+     * Collection can fail on a flaky connection, and it is the poll that retries it. Treating
+     * `approved` as finished here stopped the timer the moment the status arrived, so one failed
+     * collection stranded a verified user on the waiting screen with no way back.
+     */
+    const awaitingCollection = record?.status === 'approved' && !credential;
+    const inFlight =
+      record?.status === 'pending' || record?.status === 'in_review' || awaitingCollection;
     if (phase !== 'status' || !inFlight || !userId) return;
     poll.current = setInterval(() => void refresh(userId), POLL_MS);
     return () => stopPolling();
-  }, [phase, record?.status, userId, refresh, stopPolling]);
+  }, [phase, record?.status, credential, userId, refresh, stopPolling]);
 
   const submit = useCallback(
     async (artifacts: CapturedArtifact[]) => {
       setBusy(true);
       setError('');
       try {
-        const v = await startVerification(userId, 2, artifacts);
+        // The signed-in address travels with the submission so a reviewer sees a person instead of
+        // a hash. Nothing else about the person is sent — no name, no number, no document.
+        const session = await getSession();
+        const v = await startVerification(userId, 2, artifacts, session?.email);
         setRecord(v);
         setPhase('status');
       } catch (e) {

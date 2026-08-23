@@ -44,11 +44,21 @@ export async function requestOtp(email: string): Promise<OtpChallenge> {
   }
 }
 
-/** Verify the code. Resolves on success; throws an ApiError carrying the server's message. */
-export async function verifyOtp(email: string, code: string): Promise<void> {
+/**
+ * Verify the code.
+ *
+ * Resolves with whether this address already had an account, so sign-in can offer a restore rather
+ * than starting a second wallet on a reinstalled device. Throws an ApiError carrying the server's
+ * message on failure.
+ */
+export async function verifyOtp(
+  email: string,
+  code: string,
+): Promise<{ returning: boolean; token?: string }> {
   const normalized = code.replace(/\D/g, '');
   try {
-    await apiVerifyOtp(email, normalized);
+    const res = await apiVerifyOtp(email, normalized);
+    return { returning: res.returning === true, token: res.token };
   } catch (e) {
     if (env.auth.isDev && isOffline(e)) {
       if (normalized !== env.auth.devOtp) {
@@ -58,7 +68,9 @@ export async function verifyOtp(email: string, code: string): Promise<void> {
           401,
         );
       }
-      return;
+      // Offline dev fallback: no server answered, so nothing recognised this address. Treated as
+      // new — restoring needs a backend anyway.
+      return { returning: false };
     }
     throw e;
   }

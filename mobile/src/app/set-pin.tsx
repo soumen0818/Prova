@@ -213,6 +213,13 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, alignItems: 'center', paddingTop: Spacing.seven },
   title: { ...Typography.title, fontSize: 24, color: Palette.white, textAlign: 'center' },
+  warning: {
+    ...Typography.caption,
+    color: Palette.accent,
+    textAlign: 'center',
+    marginTop: Spacing.three,
+    paddingHorizontal: Spacing.two,
+  },
   subtitle: {
     ...Typography.body,
     color: Palette.textSecondary,

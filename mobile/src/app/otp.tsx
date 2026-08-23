@@ -22,7 +22,7 @@ import { QK } from '@/lib/queries';
 import { captureError } from '@/lib/reporting';
 import { saveSession, type Session } from '@/lib/session';
 import { validateOtp } from '@/lib/validation';
-import { getOrCreateSecret } from '@/lib/wallet';
+import { getOrCreateSecret, hasWallet } from '@/lib/wallet';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
 const CODE_LENGTH = 6;
@@ -65,7 +65,24 @@ export default function OtpScreen() {
     const clean = code.replace(/\D/g, '');
     setBusy(true);
     try {
-      await verifyOtp(email ?? '', clean);
+      const { returning, token } = await verifyOtp(email ?? '', clean);
+
+      /*
+       * A known address on a device with no wallet is a reinstall — offer the backup first.
+       *
+       * Creating a wallet here instead would be silent and irreversible: the old one still holds
+       * the money, and the new one has no way to reach it. The restore link on the welcome screen
+       * exists, but it is a line of text next to a primary button and people do not read it, so the
+       * check happens where it cannot be skipped. Restore has its own way back for anyone who has
+       * no backup to open.
+       *
+       * Deliberately before `getOrCreateSecret` — once a key exists, this decision has been made.
+       */
+      if (returning && !(await hasWallet())) {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace({ pathname: '/restore', params: { email: (email ?? '').trim() } });
+        return;
+      }
 
       // The wallet is created here rather than behind a "Create wallet" screen: there is nothing
       // for the user to decide, so a confirmation step would be a tap that only delays them. The
@@ -75,6 +92,8 @@ export default function OtpScreen() {
 
       const session: Session = {
         email: (email ?? '').trim().toLowerCase(),
+        // Kept with the session so every later request can prove who is calling.
+        token,
         createdAt: Math.floor(Date.now() / 1000),
       };
       await saveSession(session);

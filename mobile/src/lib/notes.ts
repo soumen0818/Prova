@@ -33,7 +33,19 @@ import * as Crypto from 'expo-crypto';
 import { getSecret, SecureKey, setSecret } from './secure-store';
 
 const NONCE_LEN = 12; // AES-GCM standard
-const STORE_VERSION = 1;
+/*
+ * Bumped to 2 when the shielded pool was redeployed.
+ *
+ * A cached note is only meaningful against the pool it was created in: it holds a leaf index and a
+ * commitment that exist in that contract's tree and nowhere else. Pointing the backend at a fresh
+ * pool leaves every cached note describing a tree that no longer exists — the balance still shows,
+ * because balance is computed locally, and every send fails because no Merkle path can be built.
+ *
+ * Changing the version makes `readStore` discard the file, which resets the scan cursor to 0 and
+ * re-reads from the new pool. That is the whole migration, and it is why updating the app is enough:
+ * without it, a user would have to clear app data and lose their wallet keys and KYC with it.
+ */
+const STORE_VERSION = 2;
 const DIR_NAME = 'prova';
 const FILE_NAME = 'notes.enc';
 

@@ -1,8 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -136,8 +134,50 @@ func (h *handler) otpVerify(w http.ResponseWriter, r *http.Request) {
 
 	switch err := h.otp.Verify(r.Context(), "email:"+email, strings.TrimSpace(req.Code)); {
 	case err == nil:
+		/*
+		 * Record the sign-in and find out whether we have seen this address before.
+		 *
+		 * `returning` is what the app uses to offer a restore instead of starting a second wallet:
+		 * after a reinstall the device knows nothing, and a fresh sign-up would quietly strand a
+		 * funded account whose backup was sitting in Drive.
+		 *
+		 * It is answered HERE, and nowhere else, on purpose. A "does this email have an account?"
+		 * endpoint would tell anyone who asked which addresses use Prova. Reaching this line means
+		 * the caller has already proved they control the inbox, so the answer reveals nothing they
+		 * did not already know.
+		 *
+		 * A failure to record must not fail the sign-in — the user has proved who they are, and the
+		 * worst case is being offered onboarding instead of restore.
+		 */
+		returning := false
+		if h.store != nil {
+			seen, serr := h.store.SeenAccount(r.Context(), email)
+			if serr != nil {
+				h.logger.Error("could not record sign-in", "err", serr)
+			} else {
+				returning = seen
+			}
+		}
+		/*
+		 * A real session, not a decorative string.
+		 *
+		 * This used to hand back `randomToken()` — generated, returned, and never written down
+		 * anywhere. Every route that took a `userId` therefore trusted the caller completely. The
+		 * token is now resolvable, so the routes below it can ask who is calling.
+		 */
+		token, terr := h.sessions.Issue(r.Context(), email)
+		if terr != nil {
+			h.logger.Error("could not issue a session", "err", terr)
+			writeError(w, http.StatusInternalServerError, schema.ErrInternal,
+				"Could not complete sign-in. Please try again.")
+			return
+		}
 		// Normalised, so "User@Example.com" and "user@example.com" are one account, not two.
-		writeJSON(w, http.StatusOK, map[string]string{"token": randomToken(), "email": email})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"token":     token,
+			"email":     email,
+			"returning": returning,
+		})
 	case errors.Is(err, otp.ErrNoCode):
 		// Expired, already used, or never requested — all look the same to the user, and the fix is
 		// the same, so say that rather than making them guess which.
@@ -250,12 +290,4 @@ func decodeAuthBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 func (h *handler) authIsDev() bool {
 	return !strings.EqualFold(h.cfg.AuthMode, "production")
-}
-
-func randomToken() string {
-	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		return "dev-token"
-	}
-	return hex.EncodeToString(b)
 }

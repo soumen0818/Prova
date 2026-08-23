@@ -17,6 +17,7 @@ import (
 	"github.com/prova/backend/internal/otp"
 	"github.com/prova/backend/internal/pool"
 	"github.com/prova/backend/internal/ratelimit"
+	"github.com/prova/backend/internal/session"
 	"github.com/prova/backend/internal/store"
 	"github.com/prova/backend/internal/transfers"
 )
@@ -40,8 +41,11 @@ type handler struct {
 	// otp issues and verifies real one-time codes; mailer delivers them. Never nil — a Noop mailer
 	// stands in when SMTP is unconfigured, so the "not available" path is explicit rather than a
 	// panic.
-	otp    *otp.Store
-	mailer mailer.Mailer
+	otp *otp.Store
+	// sessions authenticates app requests. Never nil — the routes that name a wallet refuse to
+	// serve without one, so a nil here would fail closed rather than open.
+	sessions *session.Store
+	mailer   mailer.Mailer
 	// pool serves the shielded pool's Merkle paths and note feed; nil disables the /pool routes.
 	//
 	// Without it a wallet cannot build a spend proof at all, so a nil here is not a degraded
@@ -98,6 +102,7 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 		store:                deps.Store,
 		limiter:              ratelimit.New(deps.Redis),
 		otp:                  otp.New(deps.Redis),
+		sessions:             session.New(deps.Redis),
 		mailer:               deps.Mailer,
 	}
 	if h.mailer == nil {

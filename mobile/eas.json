@@ -14,7 +14,8 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://provapayment.duckdns.org",
         "EXPO_PUBLIC_AUTH_MODE": "development",
         "EXPO_PUBLIC_DEPOSIT_MODE": "anchor",
-        "EXPO_PUBLIC_DEPOSIT_ASSET": "XLM"
+        "EXPO_PUBLIC_DEPOSIT_ASSET": "XLM",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "154082193424-a3fhsicpprbi4lcpqcg5c62mm3v0nbno.apps.googleusercontent.com"
       },
       "android": {
         "buildType": "apk"
@@ -33,7 +34,8 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://provapayment.duckdns.org",
         "EXPO_PUBLIC_AUTH_MODE": "production",
         "EXPO_PUBLIC_DEPOSIT_MODE": "anchor",
-        "EXPO_PUBLIC_DEPOSIT_ASSET": "XLM"
+        "EXPO_PUBLIC_DEPOSIT_ASSET": "XLM",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "154082193424-a3fhsicpprbi4lcpqcg5c62mm3v0nbno.apps.googleusercontent.com"
       },
       "android": {
         "buildType": "apk"
@@ -48,7 +50,8 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://provapayment.duckdns.org",
         "EXPO_PUBLIC_AUTH_MODE": "production",
         "EXPO_PUBLIC_DEPOSIT_MODE": "anchor",
-        "EXPO_PUBLIC_DEPOSIT_ASSET": "XLM"
+        "EXPO_PUBLIC_DEPOSIT_ASSET": "XLM",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "154082193424-a3fhsicpprbi4lcpqcg5c62mm3v0nbno.apps.googleusercontent.com"
       },
       "android": {
         "buildType": "app-bundle"

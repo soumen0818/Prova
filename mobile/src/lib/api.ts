@@ -124,13 +124,65 @@ function fallbackMessage(status: number): string {
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
+/**
+ * Forget the signed-in account after the server rejects its token.
+ *
+ * Both halves matter: the stored session is what later requests would keep sending, and the cached
+ * copy is what the root gate reads to decide whether to show the app or the welcome screen.
+ *
+ * Imported lazily for the same reason as `authHeader` — `lib/queries` imports this module, so a
+ * static import would be a cycle at module-init time.
+ */
+async function endSession(): Promise<void> {
+  try {
+    const [{ clearSession }, { queryClient, QK }] = await Promise.all([
+      import('./session'),
+      import('./queries'),
+    ]);
+    await clearSession();
+    queryClient.setQueryData(QK.session, null);
+  } catch {
+    // Best effort. A failure here leaves the user signed in with a dead token, which the next
+    // request retries — worse would be throwing over the top of the original error.
+  }
+}
+
+/**
+ * The Authorization header for the signed-in account, or nothing when signed out.
+ *
+ * Imported lazily to keep `lib/session` out of this module's import cycle — session storage reads
+ * the secure store, which imports the API for nothing, but the cycle is real at module-init time.
+ */
+async function authHeader(): Promise<Record<string, string>> {
+  try {
+    const { getSession } = await import('./session');
+    const token = (await getSession())?.token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    // Never let an unreadable session stop a request that may not need one.
+    return {};
+  }
+}
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  /*
+   * Attach the session to every request.
+   *
+   * Done here rather than at each call site so a new endpoint is authenticated by default — the
+   * opposite of the previous arrangement, where nothing was and each route trusted the identifier it
+   * was handed. Requests made before sign-in simply carry no header and the open routes ignore it.
+   *
+   * Read per request instead of cached: the token changes at sign-in and disappears at sign-out, and
+   * a stale copy would keep a signed-out device working.
+   */
+  const auth = await authHeader();
+  const authenticated = auth.Authorization !== undefined;
   try {
     res = await fetch(`${baseUrl()}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       ...init,
       signal: controller.signal,
     });
@@ -158,6 +210,22 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
       // Not JSON (a proxy error page, say) — fall through to the status-based message.
     }
 
+    /*
+     * Our own token was refused — the session is over, so end it here.
+     *
+     * Only when this request actually carried one. Sign-in itself answers 401 for a wrong code, and
+     * treating that as an expiry would sign people out for a typo.
+     *
+     * Clearing the stored session and emptying its cache entry is enough to recover: the root gate
+     * renders `<Redirect href="/welcome" />` the moment the session reads null, so the user lands on
+     * sign-in instead of staring at a generic failure with no idea what to do. This is also what
+     * carries existing installs across the introduction of real sessions — their saved session has
+     * no token, so the first authenticated call retires it automatically.
+     */
+    if (res.status === 401 && authenticated) {
+      await endSession();
+    }
+
     const retryAfter = Number(res.headers.get('Retry-After'));
     throw new ApiError(
       message || fallbackMessage(res.status),
@@ -182,6 +250,16 @@ export interface OtpVerifyResponse {
   token: string;
   /** Normalised (trimmed + lowercased), so case differences cannot create two accounts. */
   email: string;
+  /**
+   * True when the backend had seen this address before.
+   *
+   * The signal that lets a reinstall offer a restore instead of quietly starting a second wallet —
+   * the device has nothing left to tell us from. Answered only here, as part of verifying a code,
+   * so it can never be used to ask "does this person use Prova?" about somebody else's address.
+   *
+   * Optional: a backend older than this field simply omits it, and the app treats that as new.
+   */
+  returning?: boolean;
 }
 
 export interface PhoneVerifyResponse {
@@ -353,18 +431,23 @@ export type CapturedArtifact = 'document_front' | 'document_back' | 'selfie' | '
 /**
  * Start a KYC verification.
  *
- * Sends only the opaque `userId` and the requested tier — **never** documents or personal data.
- * In a real deployment the captured images go straight from the device to the verification
- * provider, so Prova's backend has no identity data to store. See Docs/kyc-verification.md §3.
+ * Sends the opaque `userId`, the requested tier, and the account's email — **never** documents,
+ * names or numbers. In a real deployment the captured images go straight from the device to the
+ * verification provider, so Prova's backend has no document to store. See Docs/kyc-verification.md.
+ *
+ * The email is here so a reviewer sees who they are approving instead of a 64-character hash. It is
+ * a label, not identity: the backend has no session to check it against, so nothing is granted on
+ * the strength of it and no decision reads it.
  */
 export function startVerification(
   userId: string,
   tier = 2,
   captured: CapturedArtifact[] = [],
+  email?: string,
 ): Promise<VerificationRecord> {
   return json<VerificationRecord>('/kyc/verifications', {
     method: 'POST',
-    body: JSON.stringify({ userId, tier, captured }),
+    body: JSON.stringify({ userId, tier, captured, email }),
   });
 }
 

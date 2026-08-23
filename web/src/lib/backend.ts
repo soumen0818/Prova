@@ -8,12 +8,16 @@ import type {
 } from '@prova/shared';
 
 /**
- * A queue row: the app-facing verification record plus the userId the console needs to act on it.
+ * A queue row: the app-facing verification record, the userId the console acts on, and the account
+ * that submitted it.
  *
- * Mirrors `schema.QueuedVerification` in the Go backend. The userId is an opaque hash, not an
- * identity — there is no name anywhere in this system to show instead.
+ * Mirrors `schema.QueuedVerification` in the Go backend.
+ *
+ * `email` is present only when the app sent one, and it is a **label, not proof**. The backend has
+ * no session to have checked it against, so it identifies the row for a human without authorising
+ * anything: no decision reads it. `userId` remains what every action is keyed on.
  */
-export type QueuedVerification = VerificationRecord & { userId: string };
+export type QueuedVerification = VerificationRecord & { userId: string; email?: string };
 
 /**
  * Server-side client for the Prova backend's `/ops` routes.

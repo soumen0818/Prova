@@ -97,6 +97,12 @@ type StartVerificationRequest struct {
 	Tier int `json:"tier"`
 	// Captured lists the artefact kinds supplied on-device, e.g. ["document_front","selfie"].
 	Captured []string `json:"captured,omitempty"`
+	// Email the submission belongs to, so a reviewer sees a person rather than a hash.
+	//
+	// UNTRUSTED and display-only. These routes have no session to check it against, so it is a
+	// label on the queue row: no decision reads it and nothing is granted because of it. Optional —
+	// omitting it leaves the row identified by UserID alone, exactly as before.
+	Email string `json:"email,omitempty"`
 }
 
 // VerificationRecord is the status view returned to the app. No PII.
@@ -120,6 +126,12 @@ type VerificationRecord struct {
 // already knows its own; a reviewer needs it to act, and it is an opaque hash rather than a name.
 type QueuedVerification struct {
 	UserID string `json:"userId"`
+	// Email of the account that submitted, when the app supplied one.
+	//
+	// Present only on this ops-facing type, never on the app-facing VerificationRecord. It is a
+	// label for the reviewer: no decision reads it, and it is not proof of anything, because these
+	// routes have no session to have checked it against.
+	Email string `json:"email,omitempty"`
 	VerificationRecord
 }
 

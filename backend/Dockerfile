@@ -33,11 +33,22 @@ RUN apt-get update \
     && rm /tmp/scli.tgz
 
 # Runtime: debian-slim (glibc + a shell) so the API can exec the Stellar CLI (relay) and the KYC
-# prover binary provided at runtime via a shared volume (see docker-compose). ca-certificates is
-# needed for outbound HTTPS to Soroban RPC / Horizon / the anchor.
+# prover binary provided at runtime via a shared volume (see docker-compose).
+#
+#   ca-certificates — outbound HTTPS to Soroban RPC / Horizon / the anchor.
+#   libdbus-1-3     — REQUIRED BY THE STELLAR CLI, which is dynamically linked against it for the
+#                     OS keyring it uses to store identities. The relayer passes a raw secret key
+#                     and never touches the keyring, but the dependency is resolved at load time,
+#                     not on use: without it every invocation dies before running with
+#                     "error while loading shared libraries: libdbus-1.so.3".
+#
+# That failure cost real time to find. `stellar` was present and executable, so the image looked
+# correct; the folder proved each batch successfully and then failed at submission, so deposits sat
+# at "confirming" indefinitely while nothing on-chain showed an attempt. Verified with `ldd` inside
+# this exact base image — libdbus is the only unmet dependency.
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates libdbus-1-3 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/api /usr/local/bin/api
 COPY --from=stellar-cli /usr/local/bin/stellar /usr/local/bin/stellar

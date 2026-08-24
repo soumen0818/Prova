@@ -263,6 +263,12 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 		return
 	case err != nil:
 		h.logger.Error("pool relay failed", "err", err)
+		// Also record it where it can be read without a shell — see /pool/status.
+		if h.store != nil {
+			if rerr := h.store.RecordRelayFailure(r.Context(), err.Error()); rerr != nil {
+				h.logger.Warn("could not record the relay failure", "err", rerr)
+			}
+		}
 		/*
 		 * Return the reason, not just the fact.
 		 *

@@ -178,6 +178,10 @@ func (s *Service) Status(ctx context.Context) (*schema.PoolStatus, error) {
 		if fs.LastSuccessAt != nil {
 			st.LastFoldAt = fs.LastSuccessAt.UTC().Format(time.RFC3339)
 		}
+		st.RelayError = fs.LastRelayError
+		if fs.LastRelayAt != nil {
+			st.RelayAt = fs.LastRelayAt.UTC().Format(time.RFC3339)
+		}
 	}
 
 	root, err := s.store.LatestPoolRoot(ctx)

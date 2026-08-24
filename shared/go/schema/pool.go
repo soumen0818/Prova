@@ -321,6 +321,13 @@ type PoolStatus struct {
 	FoldFailures int `json:"foldFailures,omitempty"`
 	// LastFoldAt is when a fold last SUCCEEDED (RFC 3339). Absent on a pool that has never folded.
 	LastFoldAt string `json:"lastFoldAt,omitempty"`
+	// RelayError is why the most recent spend could not be relayed, and when.
+	//
+	// A relay failure is rarer than a fold failure and more urgent: somebody is standing there with
+	// money that did not move. Surfaced for the same reason as FoldError — the alternative is shell
+	// access to a machine behind a security group.
+	RelayError string `json:"relayError,omitempty"`
+	RelayAt    string `json:"relayAt,omitempty"`
 }
 
 // PoolSpendOutputs are the two notes a spend creates, with their encrypted payloads.

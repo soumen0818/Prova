@@ -310,6 +310,25 @@ type FolderStatus struct {
 	LastSuccessAt       *time.Time
 	LastError           string
 	ConsecutiveFailures int
+	// The most recent spend relay that failed. Empty when none has.
+	LastRelayError string
+	LastRelayAt    *time.Time
+}
+
+// RecordRelayFailure notes why a spend could not be relayed.
+//
+// Only failures are recorded: a successful relay leaves the chain itself as the evidence, and
+// overwriting the reason on every success would erase the thing anyone is looking for.
+func (s *Store) RecordRelayFailure(ctx context.Context, errMsg string) error {
+	const maxLen = 300
+	if len(errMsg) > maxLen {
+		errMsg = errMsg[:maxLen]
+	}
+	_, err := s.pool.Exec(ctx, `
+INSERT INTO pool_folder_status (id, last_relay_error, last_relay_at)
+VALUES (true, $1, now())
+ON CONFLICT (id) DO UPDATE SET last_relay_error = $1, last_relay_at = now()`, errMsg)
+	return err
 }
 
 // RecordFoldAttempt writes the outcome of one fold attempt.
@@ -339,9 +358,11 @@ ON CONFLICT (id) DO UPDATE SET
 func (s *Store) FolderStatus(ctx context.Context) (FolderStatus, error) {
 	var st FolderStatus
 	err := s.pool.QueryRow(ctx, `
-SELECT last_attempt_at, last_success_at, last_error, consecutive_failures
+SELECT last_attempt_at, last_success_at, last_error, consecutive_failures,
+       COALESCE(last_relay_error, ''), last_relay_at
   FROM pool_folder_status WHERE id = true`).
-		Scan(&st.LastAttemptAt, &st.LastSuccessAt, &st.LastError, &st.ConsecutiveFailures)
+		Scan(&st.LastAttemptAt, &st.LastSuccessAt, &st.LastError, &st.ConsecutiveFailures,
+			&st.LastRelayError, &st.LastRelayAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return FolderStatus{}, nil
 	}

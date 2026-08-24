@@ -144,6 +144,20 @@ func proofJSON(a, b, c string) string {
 	return fmt.Sprintf(`{"a":"%s","b":"%s","c":"%s"}`, a, b, c)
 }
 
+// isRejectedProofOutput reports whether CLI output describes a proof the chain would not accept.
+//
+// Two layers can refuse one. The contract's own `Error(Contract, #4)` fires when verification runs
+// and returns false. But if the bytes are not valid G1/G2 points the HOST traps first, in
+// `bls12_381_multi_pairing_check` with `Error(Crypto, InvalidInput)`, and the contract never gets to
+// judge it — verified against the live contract. Both mean the same thing to a user, and treating
+// only the first as a proof failure left the second reaching them as "could not relay the spend".
+func isRejectedProofOutput(text string) bool {
+	return strings.Contains(text, "Error(Contract, #4)") ||
+		strings.Contains(text, "Error(Crypto, InvalidInput)") ||
+		strings.Contains(text, "point not on curve") ||
+		strings.Contains(text, "bls12_381_multi_pairing_check")
+}
+
 // invoke runs the CLI and maps contract errors onto typed ones.
 func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (string, error) {
 	args := append([]string{
@@ -169,12 +183,22 @@ func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (str
 	switch {
 	case strings.Contains(text, "Error(Contract, #3)"):
 		return "", ErrNoteAlreadySpent
-	case strings.Contains(text, "Error(Contract, #4)"):
+	case isRejectedProofOutput(text):
 		return "", ErrSpendRejected
 	case strings.Contains(text, "Error(Contract, #5)"):
 		return "", ErrRootExpired
 	case strings.Contains(text, "Error(Contract, #10)"):
 		return "", ErrPoolPaused
+	/*
+	 * A proof the host cannot even parse as curve points.
+	 *
+	 * The contract's own #4 only fires when verification RUNS and returns false. If the bytes are
+	 * not valid G1/G2 points the host traps first — `bls12_381_multi_pairing_check` with
+	 * `Error(Crypto, InvalidInput)` — and the contract never gets to judge it. Without this case
+	 * that lands in the default below and reaches the user as "could not relay the spend", which
+	 * says nothing and points nowhere. It is still a rejected proof; only the layer differs.
+	 */
+
 	default:
 		return "", fmt.Errorf("%s failed: %w: %s", fn, err, lastFoldLines(text, 3))
 	}

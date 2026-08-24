@@ -71,3 +71,41 @@ func TestSpendOutputsJSONCarriesEveryProofBoundField(t *testing.T) {
 		}
 	}
 }
+
+// A proof the host rejects must be reported as a rejected proof, not as an unknown failure.
+//
+// Verified against the live contract: an invalid proof traps in the host's BLS pairing check with
+// Error(Crypto, InvalidInput) — the contract's own #4 never runs. Before this mapping existed the
+// whole class fell through to the catch-all and reached the user as "could not relay the spend".
+func TestHostLevelProofFailuresAreRejections(t *testing.T) {
+	for name, text := range map[string]string{
+		"host crypto error": "error: transaction simulation failed: HostError: Error(Crypto, InvalidInput)",
+		"point not on curve": "[Diagnostic Event] topics:[error, Error(Crypto, InvalidInput)], " +
+			`data:"bls12-381 G1: point not on curve"`,
+		"pairing check trap": `data:"escalating error to VM trap from failed host function call: ` +
+			`bls12_381_multi_pairing_check"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !isRejectedProofOutput(text) {
+				t.Errorf("output was not classified as a rejected proof:\n%s", text)
+			}
+		})
+	}
+}
+
+// A genuine contract rejection must still map, and unrelated failures must NOT be mislabelled as
+// proof problems — that would send someone debugging in the wrong direction.
+func TestOnlyProofFailuresAreCalledProofFailures(t *testing.T) {
+	if !isRejectedProofOutput("Error(Contract, #4)") {
+		t.Error("contract #4 should still be a rejected proof")
+	}
+	for _, unrelated := range []string{
+		"exit status 127: libdbus-1.so.3: cannot open shared object file",
+		"error: connection refused",
+		"Error(Contract, #3)",
+	} {
+		if isRejectedProofOutput(unrelated) {
+			t.Errorf("unrelated failure mislabelled as a proof rejection: %q", unrelated)
+		}
+	}
+}

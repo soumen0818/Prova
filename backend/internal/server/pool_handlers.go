@@ -123,6 +123,19 @@ func (h *handler) poolPath(w http.ResponseWriter, r *http.Request) {
 //
 // Tree size, current root, and queue depth. Queue depth is the number to alert on: a rising queue
 // means the folder has stalled and new notes are not becoming spendable.
+// shortReason trims an internal error down to something safe to hand back to a caller.
+//
+// Long enough to name the cause, short enough that a stack trace or a stray path cannot ride along.
+func shortReason(err error) string {
+	const max = 200
+	// Collapse whitespace: CLI output is multi-line and a message is rendered as one string.
+	msg := strings.Join(strings.Fields(err.Error()), " ")
+	if len(msg) > max {
+		msg = msg[:max] + "…"
+	}
+	return msg
+}
+
 func (h *handler) poolStatus(w http.ResponseWriter, r *http.Request) {
 	if h.poolUnavailable(w) {
 		return
@@ -250,7 +263,19 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 		return
 	case err != nil:
 		h.logger.Error("pool relay failed", "err", err)
-		writeError(w, http.StatusInternalServerError, schema.ErrInternal, "could not relay the spend")
+		/*
+		 * Return the reason, not just the fact.
+		 *
+		 * Everything above this point is a known contract error with its own message. Reaching here
+		 * means something unforeseen — and "could not relay the spend" tells the person whose money
+		 * it is nothing, and gives whoever they report it to nothing either. The relayer already
+		 * captures the last few lines of CLI output for exactly this; discarding them left the only
+		 * copy in a log behind a security group.
+		 *
+		 * Bounded, because it is CLI output and this is a public response.
+		 */
+		writeError(w, http.StatusInternalServerError, schema.ErrInternal,
+			"could not relay the spend: "+shortReason(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, schema.PoolSpendResponse{TxHash: txHash})

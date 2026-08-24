@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -131,5 +132,30 @@ func TestQueryInt64(t *testing.T) {
 	if _, err := queryInt64(bad, "after", 0); err == nil {
 		t.Error("a non-numeric cursor must be rejected, not silently treated as 0 — that would " +
 			"make a wallet rescan from the beginning every poll")
+	}
+}
+
+// A relay failure must name its cause.
+//
+// "could not relay the spend" tells the person whose money it is nothing, and gives whoever they
+// report it to nothing either. The relayer already captures the last lines of CLI output; this
+// asserts they are not thrown away on the way out.
+func TestShortReasonNamesTheCauseAndStaysBounded(t *testing.T) {
+	if got := shortReason(errors.New("transact failed: exit status 127: libdbus-1.so.3 missing")); //nolint:lll
+	!strings.Contains(got, "libdbus-1.so.3") {
+		t.Errorf("shortReason dropped the cause: %q", got)
+	}
+
+	// Multi-line CLI output has to survive as one readable line.
+	multi := errors.New("transact failed:\n  line two\n  line three")
+	got := shortReason(multi)
+	if strings.Contains(got, "\n") {
+		t.Errorf("shortReason left a newline in a single-line message: %q", got)
+	}
+
+	// It is a public response, so it must not carry an unbounded dump.
+	long := errors.New(strings.Repeat("x", 5000))
+	if n := len([]rune(shortReason(long))); n > 210 {
+		t.Errorf("shortReason returned %d runes, want it bounded near 200", n)
 	}
 }

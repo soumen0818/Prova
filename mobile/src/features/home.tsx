@@ -92,10 +92,17 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
           Confirming money is shown separately and never added to the figure above. A note cannot
           move until its fold lands, so summing them would invite a tap on money that can't go
           anywhere — and the refusal would come from the contract instead of the screen.
+
+          But it is named when we know what it is. After paying 200 from a 900 note, 700 returns as
+          change and waits here — and "700.00 XLM confirming" beside a 200 payment reads as something
+          having gone wrong with a sum three times larger than the one that was sent. The figure is
+          correct and the sentence still alarms. Calling it change makes it obvious instead.
         */}
         {money.pending > 0 ? (
           <Text style={styles.pendingNote}>
-            {formatBalance(money.pending, money.denom)} confirming — usually a few seconds
+            {money.pendingIsChange
+              ? `${formatBalance(money.pending, money.denom)} change coming back — a few seconds`
+              : `${formatBalance(money.pending, money.denom)} confirming — usually a few seconds`}
           </Text>
         ) : null}
         <View style={styles.balanceActions}>

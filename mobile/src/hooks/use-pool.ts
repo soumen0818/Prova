@@ -17,6 +17,23 @@ import { QK } from '@/lib/queries';
 /** How often to look for incoming money. Scanning is ~0.4 ms per note, so this is cheap. */
 const SCAN_INTERVAL_MS = 15_000;
 
+/**
+ * How often to look while something is still confirming.
+ *
+ * The backend folds every 8 seconds (`POOL_FOLD_INTERVAL_SECONDS`), so a note is usually spendable
+ * within 8 — but at a flat 15-second poll the *app* took up to 23 seconds to notice, and most of
+ * that wait was us not looking rather than the chain being slow.
+ *
+ * That gap is felt hardest right after a send. Spending a 900 note to pay 200 returns 700 as change,
+ * and until the fold lands that 700 sits on screen as "confirming" — a large, unexplained number
+ * that appeared because the user paid a small one. Shortening the window is the difference between a
+ * blink and long enough to wonder what went wrong.
+ *
+ * Only while `pending > 0`, so the steady state is unchanged: no extra battery or server load for
+ * the overwhelming majority of the time, when there is nothing to wait for.
+ */
+const FAST_SCAN_INTERVAL_MS = 3_000;
+
 export interface PoolBalance {
   /** Spendable now, in minor units. */
   spendable: number;
@@ -29,6 +46,11 @@ export interface PoolBalance {
    * takes exactly one input.
    */
   largestNote: number;
+  /**
+   * True when everything in `pending` is change returning from this wallet's own send, rather than
+   * money arriving. Wording only — see `poolBalance`.
+   */
+  pendingIsChange: boolean;
 }
 
 /**
@@ -41,7 +63,10 @@ export function usePoolBalance() {
   return useQuery<PoolBalance>({
     queryKey: QK.poolBalance,
     queryFn: poolBalance,
-    refetchInterval: SCAN_INTERVAL_MS,
+    // Follows the scan: there is no point re-reading the balance faster than the notes behind it
+    // change, and no point reading it slower while the user is watching a figure move.
+    refetchInterval: ({ state }) =>
+      (state.data?.pending ?? 0) > 0 ? FAST_SCAN_INTERVAL_MS : SCAN_INTERVAL_MS,
     // Money should never look stale; showing the last known figure while refreshing is right here.
     placeholderData: (previous) => previous,
   });
@@ -59,6 +84,7 @@ export function usePoolBalance() {
  */
 export function usePoolSync(enabled = true): void {
   const { scan } = useNoteScan();
+  const queryClient = useQueryClient();
   // Kept in a ref so the effect below does not re-subscribe on every render — `scan` is recreated
   // whenever a scan starts or finishes, which would otherwise tear down the timer mid-flight.
   const scanRef = useRef(scan);
@@ -69,22 +95,41 @@ export function usePoolSync(enabled = true): void {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const run = () => {
-      if (active) void scanRef.current();
+    let timer: ReturnType<typeof setTimeout>;
+
+    /*
+     * A self-rescheduling timeout rather than setInterval, so the delay can be chosen fresh each
+     * cycle from what the wallet is actually waiting for.
+     *
+     * With a fixed interval the app was the slowest link in the chain: the fold lands in ~8s and we
+     * would not look for another 15. Re-reading `pending` here means the poll tightens by itself
+     * exactly while a note is unfolded — which is the only time anybody is watching the number — and
+     * relaxes the moment there is nothing outstanding.
+     */
+    const run = async () => {
+      if (!active) return;
+      await scanRef.current();
+      if (!active) return;
+      const pending = queryClient.getQueryData<PoolBalance>(QK.poolBalance)?.pending ?? 0;
+      timer = setTimeout(run, pending > 0 ? FAST_SCAN_INTERVAL_MS : SCAN_INTERVAL_MS);
     };
 
-    run();
-    const timer = setInterval(run, SCAN_INTERVAL_MS);
+    void run();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') run();
+      // Returning to the app is the moment someone most wants a current figure, so jump the queue
+      // rather than waiting out whatever delay is in flight.
+      if (state === 'active') {
+        clearTimeout(timer);
+        void run();
+      }
     });
 
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
       subscription.remove();
     };
-  }, [enabled]);
+  }, [enabled, queryClient]);
 }
 
 /**

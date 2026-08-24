@@ -72,6 +72,19 @@ export interface OwnedNote {
   spent: boolean;
   /** Unix seconds first seen. */
   seenAt: number;
+  /**
+   * True when this note is the change from our own send, rather than money someone sent us.
+   *
+   * Set by `addLocalNote` and preserved across merges — unlike `queueIndex`, which is a placeholder
+   * that must be adopted from the feed. That distinction matters: the queue index stops identifying
+   * a change note the moment the feed catches up, which is usually *before* the fold lands and
+   * therefore before the window this flag exists to explain has closed.
+   *
+   * Only used for wording. Paying 200 from a 900 note leaves 700 confirming, and "700 confirming"
+   * next to a 200 payment reads as something having gone wrong with a much larger sum. Knowing it is
+   * change is what lets the screen say so.
+   */
+  isChange?: boolean;
 }
 
 interface NoteStore {
@@ -264,6 +277,9 @@ export async function mergeNotes(found: OwnedNote[], cursor: number): Promise<vo
       // working from a number that does not exist in the feed.
       nullifier: existing.nullifier || note.nullifier,
       queueIndex: existing.queueIndex === LOCAL_QUEUE_INDEX ? note.queueIndex : existing.queueIndex,
+      // `isChange` is deliberately NOT adopted from `note`: the feed cannot know a note is our own
+      // change, so adopting it would always clear the flag. The `...existing` spread above keeps it
+      // — do not "tidy" that into an explicit adoption alongside the two fields here.
     });
   }
 

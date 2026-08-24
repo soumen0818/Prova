@@ -39,6 +39,14 @@ export interface Money {
    * input note, so the total is not always sendable at once.
    */
   largestNote: number;
+  /**
+   * True when everything in `pending` is change returning from this wallet's own send.
+   *
+   * Lets the balance screen name the number instead of just showing it. Paying 200 out of a 900 note
+   * leaves 700 confirming, and an unexplained 700 beside a 200 payment reads as a much larger sum
+   * having gone astray. Always false in simulated mode, which has no notes.
+   */
+  pendingIsChange: boolean;
   /** What the amounts are denominated in — `null` until money has actually arrived. */
   denom: Denomination | null | undefined;
   isLoading: boolean;
@@ -66,6 +74,7 @@ export function useMoney(): Money {
       spendable,
       pending,
       largestNote,
+      pendingIsChange: pool.data?.pendingIsChange ?? false,
       denom: spendable + pending > 0 ? settlementDenomination() : null,
       isLoading: pool.isLoading,
     };
@@ -75,6 +84,7 @@ export function useMoney(): Money {
     pending: 0,
     // Simulated mode is a single counter, not notes, so the whole balance is always sendable.
     largestNote: local.data ?? 0,
+    pendingIsChange: false,
     denom: denom.data,
     isLoading: local.isLoading || denom.isLoading,
   };

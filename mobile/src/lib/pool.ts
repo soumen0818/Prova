@@ -43,6 +43,7 @@ import {
   markSpent,
   mergeNotes,
   pendingBalance,
+  pendingNotes,
   earliestUnfoldedIndex,
   scanCursor,
   selectNoteFor,
@@ -275,11 +276,13 @@ export async function poolBalance(): Promise<{
   spendable: number;
   pending: number;
   largestNote: number;
+  pendingIsChange: boolean;
 }> {
-  const [spendable, pending, largest] = await Promise.all([
+  const [spendable, pending, largest, pendingList] = await Promise.all([
     spendableBalance(),
     pendingBalance(),
     largestSpendableNote(),
+    pendingNotes(),
   ]);
   return {
     spendable: Math.floor(spendable / STROOPS_PER_MINOR),
@@ -287,6 +290,18 @@ export async function poolBalance(): Promise<{
     // The ceiling on a single transfer. Reported alongside the total so a screen can tell the user
     // what is actually sendable now, rather than letting the circuit refuse it afterwards.
     largestNote: Math.floor(largest / STROOPS_PER_MINOR),
+    /*
+     * Whether the confirming money is change from our own send rather than money arriving.
+     *
+     * Purely for wording, and the wording matters more than it looks. Paying 200 from a 900 note
+     * returns 700 as change, so the screen shows a number three times the payment with no stated
+     * connection to it — which reads as a much larger sum having gone missing. Naming it as change
+     * turns an alarming number into an obvious one.
+     *
+     * `every`, not `some`: the sentence claims all of it is change, so a mixed state (change landing
+     * while a deposit is also confirming) has to fall back to the neutral wording.
+     */
+    pendingIsChange: pendingList.length > 0 && pendingList.every((n) => n.isChange === true),
   };
 }
 
@@ -705,6 +720,9 @@ async function spend(args: SpendArgs): Promise<string> {
       leafIndex: null,
       spent: false,
       seenAt: Math.floor(Date.now() / 1000),
+      // Our own change, not money arriving — so the balance screen can say which it is while this
+      // note waits to be folded. See `OwnedNote.isChange`.
+      isChange: true,
     });
   }
 

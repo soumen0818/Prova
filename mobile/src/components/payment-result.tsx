@@ -192,12 +192,21 @@ function declineCopy(code?: string, detail?: string): { text: string; retryable:
         retryable: true,
       };
     default:
-      // Prefer what actually happened. A specific sentence someone can act on — or repeat to
-      // support — is worth more than a reassuring one that says nothing.
+      /*
+       * `detail` is the server's own sentence, and only ever that — send.tsx passes it through only
+       * for an `ApiError` with a real status, because those messages are written for the person
+       * reading them. Anything thrown locally (the prover, the native module, the JS runtime) is
+       * deliberately dropped there and lands on the generic line below.
+       *
+       * That split is the whole point. A specific sentence someone can act on beats a reassuring one
+       * that says nothing — but only while it stays a sentence. When raw relay output was allowed
+       * down this path, what people saw mid-payment was `Event log (newest first): | 0: [Diagnostic
+       * Event] contract:CBLL…, topics:[error, Error(Contract, #4)]`.
+       */
       return {
         text: detail?.trim()
           ? detail.trim()
-          : 'Something went wrong and the payment didn’t go through.',
+          : 'We couldn’t complete this payment, so nothing was sent. Your money is still in your balance.',
         retryable: true,
       };
   }

@@ -4,6 +4,8 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   ChevronRight,
+  CircleAlert,
+  Clock,
   Plus,
   Settings,
   ShieldCheck,
@@ -14,7 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, GlassIconButton, Screen } from '@/components/ui';
 import { env } from '@/config/env';
-import { describeActivity } from '@/lib/activity';
+import { activityStatus, describeActivity } from '@/lib/activity';
 import { formatBalance } from '@/lib/balance';
 import { useRequireKyc } from '@/hooks/use-require-kyc';
 import { useActivity, useKycVerified, useRecipients } from '@/lib/queries';
@@ -165,11 +167,24 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
       ) : (
         <View style={styles.activityList}>
           {recent.map((entry) => {
-            const meta = describeActivity(entry.kind);
+            const status = activityStatus(entry);
+            const meta = describeActivity(entry.kind, status);
+            // A row that did not complete must not be read at a glance as one that did: the amount
+            // is muted, and struck through once it is certain the money never moved.
+            const amountColor =
+              status === 'complete'
+                ? meta.positive
+                  ? Palette.statusUp
+                  : Palette.white
+                : Palette.textMuted;
             return (
               <View key={entry.id} style={styles.activityRow}>
                 <View style={styles.activityIcon}>
-                  {meta.positive ? (
+                  {status === 'failed' ? (
+                    <CircleAlert color={Palette.textMuted} size={18} strokeWidth={2} />
+                  ) : status === 'pending' ? (
+                    <Clock color={Palette.accent} size={18} strokeWidth={2} />
+                  ) : meta.positive ? (
                     <ArrowDownLeft color={Palette.statusUp} size={18} strokeWidth={2} />
                   ) : (
                     <ArrowUpRight color={Palette.white} size={18} strokeWidth={2} />
@@ -182,7 +197,8 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
                 <Text
                   style={[
                     styles.activityStatus,
-                    { color: meta.positive ? Palette.statusUp : Palette.white },
+                    { color: amountColor },
+                    status === 'failed' && styles.activityStruck,
                   ]}>
                   {meta.sign}
                   {formatBalance(entry.amountMinor, money.denom, String(entry.amountMinor / 100))}
@@ -343,4 +359,5 @@ const styles = StyleSheet.create({
   activityTitle: { ...Typography.body, color: Palette.white },
   activityDate: { ...Typography.micro, color: Palette.textMuted },
   activityStatus: { ...Typography.micro, fontWeight: '600', textTransform: 'capitalize' },
+  activityStruck: { textDecorationLine: 'line-through' },
 });

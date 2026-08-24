@@ -29,6 +29,7 @@ import {
   encodePoolAddress as encodeAddress,
 } from '@prova/shared';
 import {
+  ApiError,
   getPoolNotes,
   getPoolPath,
   getSpentNullifiers,
@@ -145,6 +146,14 @@ export interface ScanResult {
   newlySpendable: number;
   /** Notes confirmed spent on-chain. */
   newlySpent: number;
+  /**
+   * Activity entries that stopped being "processing" in this pass.
+   *
+   * Reported separately because it is the one outcome with no note behind it: a send that timed out
+   * moves from processing to failed without any of the other counts changing, and a caller that
+   * refreshes only on those would leave the row spinning forever.
+   */
+  settled: number;
 }
 
 /**
@@ -206,21 +215,41 @@ export async function scanForNotes(): Promise<ScanResult> {
   await recordIncoming(owned, (stroops) => Math.floor(stroops / STROOPS_PER_MINOR));
 
   const newlySpendable = owned.filter((n) => n.leafIndex !== null).length;
-  const newlySpent = await reconcileSpent();
+  const { newlySpent, settled } = await reconcileSpent();
 
-  return { found: owned.length, newlySpendable, newlySpent };
+  return { found: owned.length, newlySpendable, newlySpent, settled };
 }
 
-/** Ask the chain which of our notes are already spent, and record it. */
-async function reconcileSpent(): Promise<number> {
+/**
+ * Ask the chain which of our notes are already spent, record it, and settle anything still shown as
+ * processing.
+ *
+ * Both halves ask the same question of the same endpoint, so they share one round trip. The nullifier
+ * set is also the evidence a pending send needs — it is exactly "did my spend land?" — which is why
+ * settling happens here rather than on its own timer.
+ */
+async function reconcileSpent(): Promise<{ newlySpent: number; settled: number }> {
   const { spendableNotes } = await import('./notes');
-  const unspent = await spendableNotes();
-  const nullifiers = unspent.map((n) => n.nullifier).filter(Boolean);
-  if (nullifiers.length === 0) return 0;
+  const { pendingActivity, settleAgainstChain } = await import('./activity');
+
+  const [unspent, pending] = await Promise.all([spendableNotes(), pendingActivity()]);
+
+  // A pending send's input note is already marked spent locally, so it is not in `spendableNotes` —
+  // its nullifier has to be added explicitly or the entry could never be confirmed.
+  const nullifiers = [
+    ...new Set(
+      [...unspent.map((n) => n.nullifier), ...pending.map((e) => e.nullifier ?? '')].filter(
+        Boolean,
+      ),
+    ),
+  ];
+  if (nullifiers.length === 0) return { newlySpent: 0, settled: 0 };
 
   const { spent } = await getSpentNullifiers(nullifiers);
   await markSpent(spent);
-  return spent.length;
+  // Still called when nothing came back spent: that is how a send that never landed times out.
+  const settled = pending.length > 0 ? await settleAgainstChain(new Set(spent)) : 0;
+  return { newlySpent: spent.length, settled };
 }
 
 /**
@@ -525,6 +554,21 @@ async function spend(args: SpendArgs): Promise<string> {
   // record that note locally the moment the spend lands.
   const changeRho = secureRandomHex(32);
 
+  /*
+   * ONE timestamp, used by both the proof and the submission.
+   *
+   * `current_time` is public input #9 of the spend circuit. The wallet binds it into the proof, and
+   * the contract rebuilds the input list from the value the relayer submits — so the two must be the
+   * same integer or the pairing check simply returns false.
+   *
+   * This was previously two separate `Date.now()` calls with the whole Groth16 proving run between
+   * them. Proving is the heaviest thing the wallet does — tens of seconds on a phone — so the second
+   * sample was never the same second as the first, and every private transfer was rejected on-chain
+   * with `Error(Contract, #4)`. It reads as a proof failure, which sent debugging towards the keys
+   * and the anchor; the proof was fine and the public input was not.
+   */
+  const currentTime = Math.floor(Date.now() / 1000);
+
   onProgress?.('proving');
   const proof = await poolSpendProve({
     in_amount: input.amount,
@@ -557,27 +601,85 @@ async function spend(args: SpendArgs): Promise<string> {
     sig_s: credential.signature.s,
     anchor_pk_x: credential.anchor.x,
     anchor_pk_y: credential.anchor.y,
-    current_time: Math.floor(Date.now() / 1000),
+    current_time: currentTime,
   });
 
   onProgress?.('submitting');
-  const { txHash } = await relayPoolSpend({
-    proof: proof.proof,
-    root: path.root,
+
+  /*
+   * The activity entry is written BEFORE the relay, not after.
+   *
+   * It used to be written only once a txHash came back, which meant a payment that failed — or one
+   * whose reply was lost — left no trace at all. Someone would watch a spinner, get an error, return
+   * to a home screen showing nothing, and have no way to tell whether their money had moved. The
+   * only honest record of an attempt is one made at the moment of attempting.
+   *
+   * It carries the input nullifier so it can settle itself later: the chain publishes that nullifier
+   * when the note is spent, so `settleAgainstChain` can answer "did it land?" from the spent set the
+   * scan already fetches — no server ever learns we are the one asking.
+   */
+  const { recordActivity, updateActivity } = await import('./activity');
+  const logged = await recordActivity({
+    kind,
+    amountMinor,
+    counterparty,
+    // Both output commitments, because logging c2 — our own change coming home — is what stops the
+    // next scan announcing it as money received.
+    commitment: proof.out_c1,
+    relatedCommitments: [proof.out_c2],
+    // The prover's nullifier, not the note cache's copy. They agree, but this one is derived from
+    // the exact witness that was proved, so it is the value the contract will publish — and the
+    // whole point of storing it is to compare it against what the chain publishes.
     nullifier: proof.nullifier,
-    outputs: {
-      c1: proof.out_c1,
-      c2: proof.out_c2,
-      epkX: proof.epk_x,
-      epkY: proof.epk_y,
-      enc1Amount: proof.enc1_amount,
-      enc1Rho: proof.enc1_rho,
-      enc2Amount: proof.enc2_amount,
-      enc2Rho: proof.enc2_rho,
-    },
-    currentTime: Math.floor(Date.now() / 1000),
-    ...(publicStroops > 0 ? { amount: publicStroops, destination } : {}),
+    status: 'pending',
   });
+
+  let txHash: string;
+  try {
+    ({ txHash } = await relayPoolSpend({
+      proof: proof.proof,
+      root: path.root,
+      nullifier: proof.nullifier,
+      outputs: {
+        c1: proof.out_c1,
+        c2: proof.out_c2,
+        epkX: proof.epk_x,
+        epkY: proof.epk_y,
+        enc1Amount: proof.enc1_amount,
+        enc1Rho: proof.enc1_rho,
+        enc2Amount: proof.enc2_amount,
+        enc2Rho: proof.enc2_rho,
+      },
+      // Must be the exact value bound into the proof above — see the note on `currentTime`.
+      currentTime,
+      ...(publicStroops > 0 ? { amount: publicStroops, destination } : {}),
+    }));
+  } catch (e) {
+    /*
+     * Two different failures, and treating them alike is what strands people.
+     *
+     * A server that answered — any real HTTP status — has told us it did not submit. That is final,
+     * and the entry becomes `failed` immediately so the screen stops implying money is in flight.
+     *
+     * A transport failure (`ApiError` with status 0: no reply, aborted, offline) is genuinely
+     * unknown. The relay may have submitted and the answer been lost. Calling that failed would
+     * invite a second payment for the same thing, so it stays `pending` and lets the chain decide —
+     * `settleAgainstChain` will complete it when the nullifier appears, or give up after the
+     * timeout.
+     */
+    const answered = e instanceof ApiError && e.status > 0;
+    if (answered) {
+      await updateActivity(logged.id, {
+        status: 'failed',
+        // The server's message, which is written for the person reading it — see poolSpend in
+        // backend/internal/server/pool_handlers.go. Never diagnostic output.
+        failureReason: e.message,
+      });
+    }
+    throw e;
+  }
+
+  await updateActivity(logged.id, { status: 'complete', txHash });
 
   // Mark the input spent immediately rather than waiting for the next scan, so the balance cannot
   // briefly show money that is already gone. The chain confirms it on the following poll.
@@ -605,18 +707,6 @@ async function spend(args: SpendArgs): Promise<string> {
       seenAt: Math.floor(Date.now() / 1000),
     });
   }
-
-  // Both output commitments are recorded: c2 is our change coming home, and logging it here is what
-  // stops the next scan announcing our own change as money received.
-  const { recordActivity } = await import('./activity');
-  await recordActivity({
-    kind,
-    amountMinor,
-    txHash,
-    counterparty,
-    commitment: proof.out_c1,
-    relatedCommitments: [proof.out_c2],
-  });
 
   return txHash;
 }

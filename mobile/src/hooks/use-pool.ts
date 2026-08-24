@@ -106,9 +106,16 @@ export function useNoteScan() {
     try {
       const result = await scanForNotes();
       setLastResult(result);
-      if (result.found > 0 || result.newlySpendable > 0 || result.newlySpent > 0) {
+      if (
+        result.found > 0 ||
+        result.newlySpendable > 0 ||
+        result.newlySpent > 0 ||
+        result.settled > 0
+      ) {
         await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
-        // A scan is also how received money first appears in history, so the list must refresh.
+        // A scan is also how received money first appears in history, and how a send stops being
+        // "Processing" — `settled` is in the condition because a send that timed out changes no note
+        // at all, so without it the row would spin forever.
         await queryClient.invalidateQueries({ queryKey: QK.activity });
       }
       return result;

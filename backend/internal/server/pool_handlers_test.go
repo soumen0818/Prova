@@ -2,10 +2,10 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -135,27 +135,38 @@ func TestQueryInt64(t *testing.T) {
 	}
 }
 
-// A relay failure must name its cause.
+// Nothing /pool/spend says to a sender may be diagnostic output.
 //
-// "could not relay the spend" tells the person whose money it is nothing, and gives whoever they
-// report it to nothing either. The relayer already captures the last lines of CLI output; this
-// asserts they are not thrown away on the way out.
-func TestShortReasonNamesTheCauseAndStaysBounded(t *testing.T) {
-	if got := shortReason(errors.New("transact failed: exit status 127: libdbus-1.so.3 missing")); //nolint:lll
-	!strings.Contains(got, "libdbus-1.so.3") {
-		t.Errorf("shortReason dropped the cause: %q", got)
+// These messages are rendered verbatim on the payment-result screen, at the exact moment someone is
+// waiting to learn what happened to their money. A failed relay used to append the CLI's reason, and
+// what people actually saw was `Event log (newest first): | 0: [Diagnostic Event] contract:CBLL…,
+// topics:[error, Error(Contract, #4)]`. The reason still exists — it goes to the log and to
+// /pool/status, where an operator reads it — but it must not come back down this path.
+//
+// Asserted by reading the handler's own source: the messages are literals inside a switch, so there
+// is nothing else to call, and the failure this guards against is precisely someone concatenating a
+// reason onto one of them again.
+func TestSpendFailuresNeverReturnDiagnosticOutput(t *testing.T) {
+	src, err := os.ReadFile("pool_handlers.go")
+	if err != nil {
+		t.Fatalf("read handler source: %v", err)
+	}
+	body := string(src)
+	spend := body[strings.Index(body, "func (h *handler) poolSpend"):]
+
+	// Every writeError in poolSpend must pass a bare string literal. A `+` before the closing paren
+	// is the shape of "…"+shortReason(err) — the exact regression.
+	for _, call := range strings.Split(spend, "writeError(w,")[1:] {
+		stmt := call[:strings.Index(call, "\n\t\treturn")]
+		if strings.Contains(stmt, "err.Error()") || strings.Contains(stmt, `" +`) ||
+			strings.Contains(stmt, `"+`) {
+			t.Errorf("a spend failure builds its message from an error value:\n%s", stmt)
+		}
 	}
 
-	// Multi-line CLI output has to survive as one readable line.
-	multi := errors.New("transact failed:\n  line two\n  line three")
-	got := shortReason(multi)
-	if strings.Contains(got, "\n") {
-		t.Errorf("shortReason left a newline in a single-line message: %q", got)
-	}
-
-	// It is a public response, so it must not carry an unbounded dump.
-	long := errors.New(strings.Repeat("x", 5000))
-	if n := len([]rune(shortReason(long))); n > 210 {
-		t.Errorf("shortReason returned %d runes, want it bounded near 200", n)
+	// And the reason must still be recorded, or the fix would have traded a bad message for no
+	// diagnosis at all.
+	if !strings.Contains(spend, "RecordRelayFailure") {
+		t.Error("poolSpend no longer records relay failures; /pool/status would go blind")
 	}
 }

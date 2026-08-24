@@ -591,6 +591,45 @@ fn groth16_verifies_and_rejects_a_substituted_destination() {
     );
 }
 
+/// `current_time` is a public input, so the value bound into the proof and the value submitted with
+/// it must be the same integer — a one-second drift is a rejected proof, not a tolerated one.
+///
+/// This is not a hypothetical. The wallet sampled `Date.now()` twice — once for the proof, once for
+/// the relayed call — with the whole proving run in between. On a phone that run takes tens of
+/// seconds, so the two samples were never the same second, and the contract rebuilt public input 8
+/// from the later one. Every private transfer failed with `Error(Contract, #4)`, which reads as a
+/// broken proof and sent debugging towards the proving key and the anchor for a long time.
+///
+/// The circuit uses `current_time` only as the lower bound of the credential-expiry check, so it is
+/// tempting to think a second either way cannot matter. Groth16 does not work that way: the input is
+/// bound, and any change to it invalidates the proof regardless of how loosely the constraints use
+/// it. Asserted here so nobody re-derives the timestamp near the point of submission again.
+#[test]
+fn groth16_rejects_a_current_time_that_drifted_after_proving() {
+    let mut rng = StdRng::seed_from_u64(42);
+    let setup = Scenario::new(30, 1).spend(1, 0, 0, Fr::from(0u64));
+    let (pk, vk) = Groth16::<Bls12_381>::circuit_specific_setup(setup, &mut rng).unwrap();
+
+    let s = Scenario::new(31, 1000);
+    let circuit = s.spend(600, 400, 0, Fr::from(0u64));
+    let public = circuit.public_inputs().unwrap();
+    let proof = Groth16::<Bls12_381>::prove(&pk, circuit, &mut rng).unwrap();
+
+    assert!(
+        Groth16::<Bls12_381>::verify(&vk, &public, &proof).unwrap(),
+        "the transfer must verify when both sides use the same timestamp"
+    );
+
+    // One second later — the cheapest possible drift, and still fatal.
+    let mut drifted = public.clone();
+    drifted[8] = Fr::from(NOW + 1);
+    assert!(
+        !Groth16::<Bls12_381>::verify(&vk, &drifted, &proof).unwrap(),
+        "a current_time one second off the proven value must be rejected — the wallet has to send \
+         the exact integer it proved with"
+    );
+}
+
 // =====================================================================================
 // Shield circuit
 // =====================================================================================

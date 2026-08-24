@@ -6,7 +6,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { env } from '@/config/env';
-import type { ActivityEntry } from '@/lib/activity';
+import { activityStatus, type ActivityEntry } from '@/lib/activity';
 import { formatBalance } from '@/lib/balance';
 import { Palette, Radius, Spacing, Typography } from '@/constants/theme';
 
@@ -52,6 +52,12 @@ export function TransactionSheet({
 
   const meta = describe(entry.kind);
   const amount = formatBalance(entry.amountMinor, denom, String(entry.amountMinor / 100));
+  const status = activityStatus(entry);
+  const statusRow = {
+    complete: { value: 'Completed', tone: Palette.statusUp },
+    pending: { value: 'Processing', tone: Palette.accent },
+    failed: { value: 'Failed', tone: Palette.textMuted },
+  }[status];
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -77,13 +83,33 @@ export function TransactionSheet({
         </Text>
 
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-          <Text style={styles.explain}>{meta.explain}</Text>
+          {/*
+           * What happened, before what it was.
+           *
+           * `meta.explain` describes the kind of action in the abstract and is written in the past
+           * tense, so on an unfinished payment it is at best premature and at worst wrong. When the
+           * outcome is not "completed", the outcome is the thing the person opened this sheet to
+           * read, and it goes first.
+           */}
+          {status === 'failed' ? (
+            <Text style={styles.explain}>
+              {entry.failureReason ??
+                'This payment didn’t go through. Your money is still in your balance.'}
+            </Text>
+          ) : status === 'pending' ? (
+            <Text style={styles.explain}>
+              This payment is still being confirmed. It will update on its own — there is no need to
+              send it again.
+            </Text>
+          ) : (
+            <Text style={styles.explain}>{meta.explain}</Text>
+          )}
 
           <View style={styles.rows}>
             <Row label="Type" value={meta.title} />
             {entry.counterparty ? <Row label={meta.partyLabel} value={entry.counterparty} /> : null}
             <Row label="Date" value={formatFull(entry.at)} />
-            <Row label="Status" value="Completed" tone={Palette.statusUp} />
+            <Row label="Status" value={statusRow.value} tone={statusRow.tone} />
 
             {entry.txHash ? (
               <CopyRow
@@ -94,7 +120,9 @@ export function TransactionSheet({
               />
             ) : null}
 
-            {entry.commitment ? (
+            {/* Not on a failed entry: that commitment was proved but never published, so offering
+                it as "the sealed record of this payment on the blockchain" would be a lie. */}
+            {entry.commitment && status !== 'failed' ? (
               <CopyRow
                 label="Commitment"
                 value={entry.commitment}

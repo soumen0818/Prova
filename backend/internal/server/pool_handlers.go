@@ -123,19 +123,10 @@ func (h *handler) poolPath(w http.ResponseWriter, r *http.Request) {
 //
 // Tree size, current root, and queue depth. Queue depth is the number to alert on: a rising queue
 // means the folder has stalled and new notes are not becoming spendable.
-// shortReason trims an internal error down to something safe to hand back to a caller.
 //
-// Long enough to name the cause, short enough that a stack trace or a stray path cannot ride along.
-func shortReason(err error) string {
-	const max = 200
-	// Collapse whitespace: CLI output is multi-line and a message is rendered as one string.
-	msg := strings.Join(strings.Fields(err.Error()), " ")
-	if len(msg) > max {
-		msg = msg[:max] + "…"
-	}
-	return msg
-}
-
+// It also carries the last relay failure verbatim. That is deliberate and it is the *only* place
+// raw CLI output belongs: an operator reads this endpoint, a sender does not. Responses to
+// /pool/spend say what the person can do about it and nothing else — see poolSpend.
 func (h *handler) poolStatus(w http.ResponseWriter, r *http.Request) {
 	if h.poolUnavailable(w) {
 		return
@@ -242,32 +233,48 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, pool.ErrRelayUnavailable):
 		writeError(w, http.StatusServiceUnavailable, schema.ErrPoolUnavailable,
-			"no relayer configured; submit the transaction yourself")
+			"Transfers are temporarily unavailable. Your money is safe — please try again shortly.")
 		return
 	case errors.Is(err, pool.ErrNoteAlreadySpent):
 		// Also the shape of an honest retry of something that already landed, so it is a 409 rather
-		// than an accusation.
-		writeError(w, http.StatusConflict, schema.ErrNullifierAlreadyUsed, "this note is already spent")
+		// than an accusation. The wallet branches on the code; the message is what a person reads,
+		// and "nullifier already used" is not a sentence anyone can act on.
+		writeError(w, http.StatusConflict, schema.ErrNullifierAlreadyUsed,
+			"This payment has already gone through. Check your activity before sending again.")
 		return
 	case errors.Is(err, pool.ErrRootExpired):
-		// Actionable: the wallet should refetch its path and re-prove, not retry as-is.
+		// Actionable, but only for the wallet: it should refetch its path and re-prove rather than
+		// retry as-is. That instruction belongs in the code, not in the sentence a sender reads.
 		writeError(w, http.StatusConflict, schema.ErrNoteNotFolded,
-			"the merkle root is no longer accepted; refetch the path and re-prove")
+			"This transfer took too long to confirm. Nothing was sent — please try again.")
 		return
 	case errors.Is(err, pool.ErrSpendRejected):
 		// Recorded like any other relay failure: "rejected" has two possible causes with different
-		// fixes, and the difference is only in the CLI's output.
+		// fixes, and the difference is only in the CLI's output. It goes to the store and the log,
+		// where an operator can read it — never into the response.
+		h.logger.Error("pool relay rejected the proof", "err", err)
 		if h.store != nil {
 			if rerr := h.store.RecordRelayFailure(r.Context(), err.Error()); rerr != nil {
 				h.logger.Warn("could not record the relay failure", "err", rerr)
 			}
 		}
+		/*
+		 * What the sender is told.
+		 *
+		 * A rejected proof is never something they did, and never anything they can act on: it means
+		 * the wallet and the chain disagreed about the transfer. Diagnostic text used to be appended
+		 * here, and it reached people mid-payment as a wall of `[Diagnostic Event] contract:CBLL…
+		 * topics:[error, Error(Contract, #4)]`. That helped exactly one audience — us — at the
+		 * expense of the one that matters, so it now lives in /pool/status and the logs instead.
+		 */
 		writeError(w, http.StatusBadRequest, schema.ErrInvalidProof,
-			"the proof was rejected: "+shortReason(err))
+			"We couldn't complete this transfer. Your money has not been sent. Please try again.")
 		return
 	case errors.Is(err, pool.ErrPoolPaused):
+		// Worth saying withdrawals still work: a pause is the moment people most want to know their
+		// money is not locked in.
 		writeError(w, http.StatusServiceUnavailable, schema.ErrPoolUnavailable,
-			"deposits and transfers are paused; withdrawals are unaffected")
+			"Transfers are paused right now. You can still withdraw, and nothing was sent.")
 		return
 	case err != nil:
 		h.logger.Error("pool relay failed", "err", err)
@@ -278,18 +285,14 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		/*
-		 * Return the reason, not just the fact.
-		 *
-		 * Everything above this point is a known contract error with its own message. Reaching here
-		 * means something unforeseen — and "could not relay the spend" tells the person whose money
-		 * it is nothing, and gives whoever they report it to nothing either. The relayer already
-		 * captures the last few lines of CLI output for exactly this; discarding them left the only
-		 * copy in a log behind a security group.
-		 *
-		 * Bounded, because it is CLI output and this is a public response.
+		 * Everything above is a known contract error with its own message; reaching here means
+		 * something unforeseen. The reason still matters — it is just not the sender's to read.
+		 * It is logged and recorded above, and /pool/status returns it verbatim for whoever is
+		 * on call. What goes back over the wire is the one fact the person needs: the money is
+		 * still theirs.
 		 */
 		writeError(w, http.StatusInternalServerError, schema.ErrInternal,
-			"could not relay the spend: "+shortReason(err))
+			"We couldn't complete this transfer. Your money has not been sent. Please try again in a moment.")
 		return
 	}
 	writeJSON(w, http.StatusOK, schema.PoolSpendResponse{TxHash: txHash})

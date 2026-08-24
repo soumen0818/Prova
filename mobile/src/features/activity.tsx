@@ -1,10 +1,24 @@
-import { ArrowDownLeft, ArrowUpRight, Banknote, ChevronRight, Plus } from 'lucide-react-native';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Banknote,
+  ChevronRight,
+  CircleAlert,
+  Clock,
+  Plus,
+} from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import type { ActivityEntry, ActivityKind } from '@/lib/activity';
+import {
+  activityStatus,
+  describeActivity,
+  type ActivityEntry,
+  type ActivityKind,
+  type ActivityStatus,
+} from '@/lib/activity';
 import { formatBalance } from '@/lib/balance';
 import { useActivity, useDenomination } from '@/lib/queries';
 import { EmptyMark } from '@/components/illustrations';
@@ -95,7 +109,8 @@ function Row({
   denom: Parameters<typeof formatBalance>[1];
   onPress: () => void;
 }) {
-  const meta = kindMeta(item.kind);
+  const status = activityStatus(item);
+  const meta = kindMeta(item.kind, status);
   const Icon = meta.Icon;
   const amount = formatBalance(item.amountMinor, denom, String(item.amountMinor / 100));
 
@@ -112,7 +127,12 @@ function Row({
             {item.counterparty ? ` · ${shorten(item.counterparty)}` : ''}
           </Text>
         </View>
-        <Text style={[styles.amount, { color: meta.color }]}>
+        <Text
+          style={[
+            styles.amount,
+            { color: meta.color },
+            status === 'failed' && styles.amountStruck,
+          ]}>
           {meta.sign}
           {amount}
         </Text>
@@ -122,7 +142,33 @@ function Row({
   );
 }
 
-function kindMeta(kind: ActivityKind) {
+/**
+ * Icon, colour and wording for a row.
+ *
+ * Status comes first: a payment that is still processing or that failed is a different thing to the
+ * reader than one that completed, and showing it in the completed row's colours — a confident white
+ * minus against "Sent privately" — is the app asserting money moved when it has no idea, or knows it
+ * did not. The wording itself lives in `describeActivity` so Home and this screen cannot drift.
+ */
+function kindMeta(kind: ActivityKind, status: ActivityStatus) {
+  if (status !== 'complete') {
+    const { label, sign } = describeActivity(kind, status);
+    return status === 'pending'
+      ? {
+          label,
+          Icon: Clock,
+          sign,
+          color: Palette.accent,
+          tint: 'rgba(214, 240, 60, 0.12)',
+        }
+      : {
+          label,
+          Icon: CircleAlert,
+          sign,
+          color: Palette.textMuted,
+          tint: 'rgba(255, 255, 255, 0.06)',
+        };
+  }
   switch (kind) {
     case 'added':
       return {
@@ -216,6 +262,7 @@ const styles = StyleSheet.create({
   label: { ...Typography.body, color: Palette.white },
   date: { ...Typography.micro, color: Palette.textMuted },
   amount: { ...Typography.body, fontVariant: ['tabular-nums'] },
+  amountStruck: { textDecorationLine: 'line-through' },
   footer: {
     ...Typography.micro,
     color: Palette.textMuted,

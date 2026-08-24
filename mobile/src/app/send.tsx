@@ -4,7 +4,7 @@ import { ChevronRight, Plus, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { submitTransfer, type KycCredential } from '@/lib/api';
+import { ApiError, submitTransfer, type KycCredential } from '@/lib/api';
 import { authenticate, canUseBiometrics } from '@/lib/auth';
 import { debit, formatBalance, getBalanceMinor, settlementDenomination } from '@/lib/balance';
 import { syncBackup } from '@/lib/cloud-backup';
@@ -204,15 +204,52 @@ export default function SendScreen() {
       }
       // A network failure after submitting is ambiguous: the transfer may still be in flight.
       // Treat it as "processing" rather than "failed" so nobody is nudged into paying twice.
-      const ambiguous = /network|timeout|fetch|abort/i.test(msg);
+      /*
+       * Did the request reach the server?
+       *
+       * Only a transport failure or an abort leaves the outcome genuinely unknown — the relay
+       * may have submitted and the reply been lost, so the user must NOT be nudged into paying
+       * twice. `api` gives those status 0. Anything with a real status is the server having
+       * answered: it did not submit, and calling that "processing" strands the user waiting for
+       * a payment that will never arrive.
+       *
+       * Branching on `status`, not on the text. This used to scan the message for "network" and
+       * friends, which broke the moment the server's own words were shown: the relay runs the
+       * Stellar CLI with `--network testnet`, so its error output contains "network" and every
+       * definite failure was relabelled as still-in-flight. ApiError says as much on `code`:
+       * branch on this, never on the message.
+       */
+      const ambiguous = e instanceof ApiError && e.status === 0;
       setReason(ambiguous ? 'timeout' : 'unknown');
-      // Carry the cause to the result screen. Anything reaching here is NOT one of the
-      // states handled above, so no tailored copy exists for it — without this the user is
-      // told "something went wrong" about their money and given nothing to act on.
-      // Blank when ambiguous: that path says the transfer may still land, and an error
-      // under that heading would contradict it.
-      setDetail(ambiguous ? '' : msg);
+      /*
+       * Only the server's own sentence is shown to the user.
+       *
+       * The result screen falls back to `detail` when it has no tailored copy for a reason, which is
+       * right when `detail` was written for a person and wrong when it was not. API error messages
+       * are written for a person. A thrown `Error` from the prover, the native module or the JS
+       * runtime is not — and passing those straight through is how a wall of `[Diagnostic Event]
+       * contract:CBLL…, topics:[error, Error(Contract, #4)]` ended up on the screen of someone who
+       * only wanted to know where their money went.
+       *
+       * So: server copy passes, everything else falls back to the generic line. Blank when
+       * ambiguous too — that path says the transfer may still land, and an error message under that
+       * heading would contradict it.
+       */
+      const fromServer = e instanceof ApiError && e.status > 0;
+      setDetail(!ambiguous && fromServer ? msg : '');
       setPhase(ambiguous ? 'processing' : 'error');
+
+      /*
+       * Refresh history on the way out, not only on success.
+       *
+       * `sendPrivately` writes its activity entry before it relays, and settles it to failed or
+       * leaves it processing. Both are new rows. Without this the user taps Done, lands on a home
+       * screen that still shows the list from before they pressed send, and has no record at all of
+       * the payment they just watched fail — which is exactly the "nothing happened" the result
+       * screen is trying not to be.
+       */
+      await queryClient.invalidateQueries({ queryKey: QK.activity });
+      await queryClient.invalidateQueries({ queryKey: QK.poolBalance });
     }
   }, [amtMinor, selected, queryClient, money.denom]);
 
@@ -273,14 +310,39 @@ export default function SendScreen() {
       // A network failure after submitting is ambiguous: the transfer may still be in flight.
       // Treat it as "processing" rather than "failed" so nobody is nudged into paying twice.
       const msg = e instanceof Error ? e.message : 'send failed';
-      const ambiguous = /network|timeout|fetch|abort/i.test(msg);
+      /*
+       * Did the request reach the server?
+       *
+       * Only a transport failure or an abort leaves the outcome genuinely unknown — the relay
+       * may have submitted and the reply been lost, so the user must NOT be nudged into paying
+       * twice. `api` gives those status 0. Anything with a real status is the server having
+       * answered: it did not submit, and calling that "processing" strands the user waiting for
+       * a payment that will never arrive.
+       *
+       * Branching on `status`, not on the text. This used to scan the message for "network" and
+       * friends, which broke the moment the server's own words were shown: the relay runs the
+       * Stellar CLI with `--network testnet`, so its error output contains "network" and every
+       * definite failure was relabelled as still-in-flight. ApiError says as much on `code`:
+       * branch on this, never on the message.
+       */
+      const ambiguous = e instanceof ApiError && e.status === 0;
       setReason(ambiguous ? 'timeout' : 'unknown');
-      // Carry the cause to the result screen. Anything reaching here is NOT one of the
-      // states handled above, so no tailored copy exists for it — without this the user is
-      // told "something went wrong" about their money and given nothing to act on.
-      // Blank when ambiguous: that path says the transfer may still land, and an error
-      // under that heading would contradict it.
-      setDetail(ambiguous ? '' : msg);
+      /*
+       * Only the server's own sentence is shown to the user.
+       *
+       * The result screen falls back to `detail` when it has no tailored copy for a reason, which is
+       * right when `detail` was written for a person and wrong when it was not. API error messages
+       * are written for a person. A thrown `Error` from the prover, the native module or the JS
+       * runtime is not — and passing those straight through is how a wall of `[Diagnostic Event]
+       * contract:CBLL…, topics:[error, Error(Contract, #4)]` ended up on the screen of someone who
+       * only wanted to know where their money went.
+       *
+       * So: server copy passes, everything else falls back to the generic line. Blank when
+       * ambiguous too — that path says the transfer may still land, and an error message under that
+       * heading would contradict it.
+       */
+      const fromServer = e instanceof ApiError && e.status > 0;
+      setDetail(!ambiguous && fromServer ? msg : '');
       setPhase(ambiguous ? 'processing' : 'error');
     }
   }, [amt, secret, credential, queryClient]);

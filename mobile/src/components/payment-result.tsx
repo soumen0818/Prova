@@ -33,6 +33,7 @@ export function PaymentResult({
   outcome,
   receipt,
   reasonCode,
+  detail,
   onRetry,
   onDone,
 }: {
@@ -40,6 +41,15 @@ export function PaymentResult({
   receipt: Receipt;
   /** Machine-readable decline reason; drives the explanation and whether retry is offered. */
   reasonCode?: string;
+  /**
+   * The failure as the server described it, shown when `reasonCode` has no specific copy.
+   *
+   * Without it every unrecognised failure read "Something went wrong and the payment didn't go
+   * through" — true, useless, and identical whether the cause was an expired credential, a rejected
+   * proof or a dropped connection. The backend writes its messages for a person to read, so showing
+   * one beats inventing a vaguer sentence on top of it.
+   */
+  detail?: string;
   onRetry?: () => void;
   onDone?: () => void;
 }) {
@@ -76,7 +86,7 @@ export function PaymentResult({
   }
 
   if (outcome === 'failed') {
-    const { text, retryable } = declineCopy(reasonCode);
+    const { text, retryable } = declineCopy(reasonCode, detail);
     return (
       <StateView
         illustration={<ErrorMark />}
@@ -159,7 +169,7 @@ function Line({
 }
 
 /** Plain-language decline reasons, and whether retrying could plausibly succeed. */
-function declineCopy(code?: string): { text: string; retryable: boolean } {
+function declineCopy(code?: string, detail?: string): { text: string; retryable: boolean } {
   switch (code) {
     case 'insufficient_funds':
       return { text: 'You don’t have enough balance for this transfer.', retryable: false };
@@ -182,7 +192,14 @@ function declineCopy(code?: string): { text: string; retryable: boolean } {
         retryable: true,
       };
     default:
-      return { text: 'Something went wrong and the payment didn’t go through.', retryable: true };
+      // Prefer what actually happened. A specific sentence someone can act on — or repeat to
+      // support — is worth more than a reassuring one that says nothing.
+      return {
+        text: detail?.trim()
+          ? detail.trim()
+          : 'Something went wrong and the payment didn’t go through.',
+        retryable: true,
+      };
   }
 }
 

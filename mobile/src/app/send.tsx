@@ -54,6 +54,13 @@ export default function SendScreen() {
   const [error, setError] = useState('');
   /** Machine-readable decline/processing reason driving the result screen's explanation. */
   const [reason, setReason] = useState('');
+  /**
+   * What actually went wrong, in the server's own words, for failures with no specific copy.
+   *
+   * Kept because the alternative is telling someone "something went wrong" about their money and
+   * leaving them — and whoever they ask for help — with nothing to go on.
+   */
+  const [detail, setDetail] = useState('');
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // A recipient passed via route params is fixed; otherwise the user picks one below.
@@ -250,6 +257,9 @@ export default function SendScreen() {
         setPhase('processing');
       } else {
         setReason(resp.status === 'rejected' ? 'rejected' : 'unknown');
+        // No detail to add: the relay accepted the request and reported a terminal status, so the
+        // status IS the explanation. A non-2xx instead throws, and the catch below carries the
+        // server's own message — which is the path an outright failure takes.
         setPhase('error');
       }
     } catch (e) {
@@ -344,6 +354,7 @@ export default function SendScreen() {
         outcome={phase === 'sent' ? 'success' : phase === 'processing' ? 'processing' : 'failed'}
         receipt={receipt}
         reasonCode={reason}
+        detail={detail}
         onRetry={() => {
           setReason('');
           setError('');

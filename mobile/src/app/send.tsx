@@ -206,6 +206,12 @@ export default function SendScreen() {
       // Treat it as "processing" rather than "failed" so nobody is nudged into paying twice.
       const ambiguous = /network|timeout|fetch|abort/i.test(msg);
       setReason(ambiguous ? 'timeout' : 'unknown');
+      // Carry the cause to the result screen. Anything reaching here is NOT one of the
+      // states handled above, so no tailored copy exists for it — without this the user is
+      // told "something went wrong" about their money and given nothing to act on.
+      // Blank when ambiguous: that path says the transfer may still land, and an error
+      // under that heading would contradict it.
+      setDetail(ambiguous ? '' : msg);
       setPhase(ambiguous ? 'processing' : 'error');
     }
   }, [amtMinor, selected, queryClient, money.denom]);
@@ -269,6 +275,12 @@ export default function SendScreen() {
       const msg = e instanceof Error ? e.message : 'send failed';
       const ambiguous = /network|timeout|fetch|abort/i.test(msg);
       setReason(ambiguous ? 'timeout' : 'unknown');
+      // Carry the cause to the result screen. Anything reaching here is NOT one of the
+      // states handled above, so no tailored copy exists for it — without this the user is
+      // told "something went wrong" about their money and given nothing to act on.
+      // Blank when ambiguous: that path says the transfer may still land, and an error
+      // under that heading would contradict it.
+      setDetail(ambiguous ? '' : msg);
       setPhase(ambiguous ? 'processing' : 'error');
     }
   }, [amt, secret, credential, queryClient]);

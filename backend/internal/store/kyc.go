@@ -127,12 +127,15 @@ LIMIT $2`, status, limit)
 	// Non-nil: an empty queue must marshal as [] rather than null.
 	out := []Verification{}
 	for rows.Next() {
-		var v Verification
-		if err := rows.Scan(&v.ID, &v.UserID, &v.Status, &v.Tier, &v.Expiry, &v.ReasonCode,
-			&v.ProviderRef, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		// Deliberately the shared scanner rather than an inline Scan. This used to list its columns
+		// by hand, so adding one to `verificationCols` left the two out of step and every call
+		// failed — the review queue returned 500 and the console said only "could not reach the
+		// backend". One scanner means the column list cannot drift from the scan again.
+		v, err := scanVerification(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, v)
+		out = append(out, *v)
 	}
 	return out, rows.Err()
 }

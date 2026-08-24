@@ -255,7 +255,15 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 			"the merkle root is no longer accepted; refetch the path and re-prove")
 		return
 	case errors.Is(err, pool.ErrSpendRejected):
-		writeError(w, http.StatusBadRequest, schema.ErrInvalidProof, "the proof was rejected")
+		// Recorded like any other relay failure: "rejected" has two possible causes with different
+		// fixes, and the difference is only in the CLI's output.
+		if h.store != nil {
+			if rerr := h.store.RecordRelayFailure(r.Context(), err.Error()); rerr != nil {
+				h.logger.Warn("could not record the relay failure", "err", rerr)
+			}
+		}
+		writeError(w, http.StatusBadRequest, schema.ErrInvalidProof,
+			"the proof was rejected: "+shortReason(err))
 		return
 	case errors.Is(err, pool.ErrPoolPaused):
 		writeError(w, http.StatusServiceUnavailable, schema.ErrPoolUnavailable,

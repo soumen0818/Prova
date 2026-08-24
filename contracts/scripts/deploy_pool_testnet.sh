@@ -38,6 +38,22 @@ stellar contract build --optimize
 echo "==> Reading the anchor public key from the prover"
 # Taken from the prover so the on-chain key always matches the circuit's KYC gadget — never
 # hand-copied. Rotatable later via `set_anchor`.
+#
+# ⚠️  ANCHOR_SEED MUST MATCH THE BACKEND THAT WILL ISSUE CREDENTIALS.
+#
+# The prover derives this key from ANCHOR_SEED, falling back to a built-in dev key when unset. Run
+# this script without the seed your backend uses and the contract is initialised with a DIFFERENT
+# anchor: every credential is then signed by one key and checked against another, so every spend
+# proof is rejected while deposits, folding and the whole pool look perfectly healthy. That cost a
+# week to find once.
+#
+# Compare before trusting the deployment:
+#   curl -s https://<your-api>/anchors/trusted
+if [ -z "${ANCHOR_SEED:-}" ]; then
+    echo "    ⚠️  ANCHOR_SEED is not set — using the prover's built-in dev key."
+    echo "       If the backend sets ANCHOR_SEED, this pool will reject every spend proof."
+    echo "       Export the SAME value the backend uses, or fix it afterwards with set_anchor."
+fi
 ANCHOR_JSON="$("$PROVER" anchor-pubkey)"
 ANCHOR_X="$(printf '%s' "$ANCHOR_JSON" | sed -E 's/.*"x":"([^"]+)".*/\1/')"
 ANCHOR_Y="$(printf '%s' "$ANCHOR_JSON" | sed -E 's/.*"y":"([^"]+)".*/\1/')"

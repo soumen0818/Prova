@@ -201,7 +201,19 @@ func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (str
 	case strings.Contains(text, "Error(Contract, #3)"):
 		return "", ErrNoteAlreadySpent
 	case isRejectedProofOutput(text):
-		return "", ErrSpendRejected
+		/*
+		 * Keep the CLI's own words alongside the typed error.
+		 *
+		 * "Rejected" covers two very different causes and the fix differs completely:
+		 *   Error(Contract, #4)        verification RAN and returned false — the proof is well
+		 *                              formed but proves the wrong statement (a public input such
+		 *                              as the root, the time or the credential does not match).
+		 *   Error(Crypto, InvalidInput) the host could not read the bytes as curve points at all —
+		 *                              a serialisation mismatch between prover and contract.
+		 *
+		 * `errors.Is` still matches, so callers behave as before; only the detail is richer.
+		 */
+		return "", fmt.Errorf("%w: %s", ErrSpendRejected, lastFoldLines(text, 3))
 	case strings.Contains(text, "Error(Contract, #5)"):
 		return "", ErrRootExpired
 	case strings.Contains(text, "Error(Contract, #10)"):

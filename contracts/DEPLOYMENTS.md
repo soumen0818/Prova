@@ -15,6 +15,21 @@ Tracked deployments of the `prova-verifier` and `prova-pool` contracts per envir
 | Deploy tx | https://stellar.expert/explorer/testnet/tx/649c41b9fcece29afd8ee3af4a080d5580d4adef1c45339078b692cd158ad60a |
 | Initialize tx | https://stellar.expert/explorer/testnet/tx/e84b49ec9da4f4514868e8607460453a5de7b8ecf85756026de9a229241bfb45 |
 | Post-deploy checks | `is_paused` false ✓ · `queue_depth` 0 ✓ · `next_index` 0 ✓ |
+| Anchor key | `27262bd204b7923a…` / `063d8d9ae872afd0…` — **rotated after deployment**, see below |
+
+**The anchor key had to be rotated, and the reason is worth remembering.** This pool was initialised
+from a prover run without `ANCHOR_SEED`, so it took the built-in dev key — while the backend issues
+credentials from the seed in its own `.env`. Every credential was therefore signed by one key and
+verified against another, and **every spend proof was rejected** while deposits, folding, balances
+and the whole pool looked healthy. Fixed with `set_anchor`
+([tx](https://stellar.expert/explorer/testnet/tx/f4c22870e430f35e9e773b185245e232f6d7bd0b950eee07f5844a23ac8b7871)).
+
+Before trusting any pool deployment, check the two agree:
+
+```sh
+curl -s https://<your-api>/anchors/trusted   # what signs credentials
+# must equal the anchor the contract was initialised with
+```
 
 **Why this replaced the pool below.** A backend cannot serve a pool whose tree it cannot reconstruct.
 The previous pool had folded 2 leaves during development; when the EC2 deployment started with an

@@ -109,3 +109,36 @@ func TestOnlyProofFailuresAreCalledProofFailures(t *testing.T) {
 		}
 	}
 }
+
+// The contract function must be on the command line, immediately after the `--` separator.
+//
+// It once was not: `fn` was accepted and used only when formatting an error, so every invocation ran
+// `... --send=yes -- --proof {...}` with no subcommand. The CLI replied with usage text and exit
+// status 2, which matched no contract-error case and reached users as "could not relay the spend".
+// Verified against the live contract: without the subcommand the CLI answers "unexpected argument
+// '--proof' found"; with it, the call reaches the contract.
+func TestInvokeArgsCarryTheContractFunction(t *testing.T) {
+	r := Relayer{Bin: "stellar", ContractID: "CTEST", Source: "SSECRET", Network: "testnet"}
+	args := invokeArgs(r, "transact", "--proof", "{}", "--root", "aa")
+
+	sep := -1
+	for i, a := range args {
+		if a == "--" {
+			sep = i
+			break
+		}
+	}
+	if sep == -1 {
+		t.Fatalf("no `--` separator in %v", args)
+	}
+	if sep+1 >= len(args) {
+		t.Fatalf("nothing follows `--` — the CLI would print usage: %v", args)
+	}
+	if got := args[sep+1]; got != "transact" {
+		t.Errorf("first argument after `--` = %q, want the contract function %q", got, "transact")
+	}
+	// And the call's own arguments must follow it, not replace it.
+	if args[sep+2] != "--proof" {
+		t.Errorf("call arguments do not follow the function name: %v", args[sep:])
+	}
+}

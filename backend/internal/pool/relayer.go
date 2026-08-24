@@ -158,16 +158,33 @@ func isRejectedProofOutput(text string) bool {
 		strings.Contains(text, "bls12_381_multi_pairing_check")
 }
 
-// invoke runs the CLI and maps contract errors onto typed ones.
-func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (string, error) {
-	args := append([]string{
+// invokeArgs builds the CLI argument list for a contract call.
+//
+// Extracted so the argument order is testable without running anything. `fn` — the contract
+// function — must appear immediately after the `--` separator, and its absence is the bug this
+// exists to prevent: it was previously accepted as a parameter and used only in an error message,
+// so every call ran as `... --send=yes -- --proof {...}` with no subcommand. The CLI answered with
+// its usage text and exit status 2, which matched none of the contract-error cases and reached the
+// user as "could not relay the spend".
+//
+// No spend was ever relayed by this code. Folding was unaffected — it submits through
+// CLIRootSubmitter, which builds its own arguments — so the pool looked healthy while every
+// transfer failed.
+func invokeArgs(r Relayer, fn string, callArgs ...string) []string {
+	return append([]string{
 		"contract", "invoke",
 		"--id", r.ContractID,
 		"--source", r.Source,
 		"--network", r.Network,
 		"--send=yes",
 		"--",
+		fn,
 	}, callArgs...)
+}
+
+// invoke runs the CLI and maps contract errors onto typed ones.
+func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (string, error) {
+	args := invokeArgs(r, fn, callArgs...)
 
 	cmd := exec.CommandContext(ctx, r.Bin, args...)
 	chain.PrepareCLI(cmd)

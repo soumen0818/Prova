@@ -28,8 +28,8 @@
 </p>
 
 <p align="center">
-  <a href="https://expo.dev/artifacts/eas/M671M1_g1y17dc6CLJVZUjnnWg6bCsBhbUeEEbWsVMk.apk">
-    <img alt="Download the Prova Android APK — version 1.2.1, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.1%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  <a href="https://expo.dev/artifacts/eas/oAnuYNhjY-gr636BxvyngC_PMGn6MzBFHKH9Uok5k88.apk">
+    <img alt="Download the Prova Android APK — version 1.2.5, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.5%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
   </a>
 </p>
 
@@ -46,13 +46,13 @@
     <td align="center" width="150">
       <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
       <br><br>
-      <a href="https://expo.dev/artifacts/eas/M671M1_g1y17dc6CLJVZUjnnWg6bCsBhbUeEEbWsVMk.apk">
+      <a href="https://expo.dev/artifacts/eas/oAnuYNhjY-gr636BxvyngC_PMGn6MzBFHKH9Uok5k88.apk">
         <img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
       </a>
     </td>
     <td>
       <table>
-        <tr><td><b>Version</b></td><td>1.2.1 · 86 MB</td></tr>
+        <tr><td><b>Version</b></td><td>1.2.5 · 86 MB</td></tr>
         <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
         <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
         <tr><td><b>Website</b></td><td><a href="https://provapay.duckdns.org">provapay.duckdns.org</a></td></tr>

@@ -78,25 +78,28 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
       {/* Balance card */}
       <Card tone="accent" style={styles.balanceCard}>
         <View style={styles.balanceTopRow}>
-          <Text style={styles.balanceLabel}>Available balance</Text>
+          <Text style={styles.balanceLabel}>Private balance</Text>
           <View style={styles.netChip}>
             <Text style={styles.netChipText}>{env.network}</Text>
           </View>
         </View>
         <Text style={styles.balanceValue}>
-          {money.isLoading
-            ? '—'
-            : formatBalance(money.spendable, money.denom, 'No money added yet')}
+          {money.isLoading ? '—' : formatBalance(money.total, money.denom, 'No money added yet')}
         </Text>
         {/*
-          Confirming money is shown separately and never added to the figure above. A note cannot
-          move until its fold lands, so summing them would invite a tap on money that can't go
-          anywhere — and the refusal would come from the contract instead of the screen.
+          The headline is the TOTAL — everything owned — and the line below names the part that
+          cannot move yet. It used to show only the spendable figure, which made money appear to
+          vanish: sending your whole balance from a single note marks that note spent and returns the
+          change unfolded, so the headline read 0.00 for a fold cycle immediately after a payment.
+          Correct by its own definition, and indistinguishable from "my money is gone".
 
-          But it is named when we know what it is. After paying 200 from a 900 note, 700 returns as
-          change and waits here — and "700.00 XLM confirming" beside a 200 payment reads as something
-          having gone wrong with a sum three times larger than the one that was sent. The figure is
-          correct and the sentence still alarms. Calling it change makes it obvious instead.
+          Showing it in the total is not the same as offering it. `pending` is still excluded from
+          every spend decision — a note that is not yet a leaf cannot be spent, and the Send screen
+          gates on `spendable` and `largestNote`, never on this.
+
+          The sub-line names the money when we know what it is. After paying 200 from a 900 note, 700
+          returns as change — and "700.00 XLM confirming" beside a 200 payment reads as something
+          having gone wrong with a sum three times larger than the one that was sent.
         */}
         {money.pending > 0 ? (
           <Text style={styles.pendingNote}>

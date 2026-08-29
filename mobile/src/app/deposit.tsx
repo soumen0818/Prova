@@ -311,7 +311,9 @@ export default function DepositScreen() {
         <Card tone="accent" style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Current balance</Text>
           <Text style={styles.balanceValue}>
-            {formatBalance(money.spendable, money.denom, 'Nothing added yet')}
+            {/* Total, not spendable — this card says what you have, and the line below says what
+                part of it cannot move yet. See `Money.total`. */}
+            {formatBalance(money.total, money.denom, 'Nothing added yet')}
           </Text>
           {money.pending > 0 ? (
             <Text style={styles.balanceLabel}>

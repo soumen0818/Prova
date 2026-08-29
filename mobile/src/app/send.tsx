@@ -551,8 +551,14 @@ export default function SendScreen() {
               autoFocus
             />
           </View>
+          {/*
+            `spendable`, deliberately — this screen decides what can leave, and Home shows what is
+            owned. The two figures differ while change is unfolded, which is why the word here is
+            "available to send" rather than "balance": a person who sees a larger number on Home has
+            to be able to tell why without guessing, and the confirming line below completes it.
+          */}
           <Text style={styles.balanceHint}>
-            Available: {formatBalance(money.spendable, money.denom, 'nothing added yet')}
+            Available to send: {formatBalance(money.spendable, money.denom, 'nothing added yet')}
             {amountValid && !canAfford ? '  ·  Insufficient balance' : ''}
           </Text>
 

@@ -143,7 +143,8 @@ export function ProfileScreen() {
         <Card style={styles.statCard}>
           <Text style={styles.statLabel}>Balance</Text>
           <Text style={styles.statValue}>
-            {money.isLoading ? '—' : formatBalance(money.spendable, money.denom)}
+            {/* Total: this tile reports holdings, not what can leave right now. See `Money.total`. */}
+            {money.isLoading ? '—' : formatBalance(money.total, money.denom)}
           </Text>
         </Card>
         <Pressable style={styles.flex} onPress={() => !verified && router.push('/kyc')}>

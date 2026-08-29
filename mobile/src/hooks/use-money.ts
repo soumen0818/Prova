@@ -23,7 +23,25 @@ import type { Denomination } from '@prova/shared';
 export const usesPool = env.depositMode === 'anchor';
 
 export interface Money {
-  /** Spendable now, in minor units. */
+  /**
+   * Everything this wallet owns, in minor units — `spendable + pending`.
+   *
+   * **This is the figure to display.** `spendable` is a spending constraint, not a statement of what
+   * someone has, and showing it as "your balance" makes money appear to vanish: paying the whole of a
+   * single note marks that note spent and returns the change unfolded, so `spendable` legitimately
+   * drops to zero for a fold cycle while the person still owns almost all of it. A payments app that
+   * shows 0.00 right after a payment reads as "my money is gone", which is the one thing it must
+   * never say by accident.
+   *
+   * Pair it with `pending` — which names the part that cannot move yet — so nothing is hidden.
+   */
+  total: number;
+  /**
+   * Spendable now, in minor units.
+   *
+   * The **guard**, not the display value. Anything deciding whether a send can proceed reads this;
+   * anything telling a person what they have reads `total`.
+   */
   spendable: number;
   /**
    * Arrived but still confirming, in minor units — real money that cannot move yet.
@@ -53,10 +71,18 @@ export interface Money {
 }
 
 /**
- * Spendable and confirming balance for the current deposit mode.
+ * Balance for the current deposit mode, split by what it is for.
  *
- * Callers must render `pending` separately and never sum it into `spendable`: offering to send
- * money that cannot move produces a contract-level failure instead of a UI-level explanation.
+ * **Display `total`. Gate on `spendable`.** Those are two different questions — "how much do I have"
+ * and "how much can leave right now" — and the earlier rule here answered both with `spendable`.
+ * That was wrong in a way that only showed up on the most ordinary action in the app: send your whole
+ * balance from a single note, and the input is marked spent while the change comes back unfolded, so
+ * `spendable` is genuinely 0 for a fold cycle. The screen said **0.00** to somebody who had just
+ * paid, and who still owned nearly all of it.
+ *
+ * `pending` is still rendered separately and still must never be offered as sendable — a note that is
+ * not yet a leaf cannot be spent, and letting someone tap Send on it moves the refusal from the
+ * screen to the contract. Showing it inside the total is not the same as offering it.
  */
 export function useMoney(): Money {
   const local = useBalance();
@@ -71,6 +97,7 @@ export function useMoney(): Money {
     // settlement asset. The recorded denomination is only written by the simulated-credit path, so
     // it is not the source of truth here — but "no money at all" still means no unit to show.
     return {
+      total: spendable + pending,
       spendable,
       pending,
       largestNote,
@@ -80,6 +107,8 @@ export function useMoney(): Money {
     };
   }
   return {
+    // Simulated mode has a single counter and nothing unfolded, so the two are always equal.
+    total: local.data ?? 0,
     spendable: local.data ?? 0,
     pending: 0,
     // Simulated mode is a single counter, not notes, so the whole balance is always sendable.

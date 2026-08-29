@@ -98,6 +98,10 @@ A step-by-step version for people who are not developers lives on
 
 - [Download the app](#download-the-app)
 - [Trying it](#trying-it)
+- [Submission](#submission)
+- [Screenshots](#screenshots)
+- [User feedback](#user-feedback)
+- [On-chain activity](#on-chain-activity)
 - [Overview](#overview)
 - [The problem](#the-problem)
 - [The solution](#the-solution)
@@ -117,6 +121,172 @@ A step-by-step version for people who are not developers lives on
 - [Documentation map](#documentation-map)
 - [CI](#ci)
 - [Roadmap](#roadmap)
+
+---
+
+## Submission
+
+Everything a reviewer needs, in one place. Every link below was checked live at the time of writing.
+
+| Item                    | Link                                                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Live demo (website)** | [provapay.duckdns.org](https://provapay.duckdns.org)                                                                                                                           |
+| **Demo video**          | [Watch the full walkthrough ↗](https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing)                                                             |
+| **Android APK**         | [Download v1.2.5 · 86 MB ↗](https://expo.dev/artifacts/eas/oAnuYNhjY-gr636BxvyngC_PMGn6MzBFHKH9Uok5k88.apk)                                                                    |
+| **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
+| **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
+| **Pool contract**       | [`CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`](https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX)        |
+| **Verifier contract**   | [`CBQ2HVIYASMYNRIKWM54JUA3A4OGQOWRP42BLMRRB262YQINAA36GD5U`](https://stellar.expert/explorer/testnet/contract/CBQ2HVIYASMYNRIKWM54JUA3A4OGQOWRP42BLMRRB262YQINAA36GD5U)        |
+| **Feedback form**       | [Submit feedback ↗](https://forms.gle/DVGDyJiRxeQ5QxuG7)                                                                                                                       |
+| **Feedback responses**  | [Response sheet ↗](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4jV3ayRW_0iJd23LAEmRPc3WthGs/edit?usp=sharing)                                                       |
+
+### Requirements
+
+| Requirement                             | Status        | Where                                                                              |
+| --------------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
+| Production-ready MVP                    | Done          | Deployed end-to-end; a private transfer settles on testnet today                   |
+| Stable frontend + contract architecture | Done          | [Architecture](#architecture) · [Smart contracts](#smart-contracts)                |
+| Mobile responsive UI                    | Done          | [Screenshots](#screenshots) — native Android app; the marketing site is responsive |
+| Loading states + error handling         | Done          | [Payment states](#payment-states-loading-and-error-handling)                       |
+| Production deployment                   | Done          | App, API, website and both contracts are live                                      |
+| Monitoring / analytics                  | Done          | [Monitoring](#monitoring-and-operations)                                           |
+| Project structure + documentation       | Done          | [Repository layout](#repository-layout) · [Documentation map](#documentation-map)  |
+| Contracts on Stellar testnet            | Done          | Both contract IDs above, verifiable on Stellar Expert                              |
+| 15+ meaningful commits                  | Done — **78** | `git rev-list --count HEAD`                                                        |
+| Public GitHub repository                | Done          | [github.com/soumen0818/Prova](https://github.com/soumen0818/Prova)                 |
+| User feedback collection                | Done          | [User feedback](#user-feedback)                                                    |
+| Proof of wallet interactions            | Partial       | [On-chain activity](#on-chain-activity) — see the note there                       |
+
+---
+
+## Screenshots
+
+Every screen below is the real app running against Stellar testnet.
+
+### Product UI
+
+<table>
+  <tr>
+    <td align="center"><img src="public/unlock.png" width="170" alt="Unlock screen with PIN and biometric entry"><br><sub><b>Unlock</b> — PIN or fingerprint</sub></td>
+    <td align="center"><img src="public/home.png" width="170" alt="Home screen showing private balance, recipients and recent activity"><br><sub><b>Home</b> — balance and activity</sub></td>
+    <td align="center"><img src="public/send.png" width="170" alt="Send screen with amount entry"><br><sub><b>Send</b> — amount entry</sub></td>
+    <td align="center"><img src="public/money_sending.png" width="170" alt="Proof being generated on the device during a send"><br><sub><b>Proving</b> — on-device ZK proof</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="public/activity.png" width="170" alt="Activity list showing sent, received and added entries"><br><sub><b>Activity</b> — local history</sub></td>
+    <td align="center"><img src="public/transection_details.png" width="170" alt="Transaction detail sheet with status and commitment"><br><sub><b>Transaction detail</b></sub></td>
+    <td align="center"><img src="public/new_recipient.png" width="170" alt="Add recipient screen with QR scan and address paste"><br><sub><b>Add recipient</b> — QR or paste</sub></td>
+    <td align="center"><img src="public/account_details.png" width="170" alt="Account details screen showing the receive address and QR code"><br><sub><b>Receive</b> — address and QR</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="public/profile.png" width="170" alt="Profile screen"><br><sub><b>Profile</b></sub></td>
+    <td align="center"><img src="public/chat.png" width="170" alt="In-app support conversation"><br><sub><b>Support</b> — in-app messages</sub></td>
+    <td align="center"><img src="public/flash.png" width="170" alt="App splash screen"><br><sub><b>Launch</b></sub></td>
+    <td></td>
+  </tr>
+</table>
+
+### Payment states (loading and error handling)
+
+Three outcomes, three different things to say. The rule throughout: never imply money moved when it
+did not, and never imply it is lost when it might still land.
+
+<table>
+  <tr>
+    <td align="center"><img src="public/payment_processing.png" width="200" alt="Payment processing screen stating the money is safe and not to send again"><br><sub><b>Processing</b><br>Outcome unknown — the screen says the money is safe and explicitly tells the user <i>not</i> to send again, because a duplicate payment is the expensive mistake here.</sub></td>
+    <td align="center"><img src="public/payment_successful.png" width="200" alt="Payment successful screen with transaction reference"><br><sub><b>Successful</b><br>Confirmed on-chain, with a reference that can be checked independently on Stellar Expert.</sub></td>
+    <td align="center"><img src="public/payment_failed.png" width="200" alt="Payment failed screen stating the user has not been charged"><br><sub><b>Failed</b><br>States plainly that nothing was charged, and offers a retry rather than leaving the user guessing.</sub></td>
+  </tr>
+</table>
+
+### Website (responsive)
+
+<table>
+  <tr>
+    <td align="center"><img src="public/monitoring_site.png" width="420" alt="Prova marketing website landing page"><br><sub><b>Landing page</b> — provapay.duckdns.org</sub></td>
+    <td align="center"><img src="public/try_prova_step.png" width="420" alt="Website download and onboarding steps section"><br><sub><b>Get the app</b> — download and onboarding steps</sub></td>
+  </tr>
+</table>
+
+### Monitoring and operations
+
+<p align="center">
+  <img src="public/monitoring_verifications.png" width="820" alt="Operations console showing approved KYC verifications with submission and approval dates">
+</p>
+
+The operations console at [`/ops`](https://provapay.duckdns.org/ops) is where verifications are
+reviewed and support conversations are answered. It shows queue state, per-submission status and
+approval timestamps.
+
+Note what is _not_ on that screen: no name, no document, no amount. The app checks identity documents
+on the device and never uploads them, so a reviewer decides on the record rather than on the
+paperwork — and an operator with full console access still cannot see what anyone is worth or who
+they paid. The API also exposes
+[`/healthz`](https://provapayment.duckdns.org/healthz),
+[`/readyz`](https://provapayment.duckdns.org/readyz) and
+[`/pool/status`](https://provapayment.duckdns.org/pool/status), the last of which reports tree size,
+queue depth and the most recent fold — queue depth being the number to alert on, since a rising queue
+means new notes are not becoming spendable.
+
+---
+
+## User feedback
+
+Collected through a public [feedback form](https://forms.gle/DVGDyJiRxeQ5QxuG7); raw responses live
+in the [response sheet](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4jV3ayRW_0iJd23LAEmRPc3WthGs/edit?usp=sharing).
+
+### Responses and what changed
+
+| #   | Date        | Tester        | Overall    | Reported                                                                                   | Action taken                                                                                                                                                                                                                                                                    | Status     | Commit                                                                                           |
+| --- | ----------- | ------------- | ---------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| 1   | 22 Aug 2026 | Souvik Mandal | **9 / 10** | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_ | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination. | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
+
+Reported 22 Aug 23:02; fixed and committed 23 Aug 00:45 — one hour and forty-three minutes later.
+
+### Ratings
+
+| Aspect                      | Rating          |
+| --------------------------- | --------------- |
+| Overall satisfaction        | 9 / 10          |
+| Ease of navigation / UI     | Excellent (4/4) |
+| Speed and performance       | Excellent (4/4) |
+| Reliability of transactions | Excellent (4/4) |
+| Security features           | Good (3/4)      |
+| Customer support            | Good (3/4)      |
+
+Tester email addresses are collected by the form for follow-up and are deliberately **not** reproduced
+here — publishing a tester's contact details in a public repository would be a poor trade for a
+product whose entire argument is that it does not leak what it does not need.
+
+---
+
+## On-chain activity
+
+Private transfers relayed through the pool contract on Stellar testnet. Each hash is independently
+verifiable — the contract, the ledger and the result are all public.
+
+| #   | Transaction                                                                                                                      | Date                  | Result                      |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------- |
+| 1   | [`328e56e8…3bf21c`](https://stellar.expert/explorer/testnet/tx/328e56e895cb21ede13bda7e0a349872e8028f4107034cb7cdf1ce59643bf21c) | 29 Aug 2026 05:44 UTC | ✅ Success · ledger 4391734 |
+| 2   | [`ad8e61ee…6843b5`](https://stellar.expert/explorer/testnet/tx/ad8e61eeb75f3f88917898acb3ddedb9c196b1be49b91a3d95d93cd9366843b5) | 29 Aug 2026 06:10 UTC | ✅ Success · ledger 4392045 |
+
+Both are `invoke_host_function` calls against the pool contract `CBLLKIUU…`, submitted by the relayer.
+
+**Why every transfer comes from one account, on purpose.** The proof already hides the amount and the
+parties — but somebody has to pay the fee and sign the submission, and if that were the sender's own
+Stellar account the chain would record "this account spent" next to the nullifier and the privacy
+would be gone in practice. So the backend relays instead, and every transfer arrives from the same
+account. What an observer learns is "Prova relayed a transfer", which is true of every transfer. The
+relayer cannot steal or redirect anything: the amount, both output notes, the payout destination and
+the encrypted payloads are all bound inside the proof. Its only powers are to refuse, and to see that
+a proof passed through it.
+
+> **On the 10-user requirement.** Onboarding is real and independently visible — the operations
+> console screenshot above shows **six approved Tier-2 verifications** spanning 17–29 Aug 2026, each
+> one a person who installed the app, submitted identity documents and was reviewed. What this table
+> does not yet do is enumerate ten _distinct_ wallet interactions, because a private transfer is
+> deliberately unlinkable: the chain shows a nullifier and two commitments, never a sender. Additional
+> transaction hashes are being added here as testers complete transfers.
 
 ---
 

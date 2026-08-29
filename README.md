@@ -160,7 +160,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | Monitoring / analytics                  | Done          | [Monitoring](#monitoring-and-operations)                                           |
 | Project structure + documentation       | Done          | [Repository layout](#repository-layout) · [Documentation map](#documentation-map)  |
 | Contracts on Stellar testnet            | Done          | Both contract IDs above, verifiable on Stellar Expert                              |
-| 15+ meaningful commits                  | Done — **78** | `git rev-list --count HEAD`                                                        |
+| 15+ meaningful commits                  | Done — **81** | `git rev-list --count HEAD`                                                        |
 | Public GitHub repository                | Done          | [github.com/soumen0818/Prova](https://github.com/soumen0818/Prova)                 |
 | User feedback collection                | Done          | [User feedback](#user-feedback)                                                    |
 | Proof of wallet interactions            | Partial       | [On-chain activity](#on-chain-activity) — see the note there                       |
@@ -222,6 +222,25 @@ did not, and never imply it is lost when it might still land.
   <img src="public/monitoring_verifications.png" width="820" alt="Operations console showing approved KYC verifications with submission and approval dates">
 </p>
 
+### Backend health
+
+Three public endpoints on the API at `provapayment.duckdns.org`. All three are live and need no
+authentication, so a reviewer can confirm the backend is up without taking anyone's word for it.
+
+| Endpoint                                                       | Purpose                                                                                 | Live response                                                                                        |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [`/healthz`](https://provapayment.duckdns.org/healthz)         | Liveness — the process is running, and which asset and environment it is configured for | `{"anchorAsset":"XLM","env":"production","maintenance":false,"schemaVersion":"0.1.0","status":"ok"}` |
+| [`/readyz`](https://provapayment.duckdns.org/readyz)           | Readiness — dependencies reachable, safe to route traffic to                            | `{"status":"ready"}`                                                                                 |
+| [`/pool/status`](https://provapayment.duckdns.org/pool/status) | Shielded-pool state — tree size, current root, queue depth, last fold                   | `{"root":"52e2b300…","treeSize":14,"queueDepth":0,"batch":8,"lastFoldAt":"…"}`                       |
+
+Liveness and readiness are split on purpose: a process that is up but cannot reach Postgres should be
+**live** and **not ready**, so an orchestrator restarts nothing and simply stops sending it traffic.
+
+`queueDepth` is the number to alert on. Notes are queued by `shield`/`transact` and only become
+spendable once a permissionless folder batches them into the Merkle tree, so a queue that climbs and
+stays up means the folder has stalled and new money is not becoming spendable — while everything else
+still looks healthy. `treeSize` and `lastFoldAt` are the corroborating figures.
+
 The operations console at [`/ops`](https://provapay.duckdns.org/ops) is where verifications are
 reviewed and support conversations are answered. It shows queue state, per-submission status and
 approval timestamps.
@@ -245,22 +264,33 @@ in the [response sheet](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4
 
 ### Responses and what changed
 
-| #   | Date        | Tester        | Overall    | Reported                                                                                   | Action taken                                                                                                                                                                                                                                                                    | Status     | Commit                                                                                           |
-| --- | ----------- | ------------- | ---------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
-| 1   | 22 Aug 2026 | Souvik Mandal | **9 / 10** | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_ | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination. | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
+| #   | Date        | Tester        | Overall    | Reported                                                                                   | Action taken                                                                                                                                                                                                                                                                                                                                                                                                                             | Status     | Commit                                                                                           |
+| --- | ----------- | ------------- | ---------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| 1   | 22 Aug 2026 | Souvik Mandal | **9 / 10** | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_ | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination.                                                                                                                                                          | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
+| 2   | 29 Aug 2026 | Suman Pradhan | **8 / 10** | Bug: _"After transection the balance show zero and few seconds latter balance appears."_   | A send marks the input note spent and returns the change **unfolded**, so the change counted as _confirming_ rather than spendable — and the balance headline was rendering the spendable figure. Paying 100 out of 1000 showed **0.00** while the user still owned 900. The balance now displays the **total** (spendable + confirming); every spend check still gates on the spendable figure, so nothing unspendable is ever offered. | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
 
-Reported 22 Aug 23:02; fixed and committed 23 Aug 00:45 — one hour and forty-three minutes later.
+Both reports were fixed the same day they arrived — the address request in 1 h 43 m (reported 22 Aug
+23:02, committed 23 Aug 00:45), and the balance bug the same evening it was filed.
 
 ### Ratings
 
-| Aspect                      | Rating          |
-| --------------------------- | --------------- |
-| Overall satisfaction        | 9 / 10          |
-| Ease of navigation / UI     | Excellent (4/4) |
-| Speed and performance       | Excellent (4/4) |
-| Reliability of transactions | Excellent (4/4) |
-| Security features           | Good (3/4)      |
-| Customer support            | Good (3/4)      |
+Two respondents to date.
+
+| Aspect                      | Souvik M.       | Suman P.   | Mean    |
+| --------------------------- | --------------- | ---------- | ------- |
+| Overall satisfaction        | 9 / 10          | 8 / 10     | **8.5** |
+| Ease of navigation / UI     | Excellent (4/4) | Good (3/4) | 3.5 / 4 |
+| Speed and performance       | Excellent (4/4) | Good (3/4) | 3.5 / 4 |
+| Reliability of transactions | Excellent (4/4) | Fair (2/4) | 3.0 / 4 |
+| Security features           | Good (3/4)      | Fair (2/4) | 2.5 / 4 |
+| Customer support            | Good (3/4)      | Good (3/4) | 3.0 / 4 |
+
+The two lowest scores are the informative ones. **Reliability of transactions** and **security
+features** were both rated by the tester who hit the zero-balance bug — a balance that reads 0.00
+straight after a payment is exactly what erodes confidence in whether a transfer worked, and it is
+reasonable for that to have coloured both answers. That specific cause is fixed in
+[`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f); the
+next round of feedback is the test of whether the scores follow.
 
 Tester email addresses are collected by the form for follow-up and are deliberately **not** reproduced
 here — publishing a tester's contact details in a public repository would be a poor trade for a
@@ -277,8 +307,11 @@ verifiable — the contract, the ledger and the result are all public.
 | --- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------- |
 | 1   | [`328e56e8…3bf21c`](https://stellar.expert/explorer/testnet/tx/328e56e895cb21ede13bda7e0a349872e8028f4107034cb7cdf1ce59643bf21c) | 29 Aug 2026 05:44 UTC | ✅ Success · ledger 4391734 |
 | 2   | [`ad8e61ee…6843b5`](https://stellar.expert/explorer/testnet/tx/ad8e61eeb75f3f88917898acb3ddedb9c196b1be49b91a3d95d93cd9366843b5) | 29 Aug 2026 06:10 UTC | ✅ Success · ledger 4392045 |
+| 3   | [`a773f25d…6adcd2`](https://stellar.expert/explorer/testnet/tx/a773f25d6247ea818a95fe6a41041c5adc91218e7f4bd3334dfdec0a9e6adcd2) | 29 Aug 2026 12:50 UTC | ✅ Success · ledger 4396854 |
 
-Both are `invoke_host_function` calls against the pool contract `CBLLKIUU…`, submitted by the relayer.
+All three are `invoke_host_function` calls against the pool contract `CBLLKIUU…`, submitted by the
+relayer. Transfer 3 was supplied by a tester through the feedback form — a transfer made by somebody
+other than the team.
 
 **Why every transfer comes from one account, on purpose.** The proof already hides the amount and the
 parties — but somebody has to pay the fee and sign the submission, and if that were the sender's own

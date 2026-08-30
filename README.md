@@ -28,8 +28,8 @@
 </p>
 
 <p align="center">
-  <a href="https://expo.dev/artifacts/eas/oAnuYNhjY-gr636BxvyngC_PMGn6MzBFHKH9Uok5k88.apk">
-    <img alt="Download the Prova Android APK — version 1.2.5, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.5%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  <a href="https://expo.dev/artifacts/eas/S3UI3AsafMHAheHu7FOPUICsSlhVlauXQ8bwA4HrSu8.apk">
+    <img alt="Download the Prova Android APK — version 1.2.6, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.6%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
   </a>
   <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
     <img alt="Watch the Prova demo video" src="https://img.shields.io/badge/Watch%20Demo-Video-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
@@ -49,7 +49,7 @@
     <td align="center" width="150">
       <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
       <br><br>
-      <a href="https://expo.dev/artifacts/eas/oAnuYNhjY-gr636BxvyngC_PMGn6MzBFHKH9Uok5k88.apk">
+      <a href="https://expo.dev/artifacts/eas/S3UI3AsafMHAheHu7FOPUICsSlhVlauXQ8bwA4HrSu8.apk">
         <img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
       </a>
       <br><br>
@@ -59,7 +59,7 @@
     </td>
     <td>
       <table>
-        <tr><td><b>Version</b></td><td>1.2.5 · 86 MB</td></tr>
+        <tr><td><b>Version</b></td><td>1.2.6 · 86 MB</td></tr>
         <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
         <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
         <tr><td><b>Demo video</b></td><td><a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">Watch the walkthrough ↗</a></td></tr>
@@ -140,7 +140,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Live demo (website)** | [provapay.duckdns.org](https://provapay.duckdns.org)                                                                                                                           |
 | **Demo video**          | [Watch the full walkthrough ↗](https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing)                                                             |
-| **Android APK**         | [Download v1.2.5 · 86 MB ↗](https://expo.dev/artifacts/eas/oAnuYNhjY-gr636BxvyngC_PMGn6MzBFHKH9Uok5k88.apk)                                                                    |
+| **Android APK**         | [Download v1.2.6 · 86 MB ↗](https://expo.dev/artifacts/eas/S3UI3AsafMHAheHu7FOPUICsSlhVlauXQ8bwA4HrSu8.apk)                                                                    |
 | **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
 | **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
 | **Pool contract**       | [`CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`](https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX)        |
@@ -264,33 +264,39 @@ in the [response sheet](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4
 
 ### Responses and what changed
 
-| #   | Date        | Tester        | Overall    | Reported                                                                                   | Action taken                                                                                                                                                                                                                                                                                                                                                                                                                             | Status     | Commit                                                                                           |
-| --- | ----------- | ------------- | ---------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
-| 1   | 22 Aug 2026 | Souvik Mandal | **9 / 10** | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_ | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination.                                                                                                                                                          | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
-| 2   | 29 Aug 2026 | Suman Pradhan | **8 / 10** | Bug: _"After transection the balance show zero and few seconds latter balance appears."_   | A send marks the input note spent and returns the change **unfolded**, so the change counted as _confirming_ rather than spendable — and the balance headline was rendering the spendable figure. Paying 100 out of 1000 showed **0.00** while the user still owned 900. The balance now displays the **total** (spendable + confirming); every spend check still gates on the spendable figure, so nothing unspendable is ever offered. | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
+| #   | Date        | Tester           | Overall    | Reported                                                                                                                                                | Action taken                                                                                                                                                                                                                                                                                                                                                                                                                             | Status     | Commit                                                                                           |
+| --- | ----------- | ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| 1   | 22 Aug 2026 | Souvik Mandal    | **9 / 10** | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_                                                              | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination.                                                                                                                                                          | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
+| 2   | 29 Aug 2026 | Suman Pradhan    | **8 / 10** | Bug: _"After transection the balance show zero and few seconds latter balance appears."_                                                                | A send marks the input note spent and returns the change **unfolded**, so the change counted as _confirming_ rather than spendable — and the balance headline was rendering the spendable figure. Paying 100 out of 1000 showed **0.00** while the user still owned 900. The balance now displays the **total** (spendable + confirming); every spend check still gates on the spendable figure, so nothing unspendable is ever offered. | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
+| 3   | 30 Aug 2026 | Nurudeen Adebayo | **9 / 10** | No bug reported. Rated every aspect **Excellent (4/4)** and recommendation **5/5** — the first response collected after both earlier fixes had shipped. | Nothing to fix. Recorded as a post-fix baseline: the first session in which no defect was reported.                                                                                                                                                                                                                                                                                                                                      | —          | —                                                                                                |
 
 Both reports were fixed the same day they arrived — the address request in 1 h 43 m (reported 22 Aug
 23:02, committed 23 Aug 00:45), and the balance bug the same evening it was filed.
 
 ### Ratings
 
-Two respondents to date.
+Three respondents to date.
 
-| Aspect                      | Souvik M.       | Suman P.   | Mean    |
-| --------------------------- | --------------- | ---------- | ------- |
-| Overall satisfaction        | 9 / 10          | 8 / 10     | **8.5** |
-| Ease of navigation / UI     | Excellent (4/4) | Good (3/4) | 3.5 / 4 |
-| Speed and performance       | Excellent (4/4) | Good (3/4) | 3.5 / 4 |
-| Reliability of transactions | Excellent (4/4) | Fair (2/4) | 3.0 / 4 |
-| Security features           | Good (3/4)      | Fair (2/4) | 2.5 / 4 |
-| Customer support            | Good (3/4)      | Good (3/4) | 3.0 / 4 |
+| Aspect                      | Souvik M.       | Suman P.   | Nurudeen A.     | Mean         |
+| --------------------------- | --------------- | ---------- | --------------- | ------------ |
+| Overall satisfaction        | 9 / 10          | 8 / 10     | 9 / 10          | **8.7 / 10** |
+| Ease of navigation / UI     | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.7 / 4      |
+| Speed and performance       | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.7 / 4      |
+| Reliability of transactions | Excellent (4/4) | Fair (2/4) | Excellent (4/4) | 3.3 / 4      |
+| Security features           | Good (3/4)      | Fair (2/4) | Excellent (4/4) | 3.0 / 4      |
+| Customer support            | Good (3/4)      | Good (3/4) | Excellent (4/4) | 3.3 / 4      |
+| Would recommend             | 4 / 5           | 4 / 5      | 5 / 5           | 4.3 / 5      |
 
-The two lowest scores are the informative ones. **Reliability of transactions** and **security
-features** were both rated by the tester who hit the zero-balance bug — a balance that reads 0.00
-straight after a payment is exactly what erodes confidence in whether a transfer worked, and it is
-reasonable for that to have coloured both answers. That specific cause is fixed in
-[`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f); the
-next round of feedback is the test of whether the scores follow.
+The lowest scores are the informative ones. **Reliability of transactions** (2/4) and **security
+features** (2/4) both come from the tester who hit the zero-balance bug — a balance reading 0.00
+straight after a payment is exactly what erodes confidence that a transfer worked, and it is
+reasonable for that to have coloured both answers. That cause is fixed in
+[`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f).
+
+Response 3 is the first collected after both fixes shipped, and it reported no defect and rated every
+aspect Excellent. That is the direction you would want — but it is one response, not a trend. Three
+testers is far too small a sample to claim the scores moved _because_ of the fixes, so it is recorded
+as a baseline to measure the next round against rather than as evidence on its own.
 
 Tester email addresses are collected by the form for follow-up and are deliberately **not** reproduced
 here — publishing a tester's contact details in a public repository would be a poor trade for a

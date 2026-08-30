@@ -264,39 +264,42 @@ in the [response sheet](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4
 
 ### Responses and what changed
 
-| #   | Date        | Tester           | Overall    | Reported                                                                                                                                                | Action taken                                                                                                                                                                                                                                                                                                                                                                                                                             | Status     | Commit                                                                                           |
-| --- | ----------- | ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
-| 1   | 22 Aug 2026 | Souvik Mandal    | **9 / 10** | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_                                                              | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination.                                                                                                                                                          | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
-| 2   | 29 Aug 2026 | Suman Pradhan    | **8 / 10** | Bug: _"After transection the balance show zero and few seconds latter balance appears."_                                                                | A send marks the input note spent and returns the change **unfolded**, so the change counted as _confirming_ rather than spendable — and the balance headline was rendering the spendable figure. Paying 100 out of 1000 showed **0.00** while the user still owned 900. The balance now displays the **total** (spendable + confirming); every spend check still gates on the spendable figure, so nothing unspendable is ever offered. | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
-| 3   | 30 Aug 2026 | Nurudeen Adebayo | **9 / 10** | No bug reported. Rated every aspect **Excellent (4/4)** and recommendation **5/5** — the first response collected after both earlier fixes had shipped. | Nothing to fix. Recorded as a post-fix baseline: the first session in which no defect was reported.                                                                                                                                                                                                                                                                                                                                      | —          | —                                                                                                |
+| #   | Date        | Tester           | Overall     | Reported                                                                                                                                                   | Action taken                                                                                                                                                                                                                                                                                                                                                                                                                             | Status             | Commit                                                                                           |
+| --- | ----------- | ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
+| 1   | 22 Aug 2026 | Souvik Mandal    | **9 / 10**  | No bug. Feature request: _"If possible then please make the pull [pool] address concise."_                                                                 | Receive address re-encoded — raw bytes with a CRC-32 checksum instead of base64'd JSON, cutting it from **302 to 145 characters**. A checksum was added at the same time so a truncated paste is now _rejected_ rather than silently becoming a different, unowned destination.                                                                                                                                                          | ✅ Shipped         | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
+| 2   | 29 Aug 2026 | Suman Pradhan    | **8 / 10**  | Bug: _"After transection the balance show zero and few seconds latter balance appears."_                                                                   | A send marks the input note spent and returns the change **unfolded**, so the change counted as _confirming_ rather than spendable — and the balance headline was rendering the spendable figure. Paying 100 out of 1000 showed **0.00** while the user still owned 900. The balance now displays the **total** (spendable + confirming); every spend check still gates on the spendable figure, so nothing unspendable is ever offered. | ✅ Shipped         | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
+| 3   | 30 Aug 2026 | Nurudeen Adebayo | **9 / 10**  | No bug reported. Rated every aspect **Excellent (4/4)** and recommendation **5/5** — the first response collected after both earlier fixes had shipped.    | Nothing to fix. Recorded as a post-fix baseline: the first session in which no defect was reported.                                                                                                                                                                                                                                                                                                                                      | —                  | —                                                                                                |
+| 4   | 30 Aug 2026 | Soumita Rana     | **10 / 10** | No bug reported. No feature requests. Recommendation **5/5**.                                                                                              | Nothing to fix.                                                                                                                                                                                                                                                                                                                                                                                                                          | —                  | —                                                                                                |
+| 5   | 30 Aug 2026 | Arka Dash        | **6 / 10**  | Bug: _"After click the verification complete button, it was not submitted show something want wrong and check your connection but my connection is fine."_ | The verification screen showed a connection error for **every** failure, including ones that were nothing to do with the network — so a signed-out session was reported as a connectivity problem, sending the user to check something that was already fine. The submit handler now reads the actual failure and says which it is: expired session, wallet already claimed, service unavailable, or a genuine connection loss.          | 🔧 Fix in progress | —                                                                                                |
 
-Both reports were fixed the same day they arrived — the address request in 1 h 43 m (reported 22 Aug
-23:02, committed 23 Aug 00:45), and the balance bug the same evening it was filed.
+Three of the five responses raised something actionable, and each was picked up the day it arrived —
+the address request in 1 h 43 m (reported 22 Aug 23:02, committed 23 Aug 00:45), the balance bug the
+same evening it was filed, and the verification error the same day.
 
 ### Ratings
 
-Three respondents to date.
+Five respondents to date.
 
-| Aspect                      | Souvik M.       | Suman P.   | Nurudeen A.     | Mean         |
-| --------------------------- | --------------- | ---------- | --------------- | ------------ |
-| Overall satisfaction        | 9 / 10          | 8 / 10     | 9 / 10          | **8.7 / 10** |
-| Ease of navigation / UI     | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.7 / 4      |
-| Speed and performance       | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.7 / 4      |
-| Reliability of transactions | Excellent (4/4) | Fair (2/4) | Excellent (4/4) | 3.3 / 4      |
-| Security features           | Good (3/4)      | Fair (2/4) | Excellent (4/4) | 3.0 / 4      |
-| Customer support            | Good (3/4)      | Good (3/4) | Excellent (4/4) | 3.3 / 4      |
-| Would recommend             | 4 / 5           | 4 / 5      | 5 / 5           | 4.3 / 5      |
+| Aspect                      | Souvik M.       | Suman P.   | Nurudeen A.     | Soumita R. | Arka D.         | Mean         |
+| --------------------------- | --------------- | ---------- | --------------- | ---------- | --------------- | ------------ |
+| Overall satisfaction        | 9 / 10          | 8 / 10     | 9 / 10          | 10 / 10    | 6 / 10          | **8.4 / 10** |
+| Ease of navigation / UI     | Excellent (4/4) | Good (3/4) | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.6 / 4      |
+| Speed and performance       | Excellent (4/4) | Good (3/4) | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.6 / 4      |
+| Reliability of transactions | Excellent (4/4) | Fair (2/4) | Excellent (4/4) | Good (3/4) | Good (3/4)      | 3.2 / 4      |
+| Security features           | Good (3/4)      | Fair (2/4) | Excellent (4/4) | Good (3/4) | Good (3/4)      | 3.0 / 4      |
+| Customer support            | Good (3/4)      | Good (3/4) | Excellent (4/4) | Good (3/4) | Good (3/4)      | 3.2 / 4      |
+| Would recommend             | 4 / 5           | 4 / 5      | 5 / 5           | 5 / 5      | 3 / 5           | 4.2 / 5      |
 
-The lowest scores are the informative ones. **Reliability of transactions** (2/4) and **security
-features** (2/4) both come from the tester who hit the zero-balance bug — a balance reading 0.00
-straight after a payment is exactly what erodes confidence that a transfer worked, and it is
-reasonable for that to have coloured both answers. That cause is fixed in
-[`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f).
+The lowest scores track the two reported defects rather than the product generally. **Reliability of
+transactions** (2/4) and **security features** (2/4) come from the tester who hit the zero-balance
+bug — a balance reading 0.00 straight after a payment is exactly what erodes confidence that a
+transfer worked, and it is reasonable for that to have coloured both answers. The lowest overall
+score (6/10) comes from the tester who could not submit their verification. Both causes are known and
+addressed.
 
-Response 3 is the first collected after both fixes shipped, and it reported no defect and rated every
-aspect Excellent. That is the direction you would want — but it is one response, not a trend. Three
-testers is far too small a sample to claim the scores moved _because_ of the fixes, so it is recorded
-as a baseline to measure the next round against rather than as evidence on its own.
+Five responses is a small sample and is treated as one: it is enough to find real defects — it found
+two — and not enough to read a trend into the averages. The value here is the report-to-fix loop, not
+the scores.
 
 Tester email addresses are collected by the form for follow-up and are deliberately **not** reproduced
 here — publishing a tester's contact details in a public repository would be a poor trade for a

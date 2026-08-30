@@ -10,6 +10,7 @@ import { Loader } from '@/components/loader';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import {
+  ApiError,
   getVerification,
   startVerification,
   type CapturedArtifact,
@@ -56,6 +57,49 @@ const POLL_MS = 3000;
 type Phase = 'loading' | 'identity' | 'intro' | 'capture' | 'status' | 'verified';
 
 /**
+ * What to tell someone whose verification would not submit.
+ *
+ * One message per cause, because the causes have different fixes and only one of them is the
+ * network. Blaming the connection for all of them sent a tester to check a connection that was
+ * working, at the end of a flow they had just spent minutes on.
+ *
+ * A 401 is worth special care. `api` already clears the dead session and the root gate redirects to
+ * sign-in on its own, so by the time this renders the person is on their way out of the flow — the
+ * message explains what is about to happen rather than asking them to do something.
+ */
+function submitErrorMessage(e: unknown): string {
+  if (!(e instanceof ApiError)) {
+    // Not an API failure at all — a capture or storage problem on the device.
+    return 'Something went wrong preparing your verification. Please try again.';
+  }
+  // Transport failure or abort. The one case where checking the connection is the right advice.
+  if (e.status === 0) {
+    return 'Could not reach Prova. Check your connection and try again.';
+  }
+  switch (e.status) {
+    case 401:
+      return (
+        'Your session expired, so we could not submit this. Sign in again and your documents ' +
+        'will be ready to resubmit.'
+      );
+    case 403:
+      // Either the wallet belongs to another account, or the verification is terminally rejected.
+      // The server writes both to be read by a person, so use its words rather than guessing which.
+      return e.message;
+    case 429:
+      return 'Too many attempts. Please wait a moment and try again.';
+    default:
+      if (e.status >= 500) {
+        return (
+          'Verification is temporarily unavailable — this one is on us, not you. Please try ' +
+          'again in a few minutes.'
+        );
+      }
+      return e.message;
+  }
+}
+
+/**
  * Identity verification (Docs/kyc-verification.md).
  *
  * Capture ID + selfie → submit → poll the async state machine → on approval collect the
@@ -67,6 +111,7 @@ type Phase = 'loading' | 'identity' | 'intro' | 'capture' | 'status' | 'verified
  *  - **Approval is not instant and can fail.** `pending` and `in_review` are normal states, and a
  *    rejection may be terminal (sanctions/duplicate), in which case retrying is blocked.
  */
+
 export default function KycScreen() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -186,7 +231,22 @@ export default function KycScreen() {
         setPhase('status');
       } catch (e) {
         captureError(e, { step: 'kyc-submit' });
-        setError('Could not submit your verification. Check your connection and try again.');
+        /*
+         * Say which failure it was.
+         *
+         * This used to report *every* failure as "check your connection and try again", including
+         * ones the network had nothing to do with. A tester whose session had gone stale was told to
+         * check a connection that was working perfectly, went and checked it, and reported the app
+         * as broken — reasonably, because nothing on screen pointed at the actual problem.
+         *
+         * It lands at the worst possible moment: the end of verification, after photographing an ID
+         * and taking a selfie. Somebody who is told the wrong cause there does not retry, they give
+         * up. `ApiError.status` already carries what happened, so there is no excuse for guessing.
+         *
+         * Note `status === 0` is the ONLY genuine connectivity failure — `api` gives transport
+         * errors and aborts that code. Branch on status, never on the message.
+         */
+        setError(submitErrorMessage(e));
       } finally {
         setBusy(false);
       }

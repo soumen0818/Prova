@@ -28,8 +28,8 @@
 </p>
 
 <p align="center">
-  <a href="https://expo.dev/artifacts/eas/S3UI3AsafMHAheHu7FOPUICsSlhVlauXQ8bwA4HrSu8.apk">
-    <img alt="Download the Prova Android APK — version 1.2.6, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.6%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  <a href="https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk">
+    <img alt="Download the Prova Android APK — version 1.2.7, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.7%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
   </a>
   <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
     <img alt="Watch the Prova demo video" src="https://img.shields.io/badge/Watch%20Demo-Video-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
@@ -49,7 +49,7 @@
     <td align="center" width="150">
       <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
       <br><br>
-      <a href="https://expo.dev/artifacts/eas/S3UI3AsafMHAheHu7FOPUICsSlhVlauXQ8bwA4HrSu8.apk">
+      <a href="https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk">
         <img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
       </a>
       <br><br>
@@ -59,7 +59,7 @@
     </td>
     <td>
       <table>
-        <tr><td><b>Version</b></td><td>1.2.6 · 86 MB</td></tr>
+        <tr><td><b>Version</b></td><td>1.2.7 · 86 MB</td></tr>
         <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
         <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
         <tr><td><b>Demo video</b></td><td><a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">Watch the walkthrough ↗</a></td></tr>
@@ -140,7 +140,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Live demo (website)** | [provapay.duckdns.org](https://provapay.duckdns.org)                                                                                                                           |
 | **Demo video**          | [Watch the full walkthrough ↗](https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing)                                                             |
-| **Android APK**         | [Download v1.2.6 · 86 MB ↗](https://expo.dev/artifacts/eas/S3UI3AsafMHAheHu7FOPUICsSlhVlauXQ8bwA4HrSu8.apk)                                                                    |
+| **Android APK**         | [Download v1.2.7 · 86 MB ↗](https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk)                                                                    |
 | **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
 | **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
 | **Pool contract**       | [`CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`](https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX)        |

@@ -125,6 +125,38 @@ function fallbackMessage(status: number): string {
 const REQUEST_TIMEOUT_MS = 15_000;
 
 /**
+ * Timeout for requests that carry a proof or start a verification.
+ *
+ * 15 seconds is generous on a home connection and tight on shared WiFi. Two testers reported the app
+ * as "not working on the wifi network" and "slow network issue" from an office and a college — both
+ * networks that queue traffic behind hundreds of other people, where a round trip of 20-30 seconds is
+ * unremarkable. The request was not failing; it was being cut off while still in flight.
+ *
+ * These are the calls worth waiting for: they happen once, the user is watching, and the alternative
+ * to waiting is redoing the whole flow. Ordinary reads keep the shorter budget so a dead network
+ * still surfaces quickly.
+ */
+const SLOW_REQUEST_TIMEOUT_MS = 45_000;
+
+/**
+ * How many times to retry a request that never got an answer.
+ *
+ * Only transport failures and timeouts are retried, and only for idempotent calls — see `retryable`
+ * in `json`. A congested network drops or delays individual requests rather than failing outright, so
+ * one immediate retry converts most of those into a success the user never sees. There was previously
+ * no retry anywhere on this path: a single unlucky request meant a failed verification and a
+ * "check your connection" message, on a connection that was working.
+ */
+const MAX_RETRIES = 2;
+
+/** Delay before retry n (0-indexed), with a little jitter so replicas do not sync up. */
+function retryDelayMs(attempt: number): number {
+  return (attempt + 1) * 1000 + Math.floor(Math.random() * 300);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
  * Forget the signed-in account after the server rejects its token.
  *
  * Both halves matter: the stored session is what later requests would keep sending, and the cached
@@ -164,10 +196,23 @@ async function authHeader(): Promise<Record<string, string>> {
   }
 }
 
-async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+/**
+ * Per-request network behaviour.
+ *
+ * `retryable` is the load-bearing one and defaults to **false**. A request that never returned may
+ * still have been received and acted on, so retrying is only safe where doing the work twice is
+ * harmless — a GET, or a POST the backend treats idempotently. Getting this wrong on `/pool/spend`
+ * would mean paying somebody twice, which is why nothing opts in by default.
+ */
+interface NetOptions {
+  /** Safe to send again if no answer came back. Never set this on anything that moves money. */
+  retryable?: boolean;
+  /** Use the longer budget — for calls the user is actively waiting on. */
+  slow?: boolean;
+}
+
+async function json<T>(path: string, init?: RequestInit, net: NetOptions = {}): Promise<T> {
+  const budget = net.slow ? SLOW_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
   /*
    * Attach the session to every request.
    *
@@ -180,22 +225,48 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
    */
   const auth = await authHeader();
   const authenticated = auth.Authorization !== undefined;
-  try {
-    res = await fetch(`${baseUrl()}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...auth },
-      ...init,
-      signal: controller.signal,
-    });
-  } catch {
-    // fetch rejects on a transport failure (nearly always connectivity) or our own timeout abort
-    // above — both read the same to the user, so one message covers them.
+
+  /*
+   * Retry only when the request produced no response at all.
+   *
+   * A server that answered has decided; sending the same thing again would just repeat the decision
+   * (or, worse, repeat the work). Silence is the only ambiguous case, and it is the one shared WiFi
+   * actually produces — a dropped or delayed packet, not a refusal.
+   */
+  let res: Response | undefined;
+  const attempts = net.retryable ? MAX_RETRIES + 1 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), budget);
+    try {
+      res = await fetch(`${baseUrl()}${path}`, {
+        headers: { 'Content-Type': 'application/json', ...auth },
+        ...init,
+        signal: controller.signal,
+      });
+      break;
+    } catch {
+      // fetch rejects on a transport failure (nearly always connectivity) or our own timeout abort
+      // above — both read the same to the user, so one message covers them.
+      if (attempt === attempts - 1) {
+        throw new ApiError(
+          'Can’t reach Prova. Check your connection and try again.',
+          'network_error',
+          0,
+        );
+      }
+      await sleep(retryDelayMs(attempt));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  if (!res) {
+    // Unreachable: the loop either breaks with a response or throws above. Narrows the type.
     throw new ApiError(
       'Can’t reach Prova. Check your connection and try again.',
       'network_error',
       0,
     );
-  } finally {
-    clearTimeout(timeout);
   }
 
   if (!res.ok) {
@@ -445,15 +516,21 @@ export function startVerification(
   captured: CapturedArtifact[] = [],
   email?: string,
 ): Promise<VerificationRecord> {
-  return json<VerificationRecord>('/kyc/verifications', {
-    method: 'POST',
-    body: JSON.stringify({ userId, tier, captured, email }),
-  });
+  return json<VerificationRecord>(
+    '/kyc/verifications',
+    { method: 'POST', body: JSON.stringify({ userId, tier, captured, email }) },
+    // Safe to resend: the backend upserts on user_id (ON CONFLICT DO UPDATE), so a duplicate
+    // submission replaces the row rather than creating a second verification. `slow` because this is
+    // the end of a flow the user has just spent minutes on — worth waiting for on a busy network.
+    { retryable: true, slow: true },
+  );
 }
 
 /** Current verification status for a wallet. */
 export function getVerification(userId: string): Promise<VerificationRecord> {
-  return json<VerificationRecord>(`/kyc/verifications/${encodeURIComponent(userId)}`);
+  return json<VerificationRecord>(`/kyc/verifications/${encodeURIComponent(userId)}`, undefined, {
+    retryable: true,
+  });
 }
 
 /**
@@ -461,10 +538,13 @@ export function getVerification(userId: string): Promise<VerificationRecord> {
  * verification — a 403 means verification isn't approved (not a client bug).
  */
 export function fetchCredential(userId: string): Promise<KycCredential> {
-  return json<KycCredential>('/kyc/credential', {
-    method: 'POST',
-    body: JSON.stringify({ userId }),
-  });
+  return json<KycCredential>(
+    '/kyc/credential',
+    { method: 'POST', body: JSON.stringify({ userId }) },
+    // A read in POST clothing: it returns the credential for an already-approved verification and
+    // changes nothing, so resending is free.
+    { retryable: true, slow: true },
+  );
 }
 
 /** Renew the credential before expiry (re-screens, then re-issues with a fresh window). */
@@ -581,12 +661,14 @@ export interface PoolSpendBody {
 
 /** Pool health: tree size, current root, and whether the folder is keeping up. */
 export function getPoolStatus(): Promise<PoolStatus> {
-  return json<PoolStatus>('/pool/status');
+  return json<PoolStatus>('/pool/status', undefined, { retryable: true });
 }
 
 /** One page of the scan feed, from `after` onward. */
 export function getPoolNotes(after: number, limit = 200): Promise<PoolScanResponse> {
-  return json<PoolScanResponse>(`/pool/notes?after=${after}&limit=${limit}`);
+  return json<PoolScanResponse>(`/pool/notes?after=${after}&limit=${limit}`, undefined, {
+    retryable: true,
+  });
 }
 
 /**
@@ -596,7 +678,7 @@ export function getPoolNotes(after: number, limit = 200): Promise<PoolScanRespon
  * wait and retry rather than treat it as missing.
  */
 export function getPoolPath(commitment: string): Promise<PoolMerklePath> {
-  return json<PoolMerklePath>(`/pool/path/${commitment}`);
+  return json<PoolMerklePath>(`/pool/path/${commitment}`, undefined, { retryable: true });
 }
 
 /** Which of these nullifiers are already spent on-chain. */

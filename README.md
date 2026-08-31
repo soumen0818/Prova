@@ -160,7 +160,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | Monitoring / analytics                  | Done          | [Monitoring](#monitoring-and-operations)                                           |
 | Project structure + documentation       | Done          | [Repository layout](#repository-layout) · [Documentation map](#documentation-map)  |
 | Contracts on Stellar testnet            | Done          | Both contract IDs above, verifiable on Stellar Expert                              |
-| 15+ meaningful commits                  | Done — **88** | `git rev-list --count HEAD`                                                        |
+| 15+ meaningful commits                  | Done — **93** | `git rev-list --count HEAD`                                                        |
 | Public GitHub repository                | Done          | [github.com/soumen0818/Prova](https://github.com/soumen0818/Prova)                 |
 | User feedback collection                | Done          | [User feedback](#user-feedback)                                                    |
 | Proof of wallet interactions            | Partial       | [On-chain activity](#on-chain-activity) — see the note there                       |
@@ -264,13 +264,18 @@ in the [response sheet](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4
 
 ### Responses and what changed
 
-| #   | Date        | Tester           | Wallet                                                                                                                      | Overall     | Reported                                                                       | Action taken                                                                                                                                                              | Status     | Commit                                                                                           |
-| --- | ----------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
-| 1   | 22 Aug 2026 | Souvik Mandal    | [`GAG3SU…3YLKR4`](https://stellar.expert/explorer/testnet/account/GAG3SUKHIF7VAWGTDRH52XETMLZXXNXBAZLLXHSLXAQPOBBCN43YLKR4) | **9 / 10**  | No bug. Asked for a shorter pool address.                                      | Receive address re-encoded with a CRC-32 checksum: **302 → 145 characters**, and a corrupted paste is now rejected rather than silently accepted.                         | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
-| 2   | 29 Aug 2026 | Suman Pradhan    | [`GAGQNP…PXSD22`](https://stellar.expert/explorer/testnet/account/GAGQNPPV5VA47L4MFYAH7KS6XY65YOSOVLWOHZUDY4SCMHOEQGPXSD22) | **8 / 10**  | Bug: balance showed zero right after a transfer.                               | The balance now shows the **total** (spendable + confirming) instead of only the spendable part. Spend checks still gate on spendable, so nothing unspendable is offered. | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
-| 3   | 30 Aug 2026 | Nurudeen Adebayo | [`GC3TR6…D3FFQT`](https://stellar.expert/explorer/testnet/account/GC3TR6ZLDH5RMTYVPNRKFDNAG2GT7L6E3CEP33SJNZTHISLDZWD3FFQT) | **9 / 10**  | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix — recorded as a post-fix baseline.                                                                                                                         | —          | —                                                                                                |
-| 4   | 30 Aug 2026 | Soumita Rana     | [`GBDIL5…UQK2UM`](https://stellar.expert/explorer/testnet/account/GBDIL5J7XMFHNGCV4S3WPV2G27NLXGS52OBIN2RUNTUL7GEVU5UQK2UM) | **10 / 10** | No bug. No requests, recommend 5/5.                                            | Nothing to fix.                                                                                                                                                           | —          | —                                                                                                |
-| 5   | 30 Aug 2026 | Arka Dash        | [`GAN7XF…YDZONQ`](https://stellar.expert/explorer/testnet/account/GAN7XFEYV2D7HYJWZID54R3NTRB6WDPCBPGZU6DDPTIZHCVL37YDZONQ) | **6 / 10**  | Bug: verification would not submit — "check your connection", but it was fine. | The screen reported every failure as a connection error. It now names the actual cause — expired session, claimed wallet, service down, or real connection loss.          | ✅ Shipped | [`65d2b71`](https://github.com/soumen0818/Prova/commit/65d2b718e46fc34c5f27773d9c882fd2990af938) |
+| #   | Date        | Tester            | Wallet                                                                                                                      | Overall     | Reported                                                                       | Action taken                                                                                                                                                                         | Status     | Commit                                                                                           |
+| --- | ----------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------ |
+| 1   | 22 Aug 2026 | Souvik Mandal     | [`GAG3SU…3YLKR4`](https://stellar.expert/explorer/testnet/account/GAG3SUKHIF7VAWGTDRH52XETMLZXXNXBAZLLXHSLXAQPOBBCN43YLKR4) | **9 / 10**  | No bug. Asked for a shorter pool address.                                      | Receive address re-encoded with a CRC-32 checksum: **302 → 145 characters**, and a corrupted paste is now rejected rather than silently accepted.                                    | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
+| 2   | 29 Aug 2026 | Suman Pradhan     | [`GAGQNP…PXSD22`](https://stellar.expert/explorer/testnet/account/GAGQNPPV5VA47L4MFYAH7KS6XY65YOSOVLWOHZUDY4SCMHOEQGPXSD22) | **8 / 10**  | Bug: balance showed zero right after a transfer.                               | The balance now shows the **total** (spendable + confirming) instead of only the spendable part. Spend checks still gate on spendable, so nothing unspendable is offered.            | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
+| 3   | 30 Aug 2026 | Nurudeen Adebayo  | [`GC3TR6…D3FFQT`](https://stellar.expert/explorer/testnet/account/GC3TR6ZLDH5RMTYVPNRKFDNAG2GT7L6E3CEP33SJNZTHISLDZWD3FFQT) | **9 / 10**  | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix — recorded as a post-fix baseline.                                                                                                                                    | —          | —                                                                                                |
+| 4   | 30 Aug 2026 | Soumita Rana      | [`GBDIL5…UQK2UM`](https://stellar.expert/explorer/testnet/account/GBDIL5J7XMFHNGCV4S3WPV2G27NLXGS52OBIN2RUNTUL7GEVU5UQK2UM) | **10 / 10** | No bug. No requests, recommend 5/5.                                            | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
+| 5   | 30 Aug 2026 | Arka Dash         | [`GAN7XF…YDZONQ`](https://stellar.expert/explorer/testnet/account/GAN7XFEYV2D7HYJWZID54R3NTRB6WDPCBPGZU6DDPTIZHCVL37YDZONQ) | **6 / 10**  | Bug: verification would not submit — "check your connection", but it was fine. | The screen reported every failure as a connection error. It now names the actual cause — expired session, claimed wallet, service down, or real connection loss.                     | ✅ Shipped | [`65d2b71`](https://github.com/soumen0818/Prova/commit/65d2b718e46fc34c5f27773d9c882fd2990af938) |
+| 6   | 31 Aug 2026 | Soumen Mandal     | [`GB25FQ…GOCVWH`](https://stellar.expert/explorer/testnet/account/GB25FQZFXNE6ZHJPA2NKGEJEHAD4Q2JONLXYVSQ6UVP7757QCGGOCVWH) | **10 / 10** | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
+| 7   | 31 Aug 2026 | Soumyajit Maity   | [`GCMURV…LMFHKN`](https://stellar.expert/explorer/testnet/account/GCMURVMOGIZGIYYIBYXX6DUYLJSQB3UZGTPYWV6PIFZAU3EYQJLMFHKN) | **8 / 10**  | Bug: _"Slow network issue"_ — on office WiFi.                                  | Requests had a flat 15s timeout and no retry, so a congested network was cut off mid-flight. Waiting calls now get 45s, and idempotent ones retry — never anything that moves money. | ✅ Shipped | [`52504b4`](https://github.com/soumen0818/Prova/commit/52504b4eb6b8eb12228930c7c984c108e46b2075) |
+| 8   | 31 Aug 2026 | Shubhadeep Biswas | [`GB2TJ3…352RZI`](https://stellar.expert/explorer/testnet/account/GB2TJ3XCFPHTTEGV24VHZ5BRV6BLRKXQMRQD5KIXZY3CMEV5Q2352RZI) | **10 / 10** | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
+| 9   | 31 Aug 2026 | Snigdha Mandal    | [`GBUQV6…6IY5EK`](https://stellar.expert/explorer/testnet/account/GBUQV6B2LRWRLTEDJNROWJDKV5KMLII6VTNKZGLWEUAHFGZIIJ6IY5EK) | **9 / 10**  | Bug: _"The app is not working on the wifi network"_ — on college WiFi.         | Same cause and fix as 7.                                                                                                                                                             | ✅ Shipped | [`52504b4`](https://github.com/soumen0818/Prova/commit/52504b4eb6b8eb12228930c7c984c108e46b2075) |
+| 10  | 31 Aug 2026 | Abdul Rahman      | [`GDX456…D3Y7HK`](https://stellar.expert/explorer/testnet/account/GDX4565AJ4DBGP3HGDIV7F6QJ3IPOVDLG3BOXTHS5ITWKJMEWND3Y7HK) | **9 / 10**  | No bug reported.                                                               | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
 
 Three of the five responses raised something actionable, and all three are fixed and committed. Each
 was picked up the day it arrived — the address request in 1 h 43 m (reported 22 Aug 23:02, committed
@@ -278,33 +283,32 @@ was picked up the day it arrived — the address request in 1 h 43 m (reported 2
 
 ### Ratings
 
-Five respondents to date.
+Ten respondents to date. One skipped the per-aspect grid, so those rows count nine.
 
-| Aspect                      | Souvik M.       | Suman P.   | Nurudeen A.     | Soumita R. | Arka D.         | Mean         |
-| --------------------------- | --------------- | ---------- | --------------- | ---------- | --------------- | ------------ |
-| Overall satisfaction        | 9 / 10          | 8 / 10     | 9 / 10          | 10 / 10    | 6 / 10          | **8.4 / 10** |
-| Ease of navigation / UI     | Excellent (4/4) | Good (3/4) | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.6 / 4      |
-| Speed and performance       | Excellent (4/4) | Good (3/4) | Excellent (4/4) | Good (3/4) | Excellent (4/4) | 3.6 / 4      |
-| Reliability of transactions | Excellent (4/4) | Fair (2/4) | Excellent (4/4) | Good (3/4) | Good (3/4)      | 3.2 / 4      |
-| Security features           | Good (3/4)      | Fair (2/4) | Excellent (4/4) | Good (3/4) | Good (3/4)      | 3.0 / 4      |
-| Customer support            | Good (3/4)      | Good (3/4) | Excellent (4/4) | Good (3/4) | Good (3/4)      | 3.2 / 4      |
-| Would recommend             | 4 / 5           | 4 / 5      | 5 / 5           | 5 / 5      | 3 / 5           | 4.2 / 5      |
+| Aspect                      | Responses | Mean         |
+| --------------------------- | --------- | ------------ |
+| Overall satisfaction        | 10        | **8.8 / 10** |
+| Ease of navigation / UI     | 9         | 3.8 / 4      |
+| Speed and performance       | 9         | 3.7 / 4      |
+| Reliability of transactions | 9         | 3.6 / 4      |
+| Security features           | 9         | 3.3 / 4      |
+| Customer support            | 9         | 3.3 / 4      |
+| Would recommend             | 10        | 4.2 / 5      |
 
-The lowest scores track the two reported defects rather than the product generally. **Reliability of
-transactions** (2/4) and **security features** (2/4) come from the tester who hit the zero-balance
-bug — a balance reading 0.00 straight after a payment is exactly what erodes confidence that a
-transfer worked, and it is reasonable for that to have coloured both answers. The lowest overall
-score (6/10) comes from the tester who could not submit their verification. Both causes are known and
-addressed.
+The lowest scores track specific defects rather than the product generally. **Security features**
+(3.3) and **customer support** (3.3) are the weakest, and both readings are fair: security is largely
+invisible in a wallet that hides its own workings, and support is one person answering an in-app
+inbox. The lowest overall score (6/10) came from the tester who could not submit a verification, and
+both 3/5 recommendation scores came from the pair on shared WiFi.
 
-Five responses is a small sample and is treated as one: it is enough to find real defects — it found
-two — and not enough to read a trend into the averages. The value here is the report-to-fix loop, not
-the scores.
+All four reported defects are fixed and committed. Ten responses is a small sample and is treated as
+one: enough to surface real bugs — it surfaced four — and not enough to read a trend into the
+averages. The value here is the report-to-fix loop, not the scores.
 
 Wallet addresses are each tester's own Stellar account, as supplied on the form, and link to Stellar
-Expert. Two of the five resolve to funded accounts; the other three are valid but unfunded, because an
-account is only created on-chain when someone taps **Add money** — a tester can install, verify and
-give feedback without ever funding one. All five addresses were checksum-validated before publishing.
+Expert. Not all resolve to funded accounts: an account is only created on-chain when someone taps
+**Add money**, so a tester can install, verify and give feedback without ever funding one. All
+addresses were checksum-validated before publishing.
 
 Tester email addresses are collected by the form for follow-up and are deliberately **not** reproduced
 here — publishing a tester's contact details in a public repository would be a poor trade for a
@@ -322,10 +326,11 @@ verifiable — the contract, the ledger and the result are all public.
 | 1   | [`328e56e8…3bf21c`](https://stellar.expert/explorer/testnet/tx/328e56e895cb21ede13bda7e0a349872e8028f4107034cb7cdf1ce59643bf21c) | 29 Aug 2026 05:44 UTC | ✅ Success · ledger 4391734 |
 | 2   | [`ad8e61ee…6843b5`](https://stellar.expert/explorer/testnet/tx/ad8e61eeb75f3f88917898acb3ddedb9c196b1be49b91a3d95d93cd9366843b5) | 29 Aug 2026 06:10 UTC | ✅ Success · ledger 4392045 |
 | 3   | [`a773f25d…6adcd2`](https://stellar.expert/explorer/testnet/tx/a773f25d6247ea818a95fe6a41041c5adc91218e7f4bd3334dfdec0a9e6adcd2) | 29 Aug 2026 12:50 UTC | ✅ Success · ledger 4396854 |
+| 4   | [`aee6ab3c…9f7aef`](https://stellar.expert/explorer/testnet/tx/aee6ab3c5fa61d9a4e2722a73b17e4616f64ec57bdf5413c72b23faafb9f7aef) | 31 Aug 2026 07:57 UTC | ✅ Success · ledger 4427891 |
 
-All three are `invoke_host_function` calls against the pool contract `CBLLKIUU…`, submitted by the
-relayer. Transfer 3 was supplied by a tester through the feedback form — a transfer made by somebody
-other than the team.
+All four are `invoke_host_function` calls against the pool contract `CBLLKIUU…`, submitted by the
+relayer. Transfers 3 and 4 were supplied by testers through the feedback form — transfers made by
+somebody other than the team.
 
 **Why every transfer comes from one account, on purpose.** The proof already hides the amount and the
 parties — but somebody has to pay the fee and sign the submission, and if that were the sender's own

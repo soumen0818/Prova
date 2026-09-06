@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/prova/backend/internal/pool"
+	"github.com/prova/backend/internal/provider"
 	"github.com/prova/backend/internal/store"
 	"github.com/prova/shared/schema"
 )
@@ -229,26 +230,58 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txHash, err := h.pool.Relay(r.Context(), req)
+	/*
+	 * Settlement goes through the provider interface (Docs/progress.md §0.1).
+	 *
+	 * Same relayer underneath and identical behaviour — what changes is that this handler now depends
+	 * on `SettlementProvider` rather than on `*pool.Service`, so it can be tested against a stub and
+	 * a different settlement backend can be evaluated without touching this file.
+	 */
+	settled, err := h.settlement.Settle(r.Context(), provider.SettlementRequest{
+		Kind:        settlementKind(req),
+		ProofHex:    string(req.Proof),
+		Root:        string(req.Root),
+		Nullifier:   string(req.Nullifier),
+		CurrentTime: req.CurrentTime,
+		Amount:      req.Amount,
+		Destination: req.Destination,
+		Outputs: provider.SettlementOutputs{
+			C1:         string(req.Outputs.C1),
+			C2:         string(req.Outputs.C2),
+			EpkX:       string(req.Outputs.EpkX),
+			EpkY:       string(req.Outputs.EpkY),
+			Enc1Amount: string(req.Outputs.Enc1Amount),
+			Enc1Rho:    string(req.Outputs.Enc1Rho),
+			Enc2Amount: string(req.Outputs.Enc2Amount),
+			Enc2Rho:    string(req.Outputs.Enc2Rho),
+		},
+		// The nullifier already makes this idempotent on-chain — the contract refuses one it has
+		// seen — so no separate key is needed. See StellarSettlement.Settle.
+		IdempotencyKey: string(req.Nullifier),
+	})
+	var txHash string
+	if settled != nil {
+		txHash = settled.TxHash
+	}
 	switch {
-	case errors.Is(err, pool.ErrRelayUnavailable):
+	case errors.Is(err, provider.ErrUnavailable):
 		writeError(w, http.StatusServiceUnavailable, schema.ErrPoolUnavailable,
 			"Transfers are temporarily unavailable. Your money is safe — please try again shortly.")
 		return
-	case errors.Is(err, pool.ErrNoteAlreadySpent):
+	case errors.Is(err, provider.ErrAlreadySettled):
 		// Also the shape of an honest retry of something that already landed, so it is a 409 rather
 		// than an accusation. The wallet branches on the code; the message is what a person reads,
 		// and "nullifier already used" is not a sentence anyone can act on.
 		writeError(w, http.StatusConflict, schema.ErrNullifierAlreadyUsed,
 			"This payment has already gone through. Check your activity before sending again.")
 		return
-	case errors.Is(err, pool.ErrRootExpired):
+	case errors.Is(err, provider.ErrRootExpired):
 		// Actionable, but only for the wallet: it should refetch its path and re-prove rather than
 		// retry as-is. That instruction belongs in the code, not in the sentence a sender reads.
 		writeError(w, http.StatusConflict, schema.ErrNoteNotFolded,
 			"This transfer took too long to confirm. Nothing was sent — please try again.")
 		return
-	case errors.Is(err, pool.ErrSpendRejected):
+	case errors.Is(err, provider.ErrProofRejected):
 		// Recorded like any other relay failure: "rejected" has two possible causes with different
 		// fixes, and the difference is only in the CLI's output. It goes to the store and the log,
 		// where an operator can read it — never into the response.
@@ -270,7 +303,7 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, schema.ErrInvalidProof,
 			"We couldn't complete this transfer. Your money has not been sent. Please try again.")
 		return
-	case errors.Is(err, pool.ErrPoolPaused):
+	case errors.Is(err, provider.ErrPaused):
 		// Worth saying withdrawals still work: a pause is the moment people most want to know their
 		// money is not locked in.
 		writeError(w, http.StatusServiceUnavailable, schema.ErrPoolUnavailable,
@@ -296,4 +329,15 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, schema.PoolSpendResponse{TxHash: txHash})
+}
+
+// settlementKind reads transfer-vs-withdrawal from the request.
+//
+// An unshield is exactly a spend that names a destination and a positive amount; the circuit
+// enforces the converse — a zero public amount forbids naming one — so the two cannot be confused.
+func settlementKind(req schema.PoolSpendRequest) provider.SpendKind {
+	if req.Amount > 0 {
+		return provider.KindUnshield
+	}
+	return provider.KindTransact
 }

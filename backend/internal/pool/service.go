@@ -29,6 +29,14 @@ func NewService(st *store.Store, prover Prover, relay *Relayer) *Service {
 	return &Service{store: st, prover: prover, relay: relay}
 }
 
+// Relayer exposes the configured relayer, or nil when none is.
+//
+// Narrow accessor rather than an exported field: the relayer is constructed with credentials and
+// must stay unmodifiable after construction. This exists so internal/provider can wrap it behind
+// SettlementProvider (Docs/progress.md §0.1) without Deps having to carry it separately, which would
+// let the two drift apart.
+func (s *Service) Relayer() *Relayer { return s.relay }
+
 // ErrRelayUnavailable means no relayer is configured.
 var ErrRelayUnavailable = errors.New("no relayer configured")
 

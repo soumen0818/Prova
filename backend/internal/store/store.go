@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/prova/backend/internal/lifecycle"
 	"github.com/prova/backend/migrations"
 	"github.com/prova/shared/schema"
 )
@@ -158,12 +159,47 @@ RETURNING id, status, commitment, nullifier, tx_hash, created_at, updated_at`,
 	return t, true, nil
 }
 
-// SetStatus updates status (and optionally tx hash) for a transfer.
+// SetStatus updates status (and optionally tx hash) for a transfer, enforcing the state machine.
+//
+// # Why the read happens inside a transaction
+//
+// The check and the write have to be atomic. Two writers racing — the relayer reporting "submitted"
+// while the indexer reports "confirmed" — could otherwise both read the old status, both find their
+// move legal, and the loser's write would land last and walk the transfer backwards. `FOR UPDATE`
+// makes the row's own lock the serialisation point, so the second writer reads the first's result
+// and is refused by the machine rather than by luck.
+//
+// The alternative — validating in Go against a status read earlier — is exactly the check-then-act
+// race that produces "confirmed" turning back into "submitted" on somebody's screen.
 func (s *Store) SetStatus(ctx context.Context, id string, status schema.TransferStatus, txHash string) error {
-	_, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
+
+	var current schema.TransferStatus
+	err = tx.QueryRow(ctx, `SELECT status FROM transfers WHERE id = $1 FOR UPDATE`, id).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := lifecycle.Transition(current, status); err != nil {
+		// Returned rather than swallowed: a refused transition is either a bug in the caller or a
+		// late duplicate, and both deserve to be visible. Callers that expect duplicates should
+		// check errors.Is(err, lifecycle.ErrTerminal) and move on.
+		return fmt.Errorf("transfer %s: %w", id, err)
+	}
+
+	if _, err := tx.Exec(ctx, `
 UPDATE transfers SET status = $2, tx_hash = COALESCE(NULLIF($3, ''), tx_hash), updated_at = now()
-WHERE id = $1`, id, status, txHash)
-	return err
+WHERE id = $1`, id, status, txHash); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Get fetches a transfer by id.

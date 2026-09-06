@@ -36,7 +36,7 @@ regardless. Phase 1 answers whether the rest of this document should exist at al
 **Risk:** low — refactoring and additive work only.
 **Why first:** every item pays for itself immediately. Nothing here is wasted if Phase 1 says no.
 
-### 0.1 Provider interfaces ☐
+### 0.1 Provider interfaces ☑
 
 Introduce `PrivacyProvider` and `SettlementProvider` in `backend/internal/`, with the current
 implementations behind them:
@@ -48,15 +48,16 @@ Stellar is already well contained (`internal/chain/`, `internal/pool/`), so this
 a rewrite.
 
 **Exit test:** can the settlement backend be swapped for a stub in a test, without touching
-remittance business logic?
+remittance business logic? — **yes**, `TestSettlementProviderIsSubstitutable` ([`ff55014`](https://github.com/soumen0818/Prova/commit/ff55014)).
 
-### 0.2 Explicit transfer state machine ☐
+### 0.2 Explicit transfer state machine ☑
 
 The states already exist implicitly — proving, relaying, folding, settled, failed — but nothing
 models them. Add the machine from the V2 doc §23, with the failure states, and persist transitions.
 
 **Exit test:** for any transfer id, can the system answer "where is this, and what happened to it?"
-from stored state alone, with no log grepping?
+from stored state alone, with no log grepping? — **yes**, and illegal transitions are now refused in
+`Store.SetStatus` ([`33dc593`](https://github.com/soumen0818/Prova/commit/33dc593)).
 
 ### 0.3 Compliance policy as data ☐
 
@@ -305,7 +306,7 @@ Carried from the V2 doc §47, and not negotiable:
 
 | Phase                   | Status | Blocking question                                     |
 | ----------------------- | ------ | ----------------------------------------------------- |
-| 0 — Foundations         | ☐      | — (start here)                                        |
+| 0 — Foundations         | ◐      | 0.1 ☑ · 0.2 ☑ · 0.3–0.5 remaining                     |
 | 1 — Midnight decision   | ☐      | What can Midnight do that the current circuit cannot? |
 | 2 — Privacy core        | ☐      | Gated on Phase 1                                      |
 | 3 — Settlement boundary | ☐      | What enforces intent authenticity?                    |

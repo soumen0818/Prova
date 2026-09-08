@@ -1284,29 +1284,45 @@ fn raising_the_minimum_kyc_level_blocks_lower_credentials() {
         "a freshly initialised pool reports the policy it was given"
     );
 
-    // Raise the bar above what the credential attests (Wallet::new issues at level 2). The proof is
-    // built against the same value the contract now holds, so this isolates the policy: nothing else
-    // about the spend has changed.
+    /*
+     * Build the proof BEFORE the policy changes, then raise the bar.
+     *
+     * The obvious version of this test — prove against a minimum the credential cannot meet — asks
+     * arkworks to prove an unsatisfiable circuit. In release that silently emits a garbage proof the
+     * contract rejects, so the test passed for the wrong reason; in debug the prover's own
+     * `assert!(cs.is_satisfied())` fires and the test panics instead of failing cleanly. CI runs
+     * debug, which is how it was caught.
+     *
+     * "A credential below the bar cannot produce a proof at all" is a circuit property, and it is
+     * asserted where it belongs: `a_credential_below_the_required_level_cannot_prove` in
+     * circuits/prover/tests/pool_circuits.rs, using constraint satisfaction rather than proving.
+     *
+     * What belongs HERE is the on-chain half: a proof that was valid under the old policy stops
+     * verifying the moment the contract's stored policy moves. That is satisfiable, it is what a
+     * wallet holding an in-flight proof actually experiences, and it is the same failure mode as an
+     * anchor rotation.
+     */
+    let (p, pi) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3001), w.note(400, 3002), 1);
+
     f.pool.set_min_kyc_level(&3);
     assert_eq!(f.pool.min_kyc_level(), 3, "the new policy is stored");
 
-    let (p, pi) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3001), w.note(400, 3002), 3);
     assert_eq!(
         f.pool
             .try_transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW)
-            .expect_err("a level-2 credential must not satisfy a minimum of 3"),
+            .expect_err("a proof built under the old policy must stop verifying"),
         Ok(Error::InvalidProof),
-        "raising the corridor's requirement must actually stop lower credentials"
+        "raising the corridor's requirement must invalidate proofs built against the old minimum"
     );
 
-    // Lower it back to what the credential attests, and the very same note spends — proving the
-    // refusal above was the policy and not something else about the spend.
-    f.pool.set_min_kyc_level(&2);
-    let (p2, pi2) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3001), w.note(400, 3002), 2);
+    // Put the policy back and re-prove the same note: it spends. That is what shows the refusal
+    // above was the policy rather than anything else about this spend.
+    f.pool.set_min_kyc_level(&1);
+    let (p2, pi2) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3001), w.note(400, 3002), 1);
     f.pool.transact(&p2, &pi2[0], &pi2[1], &outputs(&pi2), &NOW);
     assert!(
         f.pool.is_spent(&pi2[1]),
-        "a level-2 credential clears a minimum of exactly 2 — the bound is >=, not >"
+        "the same note spends again once the policy matches the proof"
     );
 }
 

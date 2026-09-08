@@ -254,6 +254,41 @@ fn groth16_rejects_a_substituted_kyc_minimum() {
     );
 }
 
+/// Circuit sizes, printed for the record.
+///
+/// Not an assertion — these are the numbers Phase 1.2 of Docs/progress.md needs in order to compare
+/// any alternative proof system against what is already deployed. A migration argued without them is
+/// a preference, not an engineering case.
+#[test]
+fn report_circuit_sizes() {
+    for (name, cs) in [
+        ("spend", {
+            let cs = ConstraintSystem::<Fr>::new_ref();
+            Scenario::new(70, 1000)
+                .spend(600, 400, 0, Fr::from(0u64))
+                .generate_constraints(cs.clone())
+                .unwrap();
+            cs
+        }),
+        ("shield", {
+            let cs = ConstraintSystem::<Fr>::new_ref();
+            let s = Scenario::new(71, 1000);
+            ShieldCircuit::new(s.cfg.clone(), 1000, s.owner_pk, s.rho, s.enc.pk, JubjubFr::from(7u64))
+                .generate_constraints(cs.clone())
+                .unwrap();
+            cs
+        }),
+    ] {
+        println!(
+            "  {:<8} constraints={:<8} public_inputs={:<4} witnesses={}",
+            name,
+            cs.num_constraints(),
+            cs.num_instance_variables(),
+            cs.num_witness_variables(),
+        );
+    }
+}
+
 /// Changing the policy must NOT change the circuit, or the whole exercise was pointless: a
 /// different verifying key means a redeploy and a forced app update, which is what this replaced.
 #[test]

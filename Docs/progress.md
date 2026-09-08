@@ -109,7 +109,7 @@ backend be dropped in without touching business logic?_
 
 Everything downstream assumes the answer is yes. Do not skip it because the answer feels obvious.
 
-### 1.1 Name the gap ☐
+### 1.1 Name the gap ☑
 
 Write one page: **what can Midnight express that the current circuit cannot?**
 
@@ -124,7 +124,7 @@ Candidate answers worth testing — none of these is yet established:
 **Exit test:** is there at least one capability, written down concretely, that the current system
 cannot do and a real user need requires?
 
-### 1.2 Measure, do not assume ☐
+### 1.2 Measure, do not assume ◐
 
 Build the smallest possible Midnight circuit — credential + one compliance rule — and record:
 
@@ -157,7 +157,11 @@ Option **C** is the least disruptive and preserves the current security model; o
 most architecturally pure and the most work. There is no neutral choice — each trades something.
 
 **Phase 1 exit test:** _Is there a written, measured case that Midnight does something the current
-system cannot, and is the custody model decided?_
+system cannot, and is the custody model decided?_ — **not met.** See
+[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md): the baseline is measured
+(spend = 24,729 constraints, ~700–800 ms desktop), the strongest original argument (policy
+flexibility) was answered by Phase 0.3 without Midnight, and the Midnight column cannot be filled
+without building a real circuit.
 
 > **Gate.** If this test fails, stop here. Phase 0 has already improved the product, the V2
 > principles are adopted, and the honest outcome is "we evaluated it and it did not earn the
@@ -310,16 +314,16 @@ Carried from the V2 doc §47, and not negotiable:
 
 ## Current status
 
-| Phase                   | Status | Blocking question                                     |
-| ----------------------- | ------ | ----------------------------------------------------- |
-| 0 — Foundations         | ◐      | 0.1–0.4 ☑ · 0.5 needs a device and a browser          |
-| 1 — Midnight decision   | ☐      | What can Midnight do that the current circuit cannot? |
-| 2 — Privacy core        | ☐      | Gated on Phase 1                                      |
-| 3 — Settlement boundary | ☐      | What enforces intent authenticity?                    |
-| 4 — Stellar adapter     | ☐      | Licensed payout partner (commercial)                  |
-| 5 — App integration     | ☐      | On-device proving must survive                        |
-| 6 — Hardening           | ☐      | —                                                     |
-| 7 — Cutover             | ☐      | —                                                     |
+| Phase                   | Status | Blocking question                                        |
+| ----------------------- | ------ | -------------------------------------------------------- |
+| 0 — Foundations         | ◐      | 0.1–0.4 ☑ · 0.5 needs a device and a browser             |
+| 1 — Midnight decision   | ◐      | 1.1 ☑ — gap not established; needs Midnight measurements |
+| 2 — Privacy core        | ☐      | Gated on Phase 1                                         |
+| 3 — Settlement boundary | ☐      | What enforces intent authenticity?                       |
+| 4 — Stellar adapter     | ☐      | Licensed payout partner (commercial)                     |
+| 5 — App integration     | ☐      | On-device proving must survive                           |
+| 6 — Hardening           | ☐      | —                                                        |
+| 7 — Cutover             | ☐      | —                                                        |
 
 **What is deployed today** (the baseline this plan starts from, not a prototype): two verified
 Soroban contracts on Stellar testnet, an on-device ZK prover, a working shielded pool with

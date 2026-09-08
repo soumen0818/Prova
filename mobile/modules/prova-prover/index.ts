@@ -115,6 +115,14 @@ export interface SpendProveInput {
   anchor_pk_x: string;
   anchor_pk_y: string;
   current_time: number;
+  /**
+   * The corridor's minimum KYC level, from `/pool/status`.
+   *
+   * A public input, so it must match what the contract holds exactly — the contract supplies its own
+   * copy during verification, and proving against a stale value fails the pairing check the same way
+   * a stale root does. Omitted falls back to the prover's built-in default.
+   */
+  min_kyc_level?: number;
 }
 
 export interface SpendProveOutput {

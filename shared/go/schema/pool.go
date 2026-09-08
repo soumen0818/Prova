@@ -305,6 +305,17 @@ type PoolStatus struct {
 	QueueDepth int64 `json:"queueDepth"`
 	// Batch is how many a single fold can carry (MerkleBatch).
 	Batch int `json:"batch"`
+	/*
+	 * MinKycLevel is the corridor's current KYC policy, read from the contract.
+	 *
+	 * A wallet MUST prove against this exact value: it is a public input, and the contract supplies
+	 * its own copy during verification, so proving against a stale one fails the pairing check the
+	 * same way a stale root does. Served here because there is no other way for a wallet to learn it.
+	 *
+	 * Zero means "could not read it" — a wallet should then fall back to its built-in default rather
+	 * than proving against 0, which no credential could satisfy.
+	 */
+	MinKycLevel uint64 `json:"minKycLevel,omitempty"`
 
 	/*
 	 * The folder's last outcome, so a stall explains itself.
@@ -370,4 +381,33 @@ type PoolSpendRequest struct {
 // PoolSpendResponse is the relay outcome.
 type PoolSpendResponse struct {
 	TxHash string `json:"txHash"`
+}
+
+// StuckTransfer is one transfer that entered a non-terminal state and stopped moving.
+//
+// Carries no amount, like every other transfer record — reconciliation is about *where* a transfer
+// is, and knowing that never requires knowing what it was worth.
+type StuckTransfer struct {
+	TransferID string         `json:"transferId"`
+	Status     TransferStatus `json:"status"`
+	Commitment string         `json:"commitment,omitempty"`
+	Nullifier  string         `json:"nullifier,omitempty"`
+	TxHash     string         `json:"txHash,omitempty"`
+	CreatedAt  string         `json:"createdAt"`
+	UpdatedAt  string         `json:"updatedAt"`
+	// StuckFor is how long since the status last changed, pre-formatted so an operator reading an
+	// alert does not have to subtract timestamps.
+	StuckFor string `json:"stuckFor"`
+	// Settled reports whether the money provably moved. The distinction an operator needs first:
+	// a stalled transfer that already settled is a bookkeeping problem, one that never settled is
+	// somebody's missing payment.
+	Settled bool `json:"settled"`
+}
+
+// ReconcileReport answers "is anything stuck?". An empty Transfers list is the healthy answer.
+type ReconcileReport struct {
+	// StuckAfter is the window used, echoed back so the report is self-describing.
+	StuckAfter string          `json:"stuckAfter"`
+	Count      int             `json:"count"`
+	Transfers  []StuckTransfer `json:"transfers"`
 }

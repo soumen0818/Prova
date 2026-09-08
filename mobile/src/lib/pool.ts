@@ -32,6 +32,7 @@ import {
   ApiError,
   getPoolNotes,
   getPoolPath,
+  getPoolStatus,
   getSpentNullifiers,
   relayPoolSpend,
   type PoolNoteRecord,
@@ -56,6 +57,16 @@ import { secureRandomHex } from './wallet';
 
 /** How many feed entries to pull per scan page. Trial decryption is ~0.4 ms per note. */
 const SCAN_PAGE = 200;
+
+/**
+ * Minimum KYC level to prove against when the contract's policy cannot be read.
+ *
+ * Matches `DEFAULT_MIN_KYC_LEVEL` in the pool contract and `credential::MIN_KYC_LEVEL` in the
+ * prover: the value every pool starts with. Guessing this is unavoidable when the backend is
+ * unreachable, and guessing the historical default is right far more often than guessing 0 — which
+ * no credential could fail, and would therefore hide a policy the contract is actually enforcing.
+ */
+const DEFAULT_MIN_KYC_LEVEL = 1;
 
 // ---------------------------------------------------------------------------
 // Identity
@@ -561,6 +572,21 @@ async function spend(args: SpendArgs): Promise<string> {
   // queued but not folded — real money that cannot move yet.
   const path = await getPoolPath(input.commitment);
 
+  /*
+   * The corridor's KYC policy, read from the chain rather than assumed.
+   *
+   * `min_kyc_level` is a public input, and the contract supplies its own stored copy when it
+   * verifies. Proving against a different value fails the pairing check with `Error(Contract, #4)` —
+   * the same opaque rejection a stale root or a drifted timestamp produces, and just as hard to
+   * diagnose from the outside. So it is fetched, never hardcoded.
+   *
+   * Falls back to the built-in default when the backend cannot read it (it serves 0 in that case).
+   * That is the value every pool started with, so it is right far more often than 0 would be — and
+   * 0 is a value no credential could ever fail, which would be the wrong direction to guess in.
+   */
+  const status = await getPoolStatus().catch(() => null);
+  const minKycLevel = status?.minKycLevel || DEFAULT_MIN_KYC_LEVEL;
+
   // out1 goes to the payee, out2 is the change back to us. An unshield sends its value out publicly,
   // so out1 carries zero and the change still returns here.
   const change = input.amount - amountStroops;
@@ -617,6 +643,7 @@ async function spend(args: SpendArgs): Promise<string> {
     anchor_pk_x: credential.anchor.x,
     anchor_pk_y: credential.anchor.y,
     current_time: currentTime,
+    min_kyc_level: minKycLevel,
   });
 
   onProgress?.('submitting');

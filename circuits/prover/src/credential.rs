@@ -20,7 +20,21 @@ use ark_std::rand::Rng;
 use crate::{poseidon_config, poseidon_hash_n};
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 
-/// Minimum acceptable KYC level (frozen for circuit v2).
+/// Default minimum acceptable KYC level.
+///
+/// # This is a default, not the rule
+///
+/// In the **pool** circuit (v3) the minimum is a *public input* supplied by the verifier, so the
+/// contract's stored policy decides it and a corridor can raise the bar without a new circuit. This
+/// constant is only the value used when nothing else is specified — CLI defaults, test fixtures, and
+/// the legacy v2 per-transfer circuit in `lib.rs`, which still bakes it in.
+///
+/// # Why the pool circuit takes it as an input rather than a witness
+///
+/// A private witness would let the prover choose their own minimum, which makes the constraint
+/// worthless: anyone could prove `kyc_level >= 0`. As a public input the value is fixed by whoever
+/// verifies — on-chain that is the contract reading its own storage, so the policy cannot be
+/// influenced by the person being checked.
 pub const MIN_KYC_LEVEL: u64 = 1;
 
 /// A Schnorr/EdDSA signature over Jubjub.

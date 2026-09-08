@@ -16,6 +16,7 @@ import (
 	"github.com/prova/backend/internal/mailer"
 	"github.com/prova/backend/internal/otp"
 	"github.com/prova/backend/internal/pool"
+	"github.com/prova/backend/internal/provider"
 	"github.com/prova/backend/internal/ratelimit"
 	"github.com/prova/backend/internal/session"
 	"github.com/prova/backend/internal/store"
@@ -62,6 +63,21 @@ type handler struct {
 	// layer — it is an append and a list, and inventing a service to wrap two queries would be
 	// structure for its own sake.
 	store *store.Store
+
+	/*
+	 * The network boundaries (Docs/progress.md §0.1).
+	 *
+	 * `settlement` is what moves value; `privacy` is what the privacy layer knows publicly. Both are
+	 * interfaces so a handler can be exercised against a stub, and so a different backend can be
+	 * evaluated without rewriting the routes that use it.
+	 *
+	 * Held ALONGSIDE `pool` rather than replacing it, deliberately. The pool service still serves the
+	 * feed and shield paths that have no provider equivalent yet, and swapping every call site at
+	 * once would risk the working product for a refactor. Routes migrate one at a time; see
+	 * poolSpend, which is the first.
+	 */
+	settlement provider.SettlementProvider
+	privacy    provider.PrivacyProvider
 }
 
 // Deps are the runtime dependencies the server needs. Any service may be nil (e.g. when
@@ -100,10 +116,14 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 		pool:                 deps.Pool,
 		shielder:             deps.Shielder,
 		store:                deps.Store,
-		limiter:              ratelimit.New(deps.Redis),
-		otp:                  otp.New(deps.Redis),
-		sessions:             session.New(deps.Redis),
-		mailer:               deps.Mailer,
+		// Built here rather than passed in Deps: they are adapters over dependencies Deps already
+		// carries, so constructing them at the call site would let the two versions drift.
+		settlement: provider.NewStellarSettlement(relayerOf(deps.Pool)),
+		privacy:    provider.NewStellarPrivacy(deps.Pool),
+		limiter:    ratelimit.New(deps.Redis),
+		otp:        otp.New(deps.Redis),
+		sessions:   session.New(deps.Redis),
+		mailer:     deps.Mailer,
 	}
 	if h.mailer == nil {
 		h.mailer = mailer.Noop{}
@@ -174,6 +194,8 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 	// Operator console. Everything under /ops is gated by COMPLIANCE_TOKEN inside the handler —
 	// grouped by prefix so it is obvious at a glance which routes are staff-only.
 	mux.HandleFunc("GET /ops/kyc/verifications", h.listVerifications)
+	// Reconciliation: transfers that stalled in flight. Empty is the healthy answer.
+	mux.HandleFunc("GET /ops/reconcile", h.opsReconcile)
 	mux.HandleFunc("GET /ops/support/threads", h.listSupportThreads)
 	mux.HandleFunc("GET /ops/support/threads/{userId}", h.opsSupportThread)
 	mux.HandleFunc("POST /ops/support/threads/{userId}/messages", h.replySupportMessage)
@@ -197,4 +219,16 @@ func logging(logger *slog.Logger, next http.Handler) http.Handler {
 			"duration", time.Since(start).String(),
 		)
 	})
+}
+
+// relayerOf reaches the relayer inside a pool service, tolerating a nil service.
+//
+// Deployments without Postgres have no pool service at all, and a nil-receiver method call would
+// panic during construction — before any request, and therefore before any handler could turn it
+// into a 503.
+func relayerOf(p *pool.Service) *pool.Relayer {
+	if p == nil {
+		return nil
+	}
+	return p.Relayer()
 }

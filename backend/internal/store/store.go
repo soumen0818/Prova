@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/prova/backend/internal/lifecycle"
 	"github.com/prova/backend/migrations"
 	"github.com/prova/shared/schema"
 )
@@ -158,12 +159,47 @@ RETURNING id, status, commitment, nullifier, tx_hash, created_at, updated_at`,
 	return t, true, nil
 }
 
-// SetStatus updates status (and optionally tx hash) for a transfer.
+// SetStatus updates status (and optionally tx hash) for a transfer, enforcing the state machine.
+//
+// # Why the read happens inside a transaction
+//
+// The check and the write have to be atomic. Two writers racing — the relayer reporting "submitted"
+// while the indexer reports "confirmed" — could otherwise both read the old status, both find their
+// move legal, and the loser's write would land last and walk the transfer backwards. `FOR UPDATE`
+// makes the row's own lock the serialisation point, so the second writer reads the first's result
+// and is refused by the machine rather than by luck.
+//
+// The alternative — validating in Go against a status read earlier — is exactly the check-then-act
+// race that produces "confirmed" turning back into "submitted" on somebody's screen.
 func (s *Store) SetStatus(ctx context.Context, id string, status schema.TransferStatus, txHash string) error {
-	_, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
+
+	var current schema.TransferStatus
+	err = tx.QueryRow(ctx, `SELECT status FROM transfers WHERE id = $1 FOR UPDATE`, id).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := lifecycle.Transition(current, status); err != nil {
+		// Returned rather than swallowed: a refused transition is either a bug in the caller or a
+		// late duplicate, and both deserve to be visible. Callers that expect duplicates should
+		// check errors.Is(err, lifecycle.ErrTerminal) and move on.
+		return fmt.Errorf("transfer %s: %w", id, err)
+	}
+
+	if _, err := tx.Exec(ctx, `
 UPDATE transfers SET status = $2, tx_hash = COALESCE(NULLIF($3, ''), tx_hash), updated_at = now()
-WHERE id = $1`, id, status, txHash)
-	return err
+WHERE id = $1`, id, status, txHash); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Get fetches a transfer by id.
@@ -247,4 +283,50 @@ func (t *Transfer) ToRecord() schema.TransferRecord {
 		UpdatedAt:  t.UpdatedAt.UTC().Format(time.RFC3339),
 		TxHash:     t.TxHash,
 	}
+}
+
+// StuckTransfers returns transfers that have been in a non-terminal state longer than `olderThan`.
+//
+// # Why this query exists
+//
+// Every other signal in this system is healthy-by-default: the API answers, the folder folds, the
+// queue drains. A transfer that got stuck between "submitting" and any outcome shows up in none of
+// them — it is one row, in one state, that nothing will ever move again, and the only person who
+// notices is the one whose money it was.
+//
+// Reconciliation (Docs/progress.md §0.4) is the requirement that the system can always answer "where
+// is this transfer?". This is the query behind that: not "what happened recently" but "what never
+// finished". Ordered oldest first, because the oldest stuck transfer is the one that has been wrong
+// for longest.
+func (s *Store) StuckTransfers(ctx context.Context, olderThan time.Duration, limit int) ([]Transfer, error) {
+	// Non-terminal states, from internal/lifecycle. Listed rather than derived so the SQL is
+	// readable on its own; the test asserts the two agree.
+	rows, err := s.pool.Query(ctx, `
+SELECT id, status, commitment, nullifier, tx_hash, created_at, updated_at
+FROM transfers
+WHERE status = ANY($1)
+  AND updated_at < now() - $2::interval
+ORDER BY updated_at ASC
+LIMIT $3`,
+		[]string{
+			string(schema.StatusPending),
+			string(schema.StatusSubmitting),
+			string(schema.StatusSubmitted),
+		},
+		fmt.Sprintf("%d seconds", int(olderThan.Seconds())),
+		limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Transfer
+	for rows.Next() {
+		t, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
 }

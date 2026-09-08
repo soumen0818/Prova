@@ -59,6 +59,14 @@ pub const BATCH: u32 = 8;
 /// How many recent roots a spend may prove against (`MerkleParams.ROOT_HISTORY`).
 pub const ROOT_HISTORY: u32 = 32;
 
+/// Minimum KYC level required when a pool has no explicit policy stored.
+///
+/// Matches `credential::MIN_KYC_LEVEL` in the prover, which is what the artifact fixtures and the
+/// CLI default to. A pool deployed before the policy became configurable has nothing under
+/// `DataKey::MinKycLevel`, and must keep behaving exactly as it did — so the fallback is the value
+/// that used to be compiled into the circuit.
+pub const DEFAULT_MIN_KYC_LEVEL: u64 = 1;
+
 /// Verifying keys, exported from the circuits by `prova-prover pool-artifacts`. Layout:
 /// `alpha(96) ‖ -beta(192) ‖ -gamma(192) ‖ -delta(192) ‖ IC[0..n](96 each)`, with beta/gamma/delta
 /// pre-negated so verification is a single `pairing_check`.
@@ -145,6 +153,13 @@ pub enum DataKey {
     Token,
     /// Anchor public key the KYC credential must be signed by (x, y).
     AnchorPk,
+    /// Minimum KYC level a spend must prove.
+    ///
+    /// Stored rather than compiled in, so a corridor can raise the requirement without a new circuit.
+    /// Fed to the verifier as public input 15: the *contract's* value is what the proof is checked
+    /// against, so a wallet cannot choose its own bar. Missing (a pool deployed before this existed)
+    /// reads as [`DEFAULT_MIN_KYC_LEVEL`].
+    MinKycLevel,
     /// The current Merkle root.
     Root,
     /// Rolling history of the last [`ROOT_HISTORY`] roots, indexed by ring slot.
@@ -444,6 +459,17 @@ fn spend(
             out.enc1_rho.clone(),
             out.enc2_amount.clone(),
             out.enc2_rho.clone(),
+            // The policy, read from THIS contract's storage — never from the request.
+            //
+            // That is what makes the minimum enforceable: the prover cannot influence it, so a
+            // wallet that proves against a lower bar simply fails verification here. Appended last
+            // to match the circuit's allocation order; inserting it earlier would renumber every
+            // input after it and break every proof with no diagnostic.
+            {
+                let mut b = [0u8; 32];
+                b[24..].copy_from_slice(&Pool::min_kyc_level(env.clone()).to_be_bytes());
+                BytesN::from_array(env, &b)
+            },
         ],
     );
     if !verify_groth16(env, SPEND_VK, proof.a, proof.b, proof.c, &inputs) {
@@ -490,6 +516,9 @@ impl Pool {
         token: Address,
         anchor_pk_x: BytesN<32>,
         anchor_pk_y: BytesN<32>,
+        // Minimum KYC level a spend must prove. Pass DEFAULT_MIN_KYC_LEVEL to keep the behaviour
+        // pools had before the policy became configurable.
+        min_kyc_level: u64,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
@@ -500,6 +529,7 @@ impl Pool {
         put(&env, &DataKey::Paused, &false);
         put(&env, &DataKey::Token, &token);
         put(&env, &DataKey::AnchorPk, &(anchor_pk_x, anchor_pk_y));
+        put(&env, &DataKey::MinKycLevel, &min_kyc_level);
 
         let empty = BytesN::from_array(&env, EMPTY_ROOT);
         put(&env, &DataKey::Root, &empty);
@@ -716,6 +746,29 @@ impl Pool {
     /// **Takes effect immediately and invalidates every outstanding credential**, including honest
     /// ones. That is the point in an emergency; for a planned rotation, re-issue credentials first so
     /// wallets can refresh with minimal disruption.
+    /// The minimum KYC level a spend must prove. Public so a wallet can read the policy it has to
+    /// prove against — proving against the wrong value fails verification exactly as a stale root
+    /// would, and the wallet has no other way to learn it.
+    pub fn min_kyc_level(env: Env) -> u64 {
+        get(&env, &DataKey::MinKycLevel).unwrap_or(DEFAULT_MIN_KYC_LEVEL)
+    }
+
+    /// Raise or lower the minimum KYC level a spend must prove.
+    ///
+    /// Admin-only and event-emitting, exactly like [`Pool::set_anchor`]: it changes who may move
+    /// money, so it must be publicly visible even though it is not trustless.
+    ///
+    /// **Wallets must re-read the policy after this changes.** The value is a public input, so a
+    /// proof built against the old minimum stops verifying the moment this is set — the same failure
+    /// mode as an expired root, and recoverable the same way by re-proving.
+    pub fn set_min_kyc_level(env: Env, level: u64) -> Result<(), Error> {
+        require_admin(&env)?;
+        put(&env, &DataKey::MinKycLevel, &level);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("kycmin"),), level);
+        Ok(())
+    }
+
     pub fn set_anchor(
         env: Env,
         anchor_pk_x: BytesN<32>,

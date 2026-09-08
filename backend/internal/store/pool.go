@@ -317,8 +317,9 @@ type FolderStatus struct {
 
 // RecordRelayFailure notes why a spend could not be relayed.
 //
-// Only failures are recorded: a successful relay leaves the chain itself as the evidence, and
-// overwriting the reason on every success would erase the thing anyone is looking for.
+// Failures are recorded because the chain cannot explain a spend that never reached it. See
+// ClearRelayFailure for the other half: a success clears the record, so the field means "the last
+// relay failed, and here is why" rather than "a relay failed at some point in this pool's history".
 func (s *Store) RecordRelayFailure(ctx context.Context, errMsg string) error {
 	const maxLen = 300
 	if len(errMsg) > maxLen {
@@ -367,4 +368,23 @@ SELECT last_attempt_at, last_success_at, last_error, consecutive_failures,
 		return FolderStatus{}, nil
 	}
 	return st, err
+}
+
+// ClearRelayFailure forgets the last relay error after a spend succeeds.
+//
+// # Why this is needed
+//
+// The failure record used to be write-only, so a single bad relay left an error on /pool/status
+// permanently — long after the cause was fixed and hundreds of successful transfers later. It said
+// "proof rejected: Error(Contract, #4)" for days while every send worked, which is worse than saying
+// nothing: an operator learns the field is noise and stops reading it, and a reviewer clicking the
+// endpoint sees a healthy pool describing itself as broken.
+//
+// A status field that only ever goes one way is not a status field. This makes it current.
+func (s *Store) ClearRelayFailure(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `
+UPDATE pool_folder_status
+SET last_relay_error = '', last_relay_at = NULL
+WHERE id = true AND last_relay_error <> ''`)
+	return err
 }

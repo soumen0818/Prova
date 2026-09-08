@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/prova/backend/internal/store"
@@ -22,12 +23,33 @@ type Service struct {
 	// the relay endpoints; users can still submit their own transactions, losing submitter privacy
 	// but nothing else.
 	relay *Relayer
+
+	// Cached KYC policy, read from the contract.
+	//
+	// Cached because it changes only when an admin calls `set_min_kyc_level`, and /pool/status is
+	// polled by every wallet on a timer — a chain read per request would be a self-inflicted rate
+	// limit. Short TTL so a policy change reaches wallets within a minute rather than on restart.
+	kycMu      sync.Mutex
+	kycLevel   uint64
+	kycFetched time.Time
 }
+
+// minKycTTL bounds how stale the cached policy may be. A minute is far shorter than the interval
+// between policy changes and far longer than the poll interval, which is the right side of both.
+const minKycTTL = time.Minute
 
 // NewService builds the pool service.
 func NewService(st *store.Store, prover Prover, relay *Relayer) *Service {
 	return &Service{store: st, prover: prover, relay: relay}
 }
+
+// Relayer exposes the configured relayer, or nil when none is.
+//
+// Narrow accessor rather than an exported field: the relayer is constructed with credentials and
+// must stay unmodifiable after construction. This exists so internal/provider can wrap it behind
+// SettlementProvider (Docs/progress.md §0.1) without Deps having to carry it separately, which would
+// let the two drift apart.
+func (s *Service) Relayer() *Relayer { return s.relay }
 
 // ErrRelayUnavailable means no relayer is configured.
 var ErrRelayUnavailable = errors.New("no relayer configured")
@@ -184,6 +206,13 @@ func (s *Service) Status(ctx context.Context) (*schema.PoolStatus, error) {
 		}
 	}
 
+	// The policy the wallet has to prove against. Best-effort: a failure leaves the field zero and
+	// the wallet falls back to its built-in default, which is better than failing the whole status
+	// call over a diagnostic value.
+	if level, kerr := s.minKycLevel(ctx); kerr == nil {
+		st.MinKycLevel = level
+	}
+
 	root, err := s.store.LatestPoolRoot(ctx)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -196,4 +225,29 @@ func (s *Service) Status(ctx context.Context) (*schema.PoolStatus, error) {
 		st.Ledger = root.Ledger
 	}
 	return st, nil
+}
+
+// minKycLevel returns the contract's KYC policy, cached for minKycTTL.
+func (s *Service) minKycLevel(ctx context.Context) (uint64, error) {
+	if s.relay == nil {
+		return 0, ErrRelayUnavailable
+	}
+	s.kycMu.Lock()
+	defer s.kycMu.Unlock()
+
+	if s.kycLevel != 0 && time.Since(s.kycFetched) < minKycTTL {
+		return s.kycLevel, nil
+	}
+	level, err := s.relay.MinKycLevel(ctx)
+	if err != nil {
+		// Serve a stale value rather than nothing: an unreadable chain should not stop wallets
+		// proving against the last policy we knew, which is almost certainly still current.
+		if s.kycLevel != 0 {
+			return s.kycLevel, nil
+		}
+		return 0, err
+	}
+	s.kycLevel = level
+	s.kycFetched = time.Now()
+	return level, nil
 }

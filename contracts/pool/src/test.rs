@@ -375,9 +375,50 @@ mod harness {
                 &self.cred,
                 self.anchor.pk,
                 NOW,
+                // The harness proves against the pool's default policy, which is what the fixture
+                // initialises with. A test that wants a different minimum sets it on the contract
+                // and proves against the same value — see the policy tests.
+                crate::DEFAULT_MIN_KYC_LEVEL,
             );
             let public = circuit.public_inputs().unwrap();
             let mut rng = StdRng::seed_from_u64(SEED + leaf_index + 13);
+            let proof = Groth16::<Bls12_381>::prove(&keys().spend, circuit, &mut rng).unwrap();
+            (
+                to_soroban(env, &proof),
+                public.iter().map(|f| fr_bytes(env, f)).collect(),
+            )
+        }
+
+        /// A spend proved against an explicit minimum KYC level, for the policy tests.
+        #[allow(clippy::too_many_arguments)]
+        pub fn spend_at_min(
+            &self,
+            env: &Env,
+            leaf_index: u64,
+            in_note: &Note,
+            out1: Note,
+            out2: Note,
+            min_kyc_level: u64,
+        ) -> (Proof, StdVec<BytesN<32>>) {
+            let path = self.tree.path(leaf_index);
+            let circuit = SpendCircuit::new(
+                self.cfg.clone(),
+                in_note.amount,
+                in_note.rho,
+                self.owner_sk,
+                &path,
+                SpendOutput::new(out1, self.enc.pk),
+                SpendOutput::new(out2, self.enc.pk),
+                JubjubFr::from(0xE55u64 + leaf_index),
+                0,
+                ark_bls12_381::Fr::from(0u64),
+                &self.cred,
+                self.anchor.pk,
+                NOW,
+                min_kyc_level,
+            );
+            let public = circuit.public_inputs().unwrap();
+            let mut rng = StdRng::seed_from_u64(SEED + leaf_index + 97);
             let proof = Groth16::<Bls12_381>::prove(&keys().spend, circuit, &mut rng).unwrap();
             (
                 to_soroban(env, &proof),
@@ -426,6 +467,8 @@ fn fixture() -> Fixture {
         &token_id,
         &harness::fr_bytes(&env, &wallet.anchor.pk.x),
         &harness::fr_bytes(&env, &wallet.anchor.pk.y),
+        // Matches the level the fixture proofs were generated against.
+        &crate::DEFAULT_MIN_KYC_LEVEL,
     );
     let token = token::Client::new(&env, &token_id);
 
@@ -872,7 +915,7 @@ fn initialize_is_one_shot() {
     let z = BytesN::from_array(&f.env, &[0u8; 32]);
     let err = f
         .pool
-        .try_initialize(&f.admin, &f.pool.address, &z, &z)
+        .try_initialize(&f.admin, &f.pool.address, &z, &z, &crate::DEFAULT_MIN_KYC_LEVEL)
         .expect_err("re-initialising would let the token or anchor be swapped");
     assert_eq!(err, Ok(Error::AlreadyInitialized));
 }
@@ -1029,6 +1072,7 @@ fn admin_powers_require_authorisation() {
         &token_id,
         &harness::fr_bytes(&env, &w.anchor.pk.x),
         &harness::fr_bytes(&env, &w.anchor.pk.y),
+        &crate::DEFAULT_MIN_KYC_LEVEL,
     );
 
     // Stop auto-approving; from here every `require_auth` must be satisfied for real.
@@ -1045,6 +1089,10 @@ fn admin_powers_require_authorisation() {
         "anyone must not be able to swap the KYC signing key"
     );
     assert!(
+        pool.try_set_min_kyc_level(&3).is_err(),
+        "anyone must not be able to change who is allowed to move money"
+    );
+    assert!(
         pool.try_set_admin(&stranger).is_err(),
         "anyone must not be able to seize the admin role"
     );
@@ -1054,6 +1102,11 @@ fn admin_powers_require_authorisation() {
     );
 
     assert!(!pool.is_paused(), "no unauthorised call took effect");
+    assert_eq!(
+        pool.min_kyc_level(),
+        crate::DEFAULT_MIN_KYC_LEVEL,
+        "the KYC policy survived the unauthorised attempt"
+    );
     assert_eq!(pool.admin(), Some(admin));
 }
 
@@ -1203,6 +1256,75 @@ fn rotating_the_anchor_key_invalidates_old_credentials() {
     );
     f.pool.transact(&p2, &pi2[0], &pi2[1], &outputs(&pi2), &NOW);
     assert!(f.pool.is_spent(&pi2[1]), "the rotated key is live");
+}
+
+/// Raising the corridor's KYC requirement takes effect immediately, and without a new circuit.
+///
+/// This is the whole point of making the minimum a stored policy rather than a compiled-in constant.
+/// The same wallet, the same note and the same verifying key: only the contract's stored value
+/// changes, and a credential that no longer clears the bar stops being able to move money.
+///
+/// Note the failure mode is `InvalidProof`, identical to a rotated anchor key — the policy is
+/// enforced by the pairing check, not by a separate branch that could be bypassed.
+#[test]
+fn raising_the_minimum_kyc_level_blocks_lower_credentials() {
+    let f = fixture();
+    let mut w = Wallet::new();
+    let note0 = funded(&f, &mut w, 1000);
+
+    assert_eq!(
+        f.pool.min_kyc_level(),
+        crate::DEFAULT_MIN_KYC_LEVEL,
+        "a freshly initialised pool reports the policy it was given"
+    );
+
+    // Raise the bar above what the credential attests (Wallet::new issues at level 2). The proof is
+    // built against the same value the contract now holds, so this isolates the policy: nothing else
+    // about the spend has changed.
+    f.pool.set_min_kyc_level(&3);
+    assert_eq!(f.pool.min_kyc_level(), 3, "the new policy is stored");
+
+    let (p, pi) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3001), w.note(400, 3002), 3);
+    assert_eq!(
+        f.pool
+            .try_transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW)
+            .expect_err("a level-2 credential must not satisfy a minimum of 3"),
+        Ok(Error::InvalidProof),
+        "raising the corridor's requirement must actually stop lower credentials"
+    );
+
+    // Lower it back to what the credential attests, and the very same note spends — proving the
+    // refusal above was the policy and not something else about the spend.
+    f.pool.set_min_kyc_level(&2);
+    let (p2, pi2) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3001), w.note(400, 3002), 2);
+    f.pool.transact(&p2, &pi2[0], &pi2[1], &outputs(&pi2), &NOW);
+    assert!(
+        f.pool.is_spent(&pi2[1]),
+        "a level-2 credential clears a minimum of exactly 2 — the bound is >=, not >"
+    );
+}
+
+/// A wallet cannot pick its own bar.
+///
+/// The attack this closes: prove against a lax minimum, submit to a contract that requires a strict
+/// one. The contract supplies input 15 from its own storage, so the proof simply fails the pairing
+/// check — the request has no say in the policy.
+#[test]
+fn a_spend_proved_against_a_lower_minimum_is_rejected() {
+    let f = fixture();
+    let mut w = Wallet::new();
+    let note0 = funded(&f, &mut w, 1000);
+
+    f.pool.set_min_kyc_level(&2);
+
+    // Proved against 1 while the contract requires 2.
+    let (p, pi) = w.spend_at_min(&f.env, 0, &note0, w.note(600, 3101), w.note(400, 3102), 1);
+    assert_eq!(
+        f.pool
+            .try_transact(&p, &pi[0], &pi[1], &outputs(&pi), &NOW)
+            .expect_err("proving against a lower minimum than the contract requires must fail"),
+        Ok(Error::InvalidProof)
+    );
 }
 
 /// The migration path to a multisig: hand the role over, and the old holder loses it.

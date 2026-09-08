@@ -328,6 +328,22 @@ func (h *handler) poolSpend(w http.ResponseWriter, r *http.Request) {
 			"We couldn't complete this transfer. Your money has not been sent. Please try again in a moment.")
 		return
 	}
+	/*
+	 * A success clears the last recorded failure.
+	 *
+	 * Without this the field is write-only, and a single bad relay leaves an error on /pool/status
+	 * permanently — long after the cause is fixed and hundreds of successful transfers later. That is
+	 * worse than reporting nothing: an operator learns the field is noise, and anyone else reading
+	 * the endpoint sees a healthy pool describing itself as broken.
+	 *
+	 * Best-effort and after the fact: failing to clear a stale message must never fail a transfer
+	 * that already succeeded.
+	 */
+	if h.store != nil {
+		if cerr := h.store.ClearRelayFailure(r.Context()); cerr != nil {
+			h.logger.Warn("could not clear the last relay failure", "err", cerr)
+		}
+	}
 	writeJSON(w, http.StatusOK, schema.PoolSpendResponse{TxHash: txHash})
 }
 

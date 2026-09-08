@@ -59,7 +59,7 @@ models them. Add the machine from the V2 doc §23, with the failure states, and 
 from stored state alone, with no log grepping? — **yes**, and illegal transitions are now refused in
 `Store.SetStatus` ([`33dc593`](https://github.com/soumen0818/Prova/commit/33dc593)).
 
-### 0.3 Compliance policy as data ☐
+### 0.3 Compliance policy as data ☑
 
 `MIN_KYC_LEVEL` is a compile-time constant in the circuit today, and tier limits live in code. Move
 corridor policy into configuration: minimum KYC level, per-tier limits, allowed destinations,
@@ -74,7 +74,7 @@ credential validity window.
 **Exit test:** can a second corridor with different limits be configured without recompiling the
 circuit or redeploying the contract?
 
-### 0.4 Reconciliation and idempotency ☐
+### 0.4 Reconciliation and idempotency ☑
 
 Partly present (`/pool/status`, nullifier checks, the relay failure record) but not systematic.
 Make settlement idempotent on an explicit key, and reconcile every transfer across its full
@@ -83,13 +83,19 @@ lifecycle.
 **Exit test:** does replaying the same settlement request twice produce exactly one payment, proven
 by a test?
 
-### 0.5 Close the honesty gaps in the current build ☐
+### 0.5 Close the honesty gaps in the current build ◐
 
 Carried over, and worth clearing before any migration noise:
 
-- Recapture `payment_failed.png` (shows pre-fix copy and pre-fix balance behaviour)
-- Add a mobile-width website screenshot
-- Clear the stale `relayError` on `/pool/status`
+- ☑ Clear the stale `relayError` on `/pool/status` — a success now clears it
+  ([`ClearRelayFailure`](../backend/internal/store/pool.go)). The field was write-only, so one
+  bad relay left an error there permanently; a status field that only goes one way is not a
+  status field.
+- ☐ Recapture `payment_failed.png` — **needs a device.** It shows the pre-fix copy ("the proof was
+  rejected") and the pre-fix balance behaviour. Requires installing the next build and forcing a
+  failure.
+- ☐ Mobile-width website screenshot — **needs a browser.** For the submission's "mobile responsive"
+  requirement; both current site shots are desktop.
 
 **Phase 0 exit test:** _Is the current product measurably better, and could a different privacy
 backend be dropped in without touching business logic?_
@@ -306,7 +312,7 @@ Carried from the V2 doc §47, and not negotiable:
 
 | Phase                   | Status | Blocking question                                     |
 | ----------------------- | ------ | ----------------------------------------------------- |
-| 0 — Foundations         | ◐      | 0.1 ☑ · 0.2 ☑ · 0.3–0.5 remaining                     |
+| 0 — Foundations         | ◐      | 0.1–0.4 ☑ · 0.5 needs a device and a browser          |
 | 1 — Midnight decision   | ☐      | What can Midnight do that the current circuit cannot? |
 | 2 — Privacy core        | ☐      | Gated on Phase 1                                      |
 | 3 — Settlement boundary | ☐      | What enforces intent authenticity?                    |

@@ -284,3 +284,49 @@ func (t *Transfer) ToRecord() schema.TransferRecord {
 		TxHash:     t.TxHash,
 	}
 }
+
+// StuckTransfers returns transfers that have been in a non-terminal state longer than `olderThan`.
+//
+// # Why this query exists
+//
+// Every other signal in this system is healthy-by-default: the API answers, the folder folds, the
+// queue drains. A transfer that got stuck between "submitting" and any outcome shows up in none of
+// them — it is one row, in one state, that nothing will ever move again, and the only person who
+// notices is the one whose money it was.
+//
+// Reconciliation (Docs/progress.md §0.4) is the requirement that the system can always answer "where
+// is this transfer?". This is the query behind that: not "what happened recently" but "what never
+// finished". Ordered oldest first, because the oldest stuck transfer is the one that has been wrong
+// for longest.
+func (s *Store) StuckTransfers(ctx context.Context, olderThan time.Duration, limit int) ([]Transfer, error) {
+	// Non-terminal states, from internal/lifecycle. Listed rather than derived so the SQL is
+	// readable on its own; the test asserts the two agree.
+	rows, err := s.pool.Query(ctx, `
+SELECT id, status, commitment, nullifier, tx_hash, created_at, updated_at
+FROM transfers
+WHERE status = ANY($1)
+  AND updated_at < now() - $2::interval
+ORDER BY updated_at ASC
+LIMIT $3`,
+		[]string{
+			string(schema.StatusPending),
+			string(schema.StatusSubmitting),
+			string(schema.StatusSubmitted),
+		},
+		fmt.Sprintf("%d seconds", int(olderThan.Seconds())),
+		limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Transfer
+	for rows.Next() {
+		t, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}

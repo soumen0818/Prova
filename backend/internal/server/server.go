@@ -194,6 +194,8 @@ func New(logger *slog.Logger, cfg config.Config, deps Deps) http.Handler {
 	// Operator console. Everything under /ops is gated by COMPLIANCE_TOKEN inside the handler —
 	// grouped by prefix so it is obvious at a glance which routes are staff-only.
 	mux.HandleFunc("GET /ops/kyc/verifications", h.listVerifications)
+	// Reconciliation: transfers that stalled in flight. Empty is the healthy answer.
+	mux.HandleFunc("GET /ops/reconcile", h.opsReconcile)
 	mux.HandleFunc("GET /ops/support/threads", h.listSupportThreads)
 	mux.HandleFunc("GET /ops/support/threads/{userId}", h.opsSupportThread)
 	mux.HandleFunc("POST /ops/support/threads/{userId}/messages", h.replySupportMessage)

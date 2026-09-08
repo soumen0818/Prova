@@ -382,3 +382,32 @@ type PoolSpendRequest struct {
 type PoolSpendResponse struct {
 	TxHash string `json:"txHash"`
 }
+
+// StuckTransfer is one transfer that entered a non-terminal state and stopped moving.
+//
+// Carries no amount, like every other transfer record — reconciliation is about *where* a transfer
+// is, and knowing that never requires knowing what it was worth.
+type StuckTransfer struct {
+	TransferID string         `json:"transferId"`
+	Status     TransferStatus `json:"status"`
+	Commitment string         `json:"commitment,omitempty"`
+	Nullifier  string         `json:"nullifier,omitempty"`
+	TxHash     string         `json:"txHash,omitempty"`
+	CreatedAt  string         `json:"createdAt"`
+	UpdatedAt  string         `json:"updatedAt"`
+	// StuckFor is how long since the status last changed, pre-formatted so an operator reading an
+	// alert does not have to subtract timestamps.
+	StuckFor string `json:"stuckFor"`
+	// Settled reports whether the money provably moved. The distinction an operator needs first:
+	// a stalled transfer that already settled is a bookkeeping problem, one that never settled is
+	// somebody's missing payment.
+	Settled bool `json:"settled"`
+}
+
+// ReconcileReport answers "is anything stuck?". An empty Transfers list is the healthy answer.
+type ReconcileReport struct {
+	// StuckAfter is the window used, echoed back so the report is self-describing.
+	StuckAfter string          `json:"stuckAfter"`
+	Count      int             `json:"count"`
+	Transfers  []StuckTransfer `json:"transfers"`
+}

@@ -232,3 +232,42 @@ func (r Relayer) invoke(ctx context.Context, fn string, callArgs ...string) (str
 		return "", fmt.Errorf("%s failed: %w: %s", fn, err, lastFoldLines(text, 3))
 	}
 }
+
+// MinKycLevel reads the pool's stored KYC policy from the contract.
+//
+// # Why this is a chain read rather than configuration
+//
+// The minimum is a *public input* to the spend proof, and the contract supplies it from its own
+// storage during verification. A wallet must prove against exactly that value — proving against a
+// stale one fails the pairing check, indistinguishably from a stale root. Config here would be a
+// second copy of the truth, and the failure mode when the two drift is a rejected proof with no
+// diagnostic, which is precisely the class of bug this codebase has already paid for once.
+//
+// `--send=no` keeps it a simulation: read-only, no fee, no transaction. The value changes only when
+// an admin calls `set_min_kyc_level`, so callers should cache it briefly rather than reading it per
+// request.
+func (r Relayer) MinKycLevel(ctx context.Context) (uint64, error) {
+	args := []string{
+		"contract", "invoke",
+		"--id", r.ContractID,
+		"--source", r.Source,
+		"--network", r.Network,
+		"--send=no",
+		"--",
+		"min_kyc_level",
+	}
+	cmd := exec.CommandContext(ctx, r.Bin, args...)
+	chain.PrepareCLI(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("read min_kyc_level: %w: %s", err, lastFoldLines(string(out), 3))
+	}
+	// The CLI prints the scalar result, sometimes quoted, with trailing newline.
+	text := strings.TrimSpace(string(out))
+	text = strings.Trim(text, `"`)
+	level, perr := strconv.ParseUint(text, 10, 64)
+	if perr != nil {
+		return 0, fmt.Errorf("min_kyc_level returned %q, not a number: %w", text, perr)
+	}
+	return level, nil
+}

@@ -403,6 +403,8 @@ fn pool_artifacts() {
             &cred,
             anchor.pk,
             now,
+            // Matches the pool's default policy, which is what the contract test fixtures assume.
+            prova_prover::credential::MIN_KYC_LEVEL,
         )
     );
 
@@ -433,6 +435,8 @@ fn pool_artifacts() {
             &cred,
             anchor.pk,
             now,
+            // Matches the pool's default policy, which is what the contract test fixtures assume.
+            prova_prover::credential::MIN_KYC_LEVEL,
         )
     );
 

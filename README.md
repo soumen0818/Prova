@@ -143,7 +143,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | **Android APK**         | [Download v1.2.7 · 86 MB ↗](https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk)                                                                    |
 | **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
 | **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
-| **Pool contract**       | [`CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`](https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX)        |
+| **Pool contract**       | [`CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA`](https://stellar.expert/explorer/testnet/contract/CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA)        |
 | **Verifier contract**   | [`CBQ2HVIYASMYNRIKWM54JUA3A4OGQOWRP42BLMRRB262YQINAA36GD5U`](https://stellar.expert/explorer/testnet/contract/CBQ2HVIYASMYNRIKWM54JUA3A4OGQOWRP42BLMRRB262YQINAA36GD5U)        |
 | **Feedback form**       | [Submit feedback ↗](https://forms.gle/DVGDyJiRxeQ5QxuG7)                                                                                                                       |
 | **Feedback responses**  | [Response sheet ↗](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4jV3ayRW_0iJd23LAEmRPc3WthGs/edit?usp=sharing)                                                       |
@@ -328,9 +328,14 @@ verifiable — the contract, the ledger and the result are all public.
 | 3   | [`a773f25d…6adcd2`](https://stellar.expert/explorer/testnet/tx/a773f25d6247ea818a95fe6a41041c5adc91218e7f4bd3334dfdec0a9e6adcd2) | 29 Aug 2026 12:50 UTC | ✅ Success · ledger 4396854 |
 | 4   | [`aee6ab3c…9f7aef`](https://stellar.expert/explorer/testnet/tx/aee6ab3c5fa61d9a4e2722a73b17e4616f64ec57bdf5413c72b23faafb9f7aef) | 31 Aug 2026 07:57 UTC | ✅ Success · ledger 4427891 |
 
-All four are `invoke_host_function` calls against the pool contract `CBLLKIUU…`, submitted by the
-relayer. Transfers 3 and 4 were supplied by testers through the feedback form — transfers made by
-somebody other than the team.
+All four are `invoke_host_function` calls against pool contract `CBLLKIUU…`, submitted by the relayer.
+Transfers 3 and 4 were supplied by testers through the feedback form — transfers made by somebody
+other than the team.
+
+That pool has since been superseded by `CD645P…`, which stores the KYC policy rather than baking it
+into the circuit. The transactions above stay listed against the contract that actually executed
+them: they are historical facts, and repointing them at a contract they never touched would make the
+record wrong to look prettier. See [`contracts/DEPLOYMENTS.md`](contracts/DEPLOYMENTS.md).
 
 **Why every transfer comes from one account, on purpose.** The proof already hides the amount and the
 parties — but somebody has to pay the fee and sign the submission, and if that were the sender's own
@@ -469,8 +474,8 @@ Two Soroban (Rust) contracts, both live and verified on **Stellar testnet** toda
 
 ### `prova-pool` — the shielded pool (real token custody)
 
-> **Contract ID:** `CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`
-> **Network:** Stellar Testnet · **Explorer:** [view on Stellar Expert ↗](https://stellar.expert/explorer/testnet/contract/CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX)
+> **Contract ID:** `CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA`
+> **Network:** Stellar Testnet · **Explorer:** [view on Stellar Expert ↗](https://stellar.expert/explorer/testnet/contract/CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA)
 
 Custodies real tokens and moves value privately between notes. Verified on-chain: `admin` matches
 the deployed admin key, `root` matches the circuit's independently-computed empty-tree root,

@@ -305,6 +305,17 @@ type PoolStatus struct {
 	QueueDepth int64 `json:"queueDepth"`
 	// Batch is how many a single fold can carry (MerkleBatch).
 	Batch int `json:"batch"`
+	/*
+	 * MinKycLevel is the corridor's current KYC policy, read from the contract.
+	 *
+	 * A wallet MUST prove against this exact value: it is a public input, and the contract supplies
+	 * its own copy during verification, so proving against a stale one fails the pairing check the
+	 * same way a stale root does. Served here because there is no other way for a wallet to learn it.
+	 *
+	 * Zero means "could not read it" — a wallet should then fall back to its built-in default rather
+	 * than proving against 0, which no credential could satisfy.
+	 */
+	MinKycLevel uint64 `json:"minKycLevel,omitempty"`
 
 	/*
 	 * The folder's last outcome, so a stall explains itself.

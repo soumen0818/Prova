@@ -243,6 +243,19 @@ struct SpendIn {
     anchor_pk_x: String,
     anchor_pk_y: String,
     current_time: u64,
+    /// Minimum KYC level the verifier will require.
+    ///
+    /// Must match what the contract has stored, because it is a public input: prove against 1 while
+    /// the contract requires 2 and the pairing check fails, exactly as a wrong root or timestamp
+    /// would. The wallet reads it from `/pool/status` rather than assuming.
+    ///
+    /// Optional so an older caller keeps working; absent means the default.
+    #[serde(default = "default_min_kyc_level")]
+    min_kyc_level: u64,
+}
+
+fn default_min_kyc_level() -> u64 {
+    credential::MIN_KYC_LEVEL
 }
 
 #[derive(Serialize)]
@@ -332,6 +345,7 @@ pub fn spend_prove_json(input: &str) -> Result<String, String> {
         &cred,
         point(&arg.anchor_pk_x, &arg.anchor_pk_y)?,
         arg.current_time,
+        arg.min_kyc_level,
     );
 
     let nullifier = circuit.nullifier.ok_or("no nullifier")?;

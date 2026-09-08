@@ -637,6 +637,14 @@ export interface PoolStatus {
   /** Commitments waiting to be folded. A rising number means the folder has stalled. */
   queueDepth: number;
   batch: number;
+  /**
+   * The corridor's minimum KYC level, read from the contract.
+   *
+   * Must be passed to the prover: it is a public input, and the contract checks the proof against
+   * its own copy. Absent or zero means the backend could not read it — fall back to the default
+   * rather than proving against 0, which no credential satisfies.
+   */
+  minKycLevel?: number;
 }
 
 export interface PoolSpendBody {

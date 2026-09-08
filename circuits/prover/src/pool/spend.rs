@@ -95,6 +95,13 @@ pub struct SpendCircuit {
     pub destination: Option<Fr>,
     pub anchor_pk: Option<EdwardsAffine>,
     pub current_time: Option<u64>,
+    /// Minimum KYC level this spend must satisfy.
+    ///
+    /// **Public, not witness.** A witness would let the prover pick their own bar and prove
+    /// `kyc_level >= 0`; as a public input the verifier supplies it, and on-chain that is the
+    /// contract reading its own stored policy. That is what lets a corridor raise the requirement
+    /// without a new circuit.
+    pub min_kyc_level: Option<u64>,
     /// Encrypted notes: shared ephemeral public key, then each output's masked `(amount, rho)`.
     pub epk: Option<EdwardsAffine>,
     pub enc1: Option<EncryptedNote>,
@@ -122,6 +129,7 @@ impl SpendCircuit {
         cred: &credential::Credential,
         anchor_pk: EdwardsAffine,
         current_time: u64,
+        min_kyc_level: u64,
     ) -> Self {
         // Encrypt each output to its recipient. Slot 0/1 keeps the two masks independent even when
         // both notes go to the same person (see `encryption`).
@@ -167,6 +175,7 @@ impl SpendCircuit {
             destination: Some(destination),
             anchor_pk: Some(anchor_pk),
             current_time: Some(current_time),
+            min_kyc_level: Some(min_kyc_level),
             cfg,
         }
     }
@@ -191,6 +200,10 @@ impl SpendCircuit {
             self.enc1?.c_rho,
             self.enc2?.c_amount,
             self.enc2?.c_rho,
+            // Appended LAST, deliberately. Inserting it next to the other credential values would
+            // renumber every input after it, and the index of each is baked into the contract's IC
+            // layout — a silent renumbering is a whole class of "proof rejected" with no clue why.
+            Fr::from(self.min_kyc_level?),
         ])
     }
 }
@@ -256,6 +269,14 @@ impl ConstraintSynthesizer<Fr> for SpendCircuit {
         })?;
         let enc2_rho = FpVar::new_input(cs.clone(), || {
             Ok(self.enc2.ok_or(SynthesisError::AssignmentMissing)?.c_rho)
+        })?;
+        // Allocated LAST so the order here matches `public_inputs()` exactly. Groth16 numbers inputs
+        // by allocation order, and the contract's IC layout follows that numbering — swap two and
+        // every proof fails verification with nothing to indicate why.
+        let min_kyc_level = FpVar::new_input(cs.clone(), || {
+            Ok(Fr::from(
+                self.min_kyc_level.ok_or(SynthesisError::AssignmentMissing)?,
+            ))
         })?;
 
         // ---------------------------------------------------------------------
@@ -411,9 +432,17 @@ impl ConstraintSynthesizer<Fr> for SpendCircuit {
 
         // expiry >= current_time
         let _ = (&expiry - &current_time).to_bits_le_with_top_bits_zero(TIME_BITS)?;
-        // kyc_level >= MIN_KYC_LEVEL
-        let min_level = FpVar::constant(Fr::from(credential::MIN_KYC_LEVEL));
-        let _ = (&kyc_level - &min_level).to_bits_le_with_top_bits_zero(KYC_BITS)?;
+        // kyc_level >= min_kyc_level, where the minimum comes from the VERIFIER, not the prover.
+        //
+        // Previously `FpVar::constant(MIN_KYC_LEVEL)`, which baked the policy into the circuit and
+        // therefore into the verifying key: raising the bar meant a new circuit, a new trusted setup
+        // and a contract redeploy. As a public input the contract supplies its own stored policy, so
+        // a corridor can require a higher level without touching the cryptography.
+        //
+        // The subtraction is the check: `to_bits_le_with_top_bits_zero` fails to synthesise unless
+        // the difference is non-negative and fits KYC_BITS, so an underflow (kyc_level below the
+        // minimum) wraps to a huge field element and cannot be decomposed.
+        let _ = (&kyc_level - &min_kyc_level).to_bits_le_with_top_bits_zero(KYC_BITS)?;
 
         // Silence the unused-variable warning for a value only read in tests.
         let _ = owner_pk_var.value();
@@ -456,5 +485,10 @@ pub fn dummy_circuit(cfg: PoseidonConfig<Fr>) -> SpendCircuit {
         &cred,
         anchor.pk,
         1,
+        // The setup circuit only fixes the SHAPE of the constraint system, and the shape does not
+        // depend on this value — any minimum produces the same wiring, which is precisely why it can
+        // now be an input. The credential above is issued at level 2, so 1 keeps the dummy
+        // satisfiable.
+        credential::MIN_KYC_LEVEL,
     )
 }

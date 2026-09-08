@@ -143,14 +143,25 @@ export const POOL_PUBLIC_INPUTS = [
   'enc1Rho',
   'enc2Amount',
   'enc2Rho',
+  /*
+   * The corridor's minimum KYC level, supplied by the CONTRACT from its own storage.
+   *
+   * Appended last on purpose. Every index before it is baked into the verifying key's IC layout, so
+   * inserting this next to the other credential values would renumber them and break every proof
+   * with no diagnostic beyond "rejected".
+   *
+   * A wallet must prove against the value the contract currently holds — read it from
+   * `Pool.min_kyc_level()`. Proving against a stale one fails exactly like a stale root does.
+   */
+  'minKycLevel',
 ] as const;
 
 export type PoolPublicInput = (typeof POOL_PUBLIC_INPUTS)[number];
 
 /** Number of public inputs; the verifying key has this many + 1 IC entries. */
-export const POOL_PUBLIC_INPUT_COUNT = POOL_PUBLIC_INPUTS.length; // 15
+export const POOL_PUBLIC_INPUT_COUNT = POOL_PUBLIC_INPUTS.length; // 16
 
-/** Proof blob size: `A(96) ‖ B(192) ‖ C(96) ‖ publicInputs(15 × 32)` = 864 bytes. */
+/** Proof blob size: `A(96) ‖ B(192) ‖ C(96) ‖ publicInputs(16 × 32)` = 896 bytes. */
 export const POOL_PROOF_BLOB_BYTES = 96 + 192 + 96 + POOL_PUBLIC_INPUT_COUNT * 32;
 
 /**

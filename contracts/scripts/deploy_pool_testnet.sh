@@ -54,7 +54,16 @@ if [ -z "${ANCHOR_SEED:-}" ]; then
     echo "       If the backend sets ANCHOR_SEED, this pool will reject every spend proof."
     echo "       Export the SAME value the backend uses, or fix it afterwards with set_anchor."
 fi
-ANCHOR_JSON="$("$PROVER" anchor-pubkey)"
+# The seed MUST be passed through. This previously read `anchor-pubkey` with no arguments, so the
+# prover fell back to its built-in dev key and the export above was silently ignored — the warning
+# fired only when the variable was unset, which is exactly the case where it was NOT needed. A pool
+# deployed that way initialises with the wrong anchor and rejects every spend proof while looking
+# entirely healthy.
+if [ -n "${ANCHOR_SEED:-}" ]; then
+    ANCHOR_JSON="$("$PROVER" anchor-pubkey --anchor-seed "$ANCHOR_SEED")"
+else
+    ANCHOR_JSON="$("$PROVER" anchor-pubkey)"
+fi
 ANCHOR_X="$(printf '%s' "$ANCHOR_JSON" | sed -E 's/.*"x":"([^"]+)".*/\1/')"
 ANCHOR_Y="$(printf '%s' "$ANCHOR_JSON" | sed -E 's/.*"y":"([^"]+)".*/\1/')"
 echo "    anchor x = $ANCHOR_X"
@@ -70,7 +79,15 @@ POOL_ID="$(stellar contract deploy \
   --network "$NETWORK")"
 echo "    pool contract id = $POOL_ID"
 
-echo "==> Initializing (admin, token, anchor key) — one-shot, cannot be repeated"
+# The corridor's KYC policy. A public input to every spend proof, checked by the contract against
+# its own stored copy — so a wallet has to prove against exactly this value.
+#
+# 1 is the historical default and what every wallet falls back to when it cannot read the chain.
+# Raise it here for a stricter corridor, or afterwards with `set_min_kyc_level` (admin only); both
+# take effect immediately and neither needs a new circuit.
+MIN_KYC_LEVEL="${MIN_KYC_LEVEL:-1}"
+
+echo "==> Initializing (admin, token, anchor key, min KYC level $MIN_KYC_LEVEL) — one-shot"
 stellar contract invoke \
   --id "$POOL_ID" \
   --source "$DEPLOYER" \
@@ -79,7 +96,8 @@ stellar contract invoke \
   --admin "$ADMIN_ADDRESS" \
   --token "$TOKEN_ID" \
   --anchor_pk_x "$ANCHOR_X" \
-  --anchor_pk_y "$ANCHOR_Y"
+  --anchor_pk_y "$ANCHOR_Y" \
+  --min_kyc_level "$MIN_KYC_LEVEL"
 
 cat <<EOF
 

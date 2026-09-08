@@ -26,6 +26,8 @@ use prova_prover::pool::{
 use prova_prover::poseidon_config;
 
 const NOW: u64 = 1_700_000_000;
+/// The default minimum the fixtures prove against; the Scenario credential is issued at level 2.
+const MIN_KYC: u64 = 1;
 const LATER: u64 = 2_000_000_000;
 
 fn satisfied<C: ConstraintSynthesizer<Fr>>(circuit: C) -> bool {
@@ -110,6 +112,31 @@ impl Scenario {
             &self.cred,
             self.anchor.pk,
             NOW,
+            MIN_KYC,
+        )
+    }
+
+    /// A spend proved against a specific minimum KYC level, for the policy tests.
+    fn spend_at_min(&self, min_kyc: u64) -> SpendCircuit {
+        let path = self.tree.path(self.leaf_index());
+        SpendCircuit::new(
+            self.cfg.clone(),
+            self.amount,
+            self.rho,
+            self.owner_sk,
+            &path,
+            SpendOutput::new(Note::new(1, self.owner_pk, Fr::from(101u64)), self.enc.pk),
+            SpendOutput::new(
+                Note::new(self.amount - 1, self.owner_pk, Fr::from(202u64)),
+                self.enc.pk,
+            ),
+            JubjubFr::from(0xE55u64),
+            0,
+            Fr::from(0u64),
+            &self.cred,
+            self.anchor.pk,
+            NOW,
+            min_kyc,
         )
     }
 }
@@ -142,7 +169,7 @@ fn public_inputs_are_in_the_frozen_order() {
     let s = Scenario::new(3, 500);
     let c = s.spend(200, 300, 0, Fr::from(0u64));
     let pi = c.public_inputs().unwrap();
-    assert_eq!(pi.len(), 15, "POOL_PUBLIC_INPUT_COUNT is 15");
+    assert_eq!(pi.len(), 16, "POOL_PUBLIC_INPUT_COUNT is 16");
     assert_eq!(pi[0], s.tree.root(), "[0] merkleRoot");
     assert_eq!(pi[4], Fr::from(0u64), "[4] publicAmount");
     assert_eq!(pi[5], Fr::from(0u64), "[5] destination");
@@ -156,6 +183,100 @@ fn public_inputs_are_in_the_frozen_order() {
     assert_eq!(pi[12], c.enc1.unwrap().c_rho, "[12] enc1Rho");
     assert_eq!(pi[13], c.enc2.unwrap().c_amount, "[13] enc2Amount");
     assert_eq!(pi[14], c.enc2.unwrap().c_rho, "[14] enc2Rho");
+    // Appended last so indices 0..14 kept their meaning — the contract's IC layout follows this
+    // order, and renumbering an existing input would break every proof with no diagnostic.
+    assert_eq!(pi[15], Fr::from(MIN_KYC), "[15] minKycLevel");
+}
+
+// =====================================================================================
+// Configurable KYC minimum — the policy is the verifier's, not the prover's
+// =====================================================================================
+
+/// The whole point of making the minimum an input: a corridor can raise the bar, and a credential
+/// below it stops satisfying the circuit — with no new circuit, key or deployment.
+///
+/// The Scenario credential is issued at level 2, so 1 and 2 must pass and 3 must not.
+#[test]
+fn a_credential_below_the_required_level_cannot_prove() {
+    let s = Scenario::new(60, 1000);
+
+    assert!(
+        satisfied(s.spend_at_min(1)),
+        "level 2 credential must satisfy a minimum of 1"
+    );
+    assert!(
+        satisfied(s.spend_at_min(2)),
+        "level 2 credential must satisfy a minimum of exactly 2 — the bound is >=, not >"
+    );
+    assert!(
+        !satisfied(s.spend_at_min(3)),
+        "a level 2 credential MUST NOT satisfy a minimum of 3 — otherwise raising the corridor's \
+         requirement would be cosmetic"
+    );
+}
+
+/// The minimum is a public input, so substituting it after proving must invalidate the proof.
+///
+/// This is the test that makes the feature trustworthy. A public input that appears in no constraint
+/// gets an all-zero IC entry in Groth16 and is not bound at all — the proof would verify against any
+/// value, and a wallet could prove against 1 while the contract believed it required 3. Asserting
+/// rejection here is the guarantee that the contract's stored policy actually governs.
+#[test]
+fn groth16_rejects_a_substituted_kyc_minimum() {
+    let mut rng = StdRng::seed_from_u64(61);
+    let setup = Scenario::new(62, 1).spend(1, 0, 0, Fr::from(0u64));
+    let (pk, vk) = Groth16::<Bls12_381>::circuit_specific_setup(setup, &mut rng).unwrap();
+
+    let s = Scenario::new(63, 1000);
+    let circuit = s.spend_at_min(2);
+    let public = circuit.public_inputs().unwrap();
+    let proof = Groth16::<Bls12_381>::prove(&pk, circuit, &mut rng).unwrap();
+
+    assert!(
+        Groth16::<Bls12_381>::verify(&vk, &public, &proof).unwrap(),
+        "a spend proved at minimum 2 must verify at minimum 2"
+    );
+
+    // The attack: prove against a lax minimum, then claim it satisfied a strict one.
+    let mut lowered = public.clone();
+    lowered[15] = Fr::from(1u64);
+    assert!(
+        !Groth16::<Bls12_381>::verify(&vk, &lowered, &proof).unwrap(),
+        "substituting the KYC minimum must invalidate the proof — otherwise the contract's policy \
+         is advisory and a wallet picks its own"
+    );
+
+    let mut raised = public.clone();
+    raised[15] = Fr::from(3u64);
+    assert!(
+        !Groth16::<Bls12_381>::verify(&vk, &raised, &proof).unwrap(),
+        "the binding must hold in both directions"
+    );
+}
+
+/// Changing the policy must NOT change the circuit, or the whole exercise was pointless: a
+/// different verifying key means a redeploy and a forced app update, which is what this replaced.
+#[test]
+fn the_minimum_does_not_affect_the_constraint_system() {
+    let a = Scenario::new(64, 1000).spend_at_min(1);
+    let b = Scenario::new(64, 1000).spend_at_min(3);
+
+    let cs_a = ConstraintSystem::<Fr>::new_ref();
+    a.generate_constraints(cs_a.clone()).unwrap();
+    let cs_b = ConstraintSystem::<Fr>::new_ref();
+    b.generate_constraints(cs_b.clone()).unwrap();
+
+    assert_eq!(
+        cs_a.num_constraints(),
+        cs_b.num_constraints(),
+        "the constraint count must not depend on the policy value — if it did, changing the minimum \
+         would change the verifying key and require a redeploy"
+    );
+    assert_eq!(
+        cs_a.num_instance_variables(),
+        cs_b.num_instance_variables(),
+        "the public input count must not depend on the policy value"
+    );
 }
 
 // =====================================================================================
@@ -357,6 +478,7 @@ fn forged_note_not_in_the_tree_fails() {
         &s.cred,
         s.anchor.pk,
         NOW,
+        MIN_KYC,
     );
     assert!(!satisfied(c), "a note absent from the tree must fail");
 }
@@ -411,6 +533,7 @@ fn spending_someone_elses_note_fails() {
         &s.cred,
         s.anchor.pk,
         NOW,
+        MIN_KYC,
     );
     assert!(!satisfied(c), "a note can only be spent by its owner");
 }
@@ -455,6 +578,7 @@ fn expired_credential_fails() {
         &cred,
         anchor.pk,
         NOW,
+        MIN_KYC,
     );
     assert!(!satisfied(c), "an expired credential must fail");
 }
@@ -489,6 +613,7 @@ fn forged_anchor_signature_fails() {
         &cred,
         real.pk, // checked against the real anchor
         NOW,
+        MIN_KYC,
     );
     assert!(
         !satisfied(c),
@@ -526,6 +651,7 @@ fn credential_issued_to_another_user_fails() {
         &cred,
         anchor.pk,
         NOW,
+        MIN_KYC,
     );
     assert!(
         !satisfied(c),

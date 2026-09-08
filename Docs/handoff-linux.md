@@ -34,7 +34,7 @@ Steps 1 and 2 are done. Steps 3 and 4 are not.
 
 ### Verified against live testnet
 
-The pool contract is **deployed and live**: `CBLLKIUUWPH4GCPL4NNK6S6NGDG4OEAX33TTYJ7RPO3SZU52FHYYJEVX`
+The pool contract is **deployed and live**: `CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA`
 (see [DEPLOYMENTS.md](../contracts/DEPLOYMENTS.md)). Its on-chain interface was fetched and matches
 the source.
 
@@ -59,15 +59,15 @@ SEP-10 authentication against `testanchor.stellar.org` was exercised by hand and
 
 ### Built this cycle
 
-| Area | Files | What |
-|---|---|---|
-| Denomination | `shared/src/money.ts`, `shared/go/schema/money.go` | Amounts carry a unit; killed the build-time `EXPO_PUBLIC_CURRENCY=AED` that showed dirhams to every user worldwide |
-| Shield — chain | `backend/internal/chain/soroban.go`, `shield.go` | Soroban RPC (simulate/send/poll) + `shield` assembly and submission |
-| Shield — API | `backend/internal/server/shield_handlers.go`, `shared/{src/shield.ts,go/schema/shield.go}` | `POST /pool/shield/prepare` + `/pool/shield/submit` |
-| Shield — app | `mobile/src/lib/{api,onchain,pool}.ts` | `prepareShieldTx`, `submitShieldTx`, `shieldIntoPool`, `shieldToPool` |
-| Balance | `mobile/src/hooks/use-money.ts` | One source of truth; picks pool vs local counter by `depositMode` |
-| Scanning | `mobile/src/hooks/use-pool.ts` → `usePoolSync` | Scans on start, on a timer, and on app foreground |
-| Screens | `home.tsx`, `profile.tsx`, `deposit.tsx`, `_layout.tsx` | Pool balance, confirming shown separately, two-step deposit, prover warm-up |
+| Area           | Files                                                                                      | What                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Denomination   | `shared/src/money.ts`, `shared/go/schema/money.go`                                         | Amounts carry a unit; killed the build-time `EXPO_PUBLIC_CURRENCY=AED` that showed dirhams to every user worldwide |
+| Shield — chain | `backend/internal/chain/soroban.go`, `shield.go`                                           | Soroban RPC (simulate/send/poll) + `shield` assembly and submission                                                |
+| Shield — API   | `backend/internal/server/shield_handlers.go`, `shared/{src/shield.ts,go/schema/shield.go}` | `POST /pool/shield/prepare` + `/pool/shield/submit`                                                                |
+| Shield — app   | `mobile/src/lib/{api,onchain,pool}.ts`                                                     | `prepareShieldTx`, `submitShieldTx`, `shieldIntoPool`, `shieldToPool`                                              |
+| Balance        | `mobile/src/hooks/use-money.ts`                                                            | One source of truth; picks pool vs local counter by `depositMode`                                                  |
+| Scanning       | `mobile/src/hooks/use-pool.ts` → `usePoolSync`                                             | Scans on start, on a timer, and on app foreground                                                                  |
+| Screens        | `home.tsx`, `profile.tsx`, `deposit.tsx`, `_layout.tsx`                                    | Pool balance, confirming shown separately, two-step deposit, prover warm-up                                        |
 
 All of it passes: `go build/vet/test`, mobile `tsc` + `expo lint`, shared tests, prettier, gofmt.
 
@@ -85,7 +85,7 @@ cannot pay another, because `sendPrivately()` needs a `Payee { ownerPk, encPkX, 
 
 Needed:
 
-- a Receive screen showing the pool address with QR + copy (`app/account.tsx` shows the *Stellar*
+- a Receive screen showing the pool address with QR + copy (`app/account.tsx` shows the _Stellar_
   address — this is a different thing, do not conflate them)
 - optional pool-address fields on `Recipient` (`mobile/src/lib/recipients.ts`), plus paste/scan entry
   in `app/recipient-new.tsx`
@@ -100,7 +100,7 @@ moves nothing) to `sendPrivately()` from `lib/pool.ts`.
 Watch for:
 
 - **`InsufficientFunds` carries `largestNote`.** The spend circuit is 1-in-2-out, so a payment needs
-  a *single* note that covers it. "Not enough balance" is the wrong message when the total is
+  a _single_ note that covers it. "Not enough balance" is the wrong message when the total is
   sufficient but fragmented — surface the real reason.
 - **A note that is not folded cannot be spent.** `spend()` throws "still confirming" for this. The UI
   must already be showing pending separately (it does), so this should be rare rather than confusing.
@@ -112,11 +112,11 @@ Watch for:
 `Docs/shielded-pool.md` §10.8 is explicit that on-device spend-proof time decides this, and it is
 **still unmeasured on real hardware**:
 
-| Estimated spend proof | Send screen must be |
-|---|---|
-| under ~5 s | a simple spinner |
-| 5–20 s | staged progress + reassurance copy |
-| over ~20 s | a background job that notifies on completion — a different flow |
+| Estimated spend proof | Send screen must be                                             |
+| --------------------- | --------------------------------------------------------------- |
+| under ~5 s            | a simple spinner                                                |
+| 5–20 s                | staged progress + reassurance copy                              |
+| over ~20 s            | a background job that notifies on completion — a different flow |
 
 Phase 4's stated target is **≤ 8 s perceived** on a mid-range Android.
 
@@ -208,7 +208,7 @@ These are load-bearing. Each one exists because breaking it causes a specific, r
    Stellar assets have 7 decimals; the app counts whole units.
 7. **Don't derive display currency from the user's country.** An American in Dubai is paid in AED.
    Country decides which rails are available; the rail decides the currency. The country picker in
-   the KYC screen is a *phone dial code* selector and must not be written to `countryOfResidence`.
+   the KYC screen is a _phone dial code_ selector and must not be written to `countryOfResidence`.
 
 ---
 

@@ -275,7 +275,8 @@ impl ConstraintSynthesizer<Fr> for SpendCircuit {
         // every proof fails verification with nothing to indicate why.
         let min_kyc_level = FpVar::new_input(cs.clone(), || {
             Ok(Fr::from(
-                self.min_kyc_level.ok_or(SynthesisError::AssignmentMissing)?,
+                self.min_kyc_level
+                    .ok_or(SynthesisError::AssignmentMissing)?,
             ))
         })?;
 

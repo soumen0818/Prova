@@ -273,9 +273,16 @@ fn report_circuit_sizes() {
         ("shield", {
             let cs = ConstraintSystem::<Fr>::new_ref();
             let s = Scenario::new(71, 1000);
-            ShieldCircuit::new(s.cfg.clone(), 1000, s.owner_pk, s.rho, s.enc.pk, JubjubFr::from(7u64))
-                .generate_constraints(cs.clone())
-                .unwrap();
+            ShieldCircuit::new(
+                s.cfg.clone(),
+                1000,
+                s.owner_pk,
+                s.rho,
+                s.enc.pk,
+                JubjubFr::from(7u64),
+            )
+            .generate_constraints(cs.clone())
+            .unwrap();
             cs
         }),
     ] {

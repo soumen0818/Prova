@@ -915,7 +915,13 @@ fn initialize_is_one_shot() {
     let z = BytesN::from_array(&f.env, &[0u8; 32]);
     let err = f
         .pool
-        .try_initialize(&f.admin, &f.pool.address, &z, &z, &crate::DEFAULT_MIN_KYC_LEVEL)
+        .try_initialize(
+            &f.admin,
+            &f.pool.address,
+            &z,
+            &z,
+            &crate::DEFAULT_MIN_KYC_LEVEL,
+        )
         .expect_err("re-initialising would let the token or anchor be swapped");
     assert_eq!(err, Ok(Error::AlreadyInitialized));
 }

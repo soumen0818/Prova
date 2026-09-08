@@ -683,6 +683,10 @@ mod end_to_end {
             "sig_s": sig_s,
             "anchor_pk_x": fr_hex(&anchor.pk.x),
             "anchor_pk_y": fr_hex(&anchor.pk.y),
+            // Explicit rather than relying on serde's default: this test exists to prove a phone's
+            // proof is accepted on-chain, and the contract supplies this value itself. Letting the
+            // default fill it would still pass while testing a different statement.
+            "min_kyc_level": credential::MIN_KYC_LEVEL,
             "current_time": 1_700_000_000u64,
         })
         .to_string();
@@ -712,8 +716,10 @@ mod end_to_end {
             fr_from_hex(result["enc1_rho"].as_str().unwrap()).unwrap(),
             fr_from_hex(result["enc2_amount"].as_str().unwrap()).unwrap(),
             fr_from_hex(result["enc2_rho"].as_str().unwrap()).unwrap(),
+            // Appended last, matching the circuit's allocation order and the contract's IC layout.
+            Fr::from(credential::MIN_KYC_LEVEL),
         ];
-        assert_eq!(public.len(), 15, "spend has 15 public inputs");
+        assert_eq!(public.len(), 16, "spend has 16 public inputs");
 
         // The blob above is in Soroban's encoding, which the contract parses. Verifying here uses
         // the arkworks form of the same statement, rebuilt from the identical witness.
@@ -771,6 +777,7 @@ mod end_to_end {
             &cred,
             point(&arg.anchor_pk_x, &arg.anchor_pk_y).unwrap(),
             arg.current_time,
+            arg.min_kyc_level,
         );
         Groth16::<Bls12_381>::prove(spend_key(), circuit, &mut OsRng).unwrap()
     }

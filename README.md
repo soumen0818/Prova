@@ -77,6 +77,11 @@ Rust library with no 32-bit build, so a `armeabi-v7a` device would install the a
 fail at the exact moment it tried to send. Shipping one architecture makes that impossible rather
 than surprising. Every phone from roughly 2015 onward is arm64.
 
+> **A new build is coming.** The download above is **1.2.7**, which works against the pool contract
+> deployed today. The next release (**1.3.0**) moves to a new pool with a configurable KYC policy —
+> the spend circuit's public inputs changed, so the two are not interchangeable and the version moves
+> a minor rather than a patch to make that visible. 1.2.7 keeps working until 1.3.0 ships.
+
 > Balances are testnet assets with **no monetary value**, and the test network can be reset at any
 > time. Try it freely; do not treat anything in it as savings.
 

@@ -3,7 +3,8 @@
 </p>
 
 <h1 align="center">Prova</h1>
-<h3 align="center">Private, compliant cross-border remittance on Stellar.</h3>
+<h3 align="center">Private, compliant cross-border remittance.</h3>
+<p align="center"><b>Midnight</b> proves it follows the rules · <b>Stellar</b> moves the money</p>
 <p align="center"><em>A transfer is accepted because it can be <b>proven</b> legal — not because someone saw it.</em></p>
 
 <p align="center">
@@ -28,8 +29,8 @@
 </p>
 
 <p align="center">
-  <a href="https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk">
-    <img alt="Download the Prova Android APK — version 1.2.7, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.2.7%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  <a href="https://expo.dev/artifacts/eas/HTV_A9bQ1kf7ypUSbSwPgk8lSQPE7htrPuWoq8Gv_Do.apk">
+    <img alt="Download the Prova Android APK — version 1.3.0, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.3.0%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
   </a>
   <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
     <img alt="Watch the Prova demo video" src="https://img.shields.io/badge/Watch%20Demo-Video-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
@@ -49,7 +50,7 @@
     <td align="center" width="150">
       <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
       <br><br>
-      <a href="https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk">
+      <a href="https://expo.dev/artifacts/eas/HTV_A9bQ1kf7ypUSbSwPgk8lSQPE7htrPuWoq8Gv_Do.apk">
         <img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
       </a>
       <br><br>
@@ -59,7 +60,7 @@
     </td>
     <td>
       <table>
-        <tr><td><b>Version</b></td><td>1.2.7 · 86 MB</td></tr>
+        <tr><td><b>Version</b></td><td>1.3.0 · 86 MB</td></tr>
         <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
         <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
         <tr><td><b>Demo video</b></td><td><a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">Watch the walkthrough ↗</a></td></tr>
@@ -76,11 +77,6 @@ yet — a payments app has to clear their financial-services review first.
 Rust library with no 32-bit build, so a `armeabi-v7a` device would install the app, run it, and then
 fail at the exact moment it tried to send. Shipping one architecture makes that impossible rather
 than surprising. Every phone from roughly 2015 onward is arm64.
-
-> **A new build is coming.** The download above is **1.2.7**, which works against the pool contract
-> deployed today. The next release (**1.3.0**) moves to a new pool with a configurable KYC policy —
-> the spend circuit's public inputs changed, so the two are not interchangeable and the version moves
-> a minor rather than a patch to make that visible. 1.2.7 keeps working until 1.3.0 ships.
 
 > Balances are testnet assets with **no monetary value**, and the test network can be reset at any
 > time. Try it freely; do not treat anything in it as savings.
@@ -113,7 +109,7 @@ A step-by-step version for people who are not developers lives on
 - [Trying it](#trying-it)
 - [Submission](#submission)
 - [Screenshots](#screenshots)
-- [User feedback](#user-feedback)
+- [Feedback](#feedback)
 - [On-chain activity](#on-chain-activity)
 - [Overview](#overview)
 - [The problem](#the-problem)
@@ -145,7 +141,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Live demo (website)** | [provapay.duckdns.org](https://provapay.duckdns.org)                                                                                                                           |
 | **Demo video**          | [Watch the full walkthrough ↗](https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing)                                                             |
-| **Android APK**         | [Download v1.2.7 · 86 MB ↗](https://expo.dev/artifacts/eas/p6mT9sISXGXb73pFeLpE13conNwaRtScExGlciHXZpk.apk)                                                                    |
+| **Android APK**         | [Download v1.3.0 · 86 MB ↗](https://expo.dev/artifacts/eas/HTV_A9bQ1kf7ypUSbSwPgk8lSQPE7htrPuWoq8Gv_Do.apk)                                                                    |
 | **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
 | **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
 | **Pool contract**       | [`CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA`](https://stellar.expert/explorer/testnet/contract/CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA)        |
@@ -167,7 +163,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | Contracts on Stellar testnet            | Done          | Both contract IDs above, verifiable on Stellar Expert                              |
 | 15+ meaningful commits                  | Done — **93** | `git rev-list --count HEAD`                                                        |
 | Public GitHub repository                | Done          | [github.com/soumen0818/Prova](https://github.com/soumen0818/Prova)                 |
-| User feedback collection                | Done          | [User feedback](#user-feedback)                                                    |
+| User feedback collection                | Done          | [Feedback](#feedback)                                                              |
 | Proof of wallet interactions            | Partial       | [On-chain activity](#on-chain-activity) — see the note there                       |
 
 ---
@@ -262,62 +258,10 @@ means new notes are not becoming spendable.
 
 ---
 
-## User feedback
+## Feedback
 
-Collected through a public [feedback form](https://forms.gle/DVGDyJiRxeQ5QxuG7); raw responses live
-in the [response sheet](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4jV3ayRW_0iJd23LAEmRPc3WthGs/edit?usp=sharing).
-
-### Responses and what changed
-
-| #   | Date        | Tester            | Wallet                                                                                                                      | Overall     | Reported                                                                       | Action taken                                                                                                                                                                         | Status     | Commit                                                                                           |
-| --- | ----------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------ |
-| 1   | 22 Aug 2026 | Souvik Mandal     | [`GAG3SU…3YLKR4`](https://stellar.expert/explorer/testnet/account/GAG3SUKHIF7VAWGTDRH52XETMLZXXNXBAZLLXHSLXAQPOBBCN43YLKR4) | **9 / 10**  | No bug. Asked for a shorter pool address.                                      | Receive address re-encoded with a CRC-32 checksum: **302 → 145 characters**, and a corrupted paste is now rejected rather than silently accepted.                                    | ✅ Shipped | [`996f391`](https://github.com/soumen0818/Prova/commit/996f3911c457c76e0833f4b84813731652468a23) |
-| 2   | 29 Aug 2026 | Suman Pradhan     | [`GAGQNP…PXSD22`](https://stellar.expert/explorer/testnet/account/GAGQNPPV5VA47L4MFYAH7KS6XY65YOSOVLWOHZUDY4SCMHOEQGPXSD22) | **8 / 10**  | Bug: balance showed zero right after a transfer.                               | The balance now shows the **total** (spendable + confirming) instead of only the spendable part. Spend checks still gate on spendable, so nothing unspendable is offered.            | ✅ Shipped | [`f82f463`](https://github.com/soumen0818/Prova/commit/f82f4638bd32f989a4f620007b3a1be4bf79e18f) |
-| 3   | 30 Aug 2026 | Nurudeen Adebayo  | [`GC3TR6…D3FFQT`](https://stellar.expert/explorer/testnet/account/GC3TR6ZLDH5RMTYVPNRKFDNAG2GT7L6E3CEP33SJNZTHISLDZWD3FFQT) | **9 / 10**  | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix — recorded as a post-fix baseline.                                                                                                                                    | —          | —                                                                                                |
-| 4   | 30 Aug 2026 | Soumita Rana      | [`GBDIL5…UQK2UM`](https://stellar.expert/explorer/testnet/account/GBDIL5J7XMFHNGCV4S3WPV2G27NLXGS52OBIN2RUNTUL7GEVU5UQK2UM) | **10 / 10** | No bug. No requests, recommend 5/5.                                            | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
-| 5   | 30 Aug 2026 | Arka Dash         | [`GAN7XF…YDZONQ`](https://stellar.expert/explorer/testnet/account/GAN7XFEYV2D7HYJWZID54R3NTRB6WDPCBPGZU6DDPTIZHCVL37YDZONQ) | **6 / 10**  | Bug: verification would not submit — "check your connection", but it was fine. | The screen reported every failure as a connection error. It now names the actual cause — expired session, claimed wallet, service down, or real connection loss.                     | ✅ Shipped | [`65d2b71`](https://github.com/soumen0818/Prova/commit/65d2b718e46fc34c5f27773d9c882fd2990af938) |
-| 6   | 31 Aug 2026 | Soumen Mandal     | [`GB25FQ…GOCVWH`](https://stellar.expert/explorer/testnet/account/GB25FQZFXNE6ZHJPA2NKGEJEHAD4Q2JONLXYVSQ6UVP7757QCGGOCVWH) | **10 / 10** | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
-| 7   | 31 Aug 2026 | Soumyajit Maity   | [`GCMURV…LMFHKN`](https://stellar.expert/explorer/testnet/account/GCMURVMOGIZGIYYIBYXX6DUYLJSQB3UZGTPYWV6PIFZAU3EYQJLMFHKN) | **8 / 10**  | Bug: _"Slow network issue"_ — on office WiFi.                                  | Requests had a flat 15s timeout and no retry, so a congested network was cut off mid-flight. Waiting calls now get 45s, and idempotent ones retry — never anything that moves money. | ✅ Shipped | [`52504b4`](https://github.com/soumen0818/Prova/commit/52504b4eb6b8eb12228930c7c984c108e46b2075) |
-| 8   | 31 Aug 2026 | Shubhadeep Biswas | [`GB2TJ3…352RZI`](https://stellar.expert/explorer/testnet/account/GB2TJ3XCFPHTTEGV24VHZ5BRV6BLRKXQMRQD5KIXZY3CMEV5Q2352RZI) | **10 / 10** | No bug. All aspects Excellent, recommend 5/5.                                  | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
-| 9   | 31 Aug 2026 | Snigdha Mandal    | [`GBUQV6…6IY5EK`](https://stellar.expert/explorer/testnet/account/GBUQV6B2LRWRLTEDJNROWJDKV5KMLII6VTNKZGLWEUAHFGZIIJ6IY5EK) | **9 / 10**  | Bug: _"The app is not working on the wifi network"_ — on college WiFi.         | Same cause and fix as 7.                                                                                                                                                             | ✅ Shipped | [`52504b4`](https://github.com/soumen0818/Prova/commit/52504b4eb6b8eb12228930c7c984c108e46b2075) |
-| 10  | 31 Aug 2026 | Abdul Rahman      | [`GDX456…D3Y7HK`](https://stellar.expert/explorer/testnet/account/GDX4565AJ4DBGP3HGDIV7F6QJ3IPOVDLG3BOXTHS5ITWKJMEWND3Y7HK) | **9 / 10**  | No bug reported.                                                               | Nothing to fix.                                                                                                                                                                      | —          | —                                                                                                |
-
-Three of the five responses raised something actionable, and all three are fixed and committed. Each
-was picked up the day it arrived — the address request in 1 h 43 m (reported 22 Aug 23:02, committed
-23 Aug 00:45), and the balance and verification bugs on the day each was filed.
-
-### Ratings
-
-Ten respondents to date. One skipped the per-aspect grid, so those rows count nine.
-
-| Aspect                      | Responses | Mean         |
-| --------------------------- | --------- | ------------ |
-| Overall satisfaction        | 10        | **8.8 / 10** |
-| Ease of navigation / UI     | 9         | 3.8 / 4      |
-| Speed and performance       | 9         | 3.7 / 4      |
-| Reliability of transactions | 9         | 3.6 / 4      |
-| Security features           | 9         | 3.3 / 4      |
-| Customer support            | 9         | 3.3 / 4      |
-| Would recommend             | 10        | 4.2 / 5      |
-
-The lowest scores track specific defects rather than the product generally. **Security features**
-(3.3) and **customer support** (3.3) are the weakest, and both readings are fair: security is largely
-invisible in a wallet that hides its own workings, and support is one person answering an in-app
-inbox. The lowest overall score (6/10) came from the tester who could not submit a verification, and
-both 3/5 recommendation scores came from the pair on shared WiFi.
-
-All four reported defects are fixed and committed. Ten responses is a small sample and is treated as
-one: enough to surface real bugs — it surfaced four — and not enough to read a trend into the
-averages. The value here is the report-to-fix loop, not the scores.
-
-Wallet addresses are each tester's own Stellar account, as supplied on the form, and link to Stellar
-Expert. Not all resolve to funded accounts: an account is only created on-chain when someone taps
-**Add money**, so a tester can install, verify and give feedback without ever funding one. All
-addresses were checksum-validated before publishing.
-
-Tester email addresses are collected by the form for follow-up and are deliberately **not** reproduced
-here — publishing a tester's contact details in a public repository would be a poor trade for a
-product whose entire argument is that it does not leak what it does not need.
+Found a bug, or something confusing? [Tell us here](https://forms.gle/DVGDyJiRxeQ5QxuG7) — it goes
+straight to the people building it.
 
 ---
 
@@ -371,8 +315,11 @@ the amount and the identity behind it.
 > and the stamp carries zero personal information.
 
 - **First corridor:** UAE → India.
-- **Rails:** Stellar — it already solved speed, cost, and fiat on/off-ramps (anchors + SEPs). Prova
-  adds the one layer that was missing: **privacy in transit, with compliance intact.**
+- **Privacy + compliance:** **Midnight** — a chain built for private state, so the rules can be
+  checked without the details being seen. Design set, build in progress; the same model runs on
+  Stellar today.
+- **Settlement + liquidity:** **Stellar** — it already solved speed, cost, and fiat on/off-ramps
+  (anchors + SEPs), which is exactly the half that privacy chains lack.
 - **Status:** deployed and verified end-to-end on **Stellar testnet** — see
   [Smart contracts](#smart-contracts) for live contract IDs you can check yourself.
 - **Scope today:** transfers run Prova-to-Prova. Withdrawals to a bank account will follow once a
@@ -544,8 +491,40 @@ security model behind every entrypoint: [`contracts/README.md`](contracts/README
 
 ## Architecture
 
-Three trust boundaries, drawn from where secrets and computation actually live — not from which
-repo a file happens to sit in:
+Prova splits one job across two networks, each doing what it is best at:
+
+| Layer                      | Network      | Responsibility                                                                       | Status                                                                                                   |
+| -------------------------- | ------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Privacy + compliance**   | **Midnight** | Proves a transfer is legal without revealing the amount, the sender or the recipient | **In progress** — the design is set; see [v2-midnight-architecture.md](Docs/v2-midnight-architecture.md) |
+| **Settlement + liquidity** | **Stellar**  | Moves the actual value, and connects to the anchors people cash out through          | **Live on testnet**                                                                                      |
+| **Application**            | Prova        | The app, the transfer lifecycle, and the join between the two                        | **Live**                                                                                                 |
+
+```mermaid
+flowchart LR
+    phone["Phone\nbuilds the proof"] --> privacy["Privacy layer\ncredential, limits, no double-spend"]
+    privacy --> intent["Settlement intent\n'this transfer is allowed'"]
+    intent --> stellar["Stellar\nmoves the value"]
+    stellar --> anchor["Anchor\nlocal cash-out"]
+```
+
+**Why two networks.** Privacy and settlement pull in opposite directions. A chain good at moving
+money publicly is not built to hide who moved it; a chain built for private state has no anchors, no
+liquidity and no cash-out. Splitting them lets each stay good at its own job, joined by one explicit
+handoff: a **settlement intent** — a verified statement that a transfer is allowed, carrying nothing
+about who made it or for how much.
+
+**Where the privacy layer runs today.** The full privacy model — credential checks, spending limits,
+anti-replay — is **implemented and live on Stellar**, enforced inside the proof by a Soroban contract
+that also custodies the value. That is what the deployed contracts below are. Moving this layer to
+Midnight is the current work, and the reasoning behind it (including what is settled and what is
+still open) is written up in
+[v2-midnight-architecture.md](Docs/v2-midnight-architecture.md) and
+[progress.md](Docs/progress.md).
+
+### Trust boundaries
+
+Three of them, drawn from where secrets and computation actually live — not from which repo a file
+happens to sit in:
 
 ```mermaid
 flowchart TB

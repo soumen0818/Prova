@@ -4,8 +4,9 @@
 > [v2-midnight-architecture.md](v2-midnight-architecture.md) should happen at all, before any Compact
 > is written.
 >
-> **Status: 1.1 and the baseline half of 1.2 are done. The decision is blocked on one thing only —
-> measurements from a real Midnight circuit, which cannot be faked or estimated.**
+> **Status: 1.1 ☑ · 1.2 ◐ · 1.3 ☑ — custody decided (Option C). Phase 2 is unblocked.** The one
+> measurement still missing is a real Midnight circuit's cost, which Phase 2.1 produces as a
+> by-product rather than as separate work.
 
 ---
 
@@ -108,44 +109,120 @@ here.
 
 ---
 
-## 1.3 — Decide custody
+## 1.3 — Decide custody — **DECIDED: Option C**
 
-**Not started, and it is the question the V2 proposal never asks.**
+The question the V2 proposal never asks, and the one that gates every phase after this.
 
-Today the pool contract holds the tokens _and_ verifies the proof, in one transaction. The contract
-that checks the proof is the contract that holds the money — nothing moves without a valid proof,
-atomically. Split across two networks and that property is gone.
+### What is at stake
 
-| Option                                                       | Custody                  | Trust assumption                                    |
-| ------------------------------------------------------------ | ------------------------ | --------------------------------------------------- |
-| **A** — Stellar custodies, Midnight proves                   | Soroban pool (unchanged) | Settlement service relays authorisations faithfully |
-| **B** — Midnight custodies, Stellar settles out              | Midnight                 | A bridge or committee between the two               |
-| **C** — Midnight proves compliance only, Soroban keeps value | Soroban pool             | Compliance proof is advisory to the value layer     |
+Today the pool contract holds the tokens **and** verifies the proof, in the same transaction. The
+contract that checks the proof is the contract that holds the money, so nothing moves without a valid
+proof — atomically, with no window in between and no operator who could act differently.
 
-There is no neutral choice. **A** and **C** convert a contract-enforced property into an
-operator-enforced one; **B** needs a bridge, which §30 of the proposal itself says not to build
-before validating the product.
+That property is not a nice-to-have. It is the reason a compromised backend cannot steal: the relayer
+can refuse to submit, and it can observe that a proof passed through it, and that is the complete
+list of its powers. Split proving and custody across two networks and the property is gone unless
+something replaces it.
+
+### The decision
+
+| Option                                                                  | Custody          | Trust assumption                                                         | Verdict                                                                         |
+| ----------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| **A** — Stellar custodies, Midnight proves and authorises               | Soroban pool     | Settlement service relays authorisations faithfully                      | Rejected — a trusted relayer becomes load-bearing                               |
+| **B** — Midnight custodies, Stellar settles out                         | Midnight         | A bridge or committee                                                    | Rejected for now — §30 says not to build a bridge before validating the product |
+| **C** — Midnight proves compliance, Soroban keeps value and enforces it | **Soroban pool** | None added: the value layer still refuses anything without a valid proof | **CHOSEN**                                                                      |
+
+### Why C
+
+**It adds no trust.** A and B both convert a contract-enforced guarantee into an operator-enforced
+one — A through a relay service, B through a bridge. C changes neither what holds the money nor what
+decides whether it may move. The Soroban pool keeps doing both, exactly as it does today.
+
+**It makes Midnight real without betting the product on it.** Compliance proving moves to Midnight
+and is exercised for real — credentials, policy, selective disclosure — while the value layer is
+untouched. If Midnight turns out slower on a phone than arkworks, or its trusted-setup story is no
+better, the fallback is to keep using the Stellar proof and lose nothing.
+
+**It is the only option that can ship incrementally.** A and B are cutover designs: the day you
+switch, custody changes. C runs both proofs side by side, compares them, and moves the boundary only
+when the evidence says to.
+
+### What C means concretely
+
+```text
+Phone
+  ├─ Midnight proof  → compliance: credential valid, not expired, KYC level met, limits respected
+  └─ Soroban proof   → value: note ownership, no double-spend, conservation
+
+Soroban pool contract
+  └─ verifies the value proof and moves the tokens   ← unchanged, still atomic
+```
+
+Two proofs, two questions, one custodian. The Midnight proof answers _"is this person allowed to do
+this?"_; the Soroban proof answers _"does this person own this note, and have they spent it before?"_
+
+### The honest cost
+
+**A compliance proof the value layer does not check is advisory.** That is the real trade, and it
+must not be glossed: if the backend chose to ignore the Midnight proof, the Soroban contract would
+still accept the spend, because it verifies note ownership rather than eligibility.
+
+Two things bound that. First, the Soroban circuit **already enforces KYC in-circuit** today
+(credential signature, expiry, `kyc_level >= min_kyc_level`), and that stays — so compliance is not
+left to the advisory layer alone during the transition. Second, the path to removing the gap is
+known: once the Midnight proof is trusted, the compliance constraints come **out** of the Soroban
+circuit and a Midnight proof reference goes **in** as a public input the contract checks. That is a
+circuit change on a system already proven to accept new public inputs (Phase 0.3 did exactly this for
+`min_kyc_level`).
+
+Until that step lands, the system's compliance guarantee is the one it has today, and no claim is
+made that Midnight is enforcing anything on-chain.
+
+### Exit test
+
+> _Is the custody model decided, and is its trust assumption written down?_ — **yes.** Custody stays
+> with the Soroban pool. No new trusted component is introduced. The compliance proof is advisory
+> until the value layer verifies a Midnight proof reference directly, and that limitation is stated
+> here rather than discovered later.
 
 ---
 
-## Recommendation
+## Recommendation — proceed to Phase 2 under Option C
 
-**Do not start Phase 2.** Not because Midnight is wrong, but because the case for it is not yet made
-and Phase 0 has already delivered what the migration was going to be justified by.
+Custody is settled (1.3), so the blocking question is answered and Phase 2 can start. What follows is
+how to start it **without betting the product on an unmeasured platform**.
 
-Three things would change this, in order of cost:
+### The order that keeps every step useful
 
-1. **Confirm whether Midnight eliminates the trusted setup.** Documentation answers this. If yes, it
-   is a real advantage the current stack cannot match without a ceremony, and the strongest argument
-   available.
-2. **Build the smallest Midnight circuit and fill the empty column.** Especially on-device proving
-   time. Half a day, and it converts a preference into a decision.
-3. **Decide custody (1.3) before writing any Compact.** A design that discovers its trust model
-   afterwards has already chosen one by accident.
+1. **Build the smallest real Midnight circuit first** — credential validity plus one policy rule —
+   and fill the empty column in 1.2. This is Phase 2.1, and it doubles as the measurement the
+   decision still lacks. Half a day of work that turns a preference into evidence.
 
-### What to build instead, right now
+2. **Measure on-device proving before anything else depends on it.** A proof that cannot be built on
+   the phone means a server that knows the amount, and the product's central claim is gone. This is
+   the one number that could still reverse the direction, so it should be known early rather than
+   discovered in Phase 5.
 
-**2-in-2-out spends.** It is the one named, real limitation, users already hit it — "your balance is
-split across notes, the most you can send in one transfer is X" — and it needs no platform change.
-It would also make the Phase 1.2 comparison sharper, because a more complex circuit is where a
-different proof system's advantages would actually show.
+3. **Run both proofs side by side.** Option C allows this: the Soroban proof keeps enforcing value
+   and compliance while the Midnight proof is generated, verified and compared. Nothing ships to a
+   user until the two agree on the same transfers.
+
+4. **Only then move compliance out of the Soroban circuit.** The end state is the Midnight proof
+   reference as a public input the pool contract checks, with the KYC constraints removed from the
+   spend circuit. Phase 0.3 already proved this contract accepts new public inputs, so the mechanism
+   is known — but it is a redeploy and a forced app update, so it happens once, at the end, with
+   evidence behind it.
+
+### What still has no answer
+
+**Does Midnight remove the trusted setup?** Today's is `SETUP_SEED = 42`, testnet-grade. Mainnet
+needs either a real ceremony or a proof system that does not want one. If Midnight removes it, that
+is a genuine advantage the current stack cannot match — and it is answerable from documentation
+before writing a line of Compact.
+
+### Worth building regardless
+
+**2-in-2-out spends.** The one named, real limitation users already hit — _"your balance is split
+across notes, the most you can send in one transfer is X"_ — and it needs no platform change. It also
+makes the 1.2 comparison sharper, because a more complex circuit is where a different proof system's
+advantages would actually show.

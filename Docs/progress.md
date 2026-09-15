@@ -141,13 +141,18 @@ Build the smallest possible Midnight circuit — credential + one compliance rul
 Proving time on a real phone is the number that decides this. The current prover already runs
 on-device; a design that cannot is a product regression regardless of its other merits.
 
-### 1.3 Decide custody ☐ ⚠
+### 1.3 Decide custody ☑ — **Option C**
 
 **The question the V2 proposal does not ask.** Today the Soroban pool contract holds the tokens, so
 the contract that verifies the proof is the contract that holds the money — atomic, in one
 transaction. Splitting across two networks breaks that.
 
-Pick one, explicitly, and write down its trust assumption:
+**Chosen: C.** Soroban keeps custody and keeps enforcing; Midnight proves compliance alongside it.
+No new trusted component, and both proofs can run side by side before anything is cut over. Full
+reasoning, including the honest cost, in
+[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md) §1.3.
+
+The options as they were weighed:
 
 | Option                                                                  | Custody                  | Trust assumption                                                 |
 | ----------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------- |
@@ -155,19 +160,26 @@ Pick one, explicitly, and write down its trust assumption:
 | **B** — Midnight custodies, Stellar settles out                         | Midnight                 | Bridge or committee between the two                              |
 | **C** — Hybrid: Midnight for compliance proof only, Soroban keeps value | Soroban pool             | Compliance proof is advisory to the value layer                  |
 
-Option **C** is the least disruptive and preserves the current security model; option **B** is the
-most architecturally pure and the most work. There is no neutral choice — each trades something.
+**Why C won.** A and B both convert a contract-enforced guarantee into an operator-enforced one — A
+through a trusted relay, B through a bridge. C changes neither what holds the money nor what decides
+whether it may move, so it adds no trust at all.
+
+**The cost, stated plainly:** a compliance proof the value layer does not verify is _advisory_. That
+gap closes at the end of Phase 2, when the Midnight proof reference becomes a public input the pool
+contract checks and the KYC constraints leave the Soroban circuit. Until then compliance is enforced
+where it already is — in-circuit on Soroban — and no claim is made that Midnight enforces anything
+on-chain.
 
 **Phase 1 exit test:** _Is there a written, measured case that Midnight does something the current
-system cannot, and is the custody model decided?_ — **not met.** See
-[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md): the baseline is measured
-(spend = 24,729 constraints, ~700–800 ms desktop), the strongest original argument (policy
-flexibility) was answered by Phase 0.3 without Midnight, and the Midnight column cannot be filled
-without building a real circuit.
+system cannot, and is the custody model decided?_ — **custody: yes** (Option C — Soroban keeps value
+and enforcement, Midnight proves compliance, no new trusted component). **Measured case: still
+open**, and Phase 2.1 produces it as a by-product. See
+[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md).
 
-> **Gate.** If this test fails, stop here. Phase 0 has already improved the product, the V2
-> principles are adopted, and the honest outcome is "we evaluated it and it did not earn the
-> migration". That is a legitimate result, not a failure.
+> **Gate: passed on custody, open on measurement.** Phase 2 proceeds, but 2.1 must produce the
+> on-device proving number before anything downstream depends on Midnight. If a phone cannot build
+> the proof, the answer is still "it did not earn the migration" — and Option C means finding that
+> out costs a circuit, not the product.
 
 ---
 
@@ -350,16 +362,16 @@ Recorded because each cost real time and each has a cheap rule that prevents it.
 
 ## Current status
 
-| Phase                   | Status | Blocking question                                        |
-| ----------------------- | ------ | -------------------------------------------------------- |
-| 0 — Foundations         | ◐      | 0.1–0.4 ☑ · 0.5 needs a device and a browser             |
-| 1 — Midnight decision   | ◐      | 1.1 ☑ — gap not established; needs Midnight measurements |
-| 2 — Privacy core        | ☐      | Gated on Phase 1                                         |
-| 3 — Settlement boundary | ☐      | What enforces intent authenticity?                       |
-| 4 — Stellar adapter     | ☐      | Licensed payout partner (commercial)                     |
-| 5 — App integration     | ☐      | On-device proving must survive                           |
-| 6 — Hardening           | ☐      | —                                                        |
-| 7 — Cutover             | ☐      | —                                                        |
+| Phase                   | Status | Blocking question                                       |
+| ----------------------- | ------ | ------------------------------------------------------- |
+| 0 — Foundations         | ◐      | 0.1–0.4 ☑ · 0.5 needs a device and a browser            |
+| 1 — Midnight decision   | ◐      | 1.1 ☑ · 1.3 ☑ Option C · 1.2 measurement comes from 2.1 |
+| 2 — Privacy core        | ☐      | Unblocked — start with 2.1                              |
+| 3 — Settlement boundary | ☐      | What enforces intent authenticity?                      |
+| 4 — Stellar adapter     | ☐      | Licensed payout partner (commercial)                    |
+| 5 — App integration     | ☐      | On-device proving must survive                          |
+| 6 — Hardening           | ☐      | —                                                       |
+| 7 — Cutover             | ☐      | —                                                       |
 
 ### Verified in production — 14 Sep
 

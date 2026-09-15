@@ -91,11 +91,13 @@ Carried over, and worth clearing before any migration noise:
   ([`ClearRelayFailure`](../backend/internal/store/pool.go)). The field was write-only, so one
   bad relay left an error there permanently; a status field that only goes one way is not a
   status field.
-- ☐ Recapture `payment_failed.png` — **needs a device.** It shows the pre-fix copy ("the proof was
-  rejected") and the pre-fix balance behaviour. Requires installing the next build and forcing a
-  failure.
-- ☐ Mobile-width website screenshot — **needs a browser.** For the submission's "mobile responsive"
-  requirement; both current site shots are desktop.
+- ☐ Recapture `payment_failed.png` — **MANUAL: needs a device.** It shows the pre-fix copy ("the
+  proof was rejected") and the pre-fix balance behaviour. Install 1.3.0, force a failure, screenshot,
+  replace `public/payment_failed.png`.
+- ☐ Mobile-width website screenshot — **MANUAL: needs a browser.** Open
+  [provapay.duckdns.org](https://provapay.duckdns.org) at ~390px wide, screenshot, save as
+  `public/website_mobile.png`. Covers the "mobile responsive" submission requirement, which both
+  current site shots miss because they are desktop.
 
 **Phase 0 exit test:** _Is the current product measurably better, and could a different privacy
 backend be dropped in without touching business logic?_
@@ -312,6 +314,40 @@ Carried from the V2 doc §47, and not negotiable:
 
 ---
 
+## Work log
+
+Every change, newest first, with the commit that carries it. This is the audit trail: a status box
+says _what_ is done, this says _what was actually built and when_, so nothing is claimed that cannot
+be checked against a diff.
+
+| Date   | Commit    | Phase   | What changed                                                                                                |
+| ------ | --------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| 14 Sep | `8af9f72` | —       | README: 1.3.0 APK everywhere, Midnight-first architecture section, feedback table replaced with a form link |
+| 14 Sep | `6c81083` | —       | Version 1.3.0 — a minor, not a patch: the 16-input circuit cannot talk to the old pool                      |
+| 8 Sep  | `4ed97c5` | 0.3     | Contract test rewritten to a satisfiable statement (see below)                                              |
+| 8 Sep  | `a8c78c6` | —       | `cargo fmt` + `clippy -D warnings` across both Rust crates; fixed a call site only `--all-targets` compiles |
+| 8 Sep  | `9ea21eb` | 1.1–1.2 | Phase 1 evaluation: baseline measured, Midnight case not yet made                                           |
+| 8 Sep  | `6bb6862` | —       | Config plugin: arm64-only native builds, version read from `app.json`                                       |
+| 8 Sep  | `745a4ca` | 0.5     | A successful relay clears the stale failure record                                                          |
+| 8 Sep  | `6ae0591` | 0.4     | Reconciliation: `StuckTransfers` + `GET /ops/reconcile`                                                     |
+| 8 Sep  | `a24e487` | 0.3     | KYC minimum becomes a public input; pool redeployed as `CD645P…`                                            |
+| 7 Sep  | `33dc593` | 0.2     | Transfer state machine, enforced in `Store.SetStatus`                                                       |
+| 7 Sep  | `ff55014` | 0.1     | `SettlementProvider` / `PrivacyProvider` interfaces                                                         |
+
+### Mistakes worth not repeating
+
+Recorded because each cost real time and each has a cheap rule that prevents it.
+
+| What happened                                                                                                                                           | The rule it taught                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| A contract test proved an **unsatisfiable** circuit. Passed in `--release` (arkworks skips its check), panicked in debug. CI runs debug.                | **Verify in the profile CI uses.** "Cannot prove X" is a constraint-satisfaction assertion, never a `prove()` call. |
+| `SpendCircuit::new` call site inside `ffi.rs` compiled only under `clippy --all-targets`. `cargo test` never saw it.                                    | **Run every gate the workflow runs**, not the subset you touched.                                                   |
+| The deploy script warned when `ANCHOR_SEED` was unset, then called `anchor-pubkey` **without passing it** — so the pool initialised with the dev key.   | **Read the result off-chain after deploying.** Never trust a script's own output.                                   |
+| `current_time` was sampled twice — once for the proof, once for submission — with proving in between. Every transfer failed with `Error(Contract, #4)`. | A **public input** must be captured once and reused.                                                                |
+| `android/` is gitignored, so fixes made there vanish on the next prebuild.                                                                              | Native build fixes belong in the **config plugin**.                                                                 |
+
+---
+
 ## Current status
 
 | Phase                   | Status | Blocking question                                        |
@@ -324,6 +360,25 @@ Carried from the V2 doc §47, and not negotiable:
 | 5 — App integration     | ☐      | On-device proving must survive                           |
 | 6 — Hardening           | ☐      | —                                                        |
 | 7 — Cutover             | ☐      | —                                                        |
+
+### Verified in production — 14 Sep
+
+The Phase 0.3 chain works end to end on the live backend, checked rather than assumed:
+
+| Check                                | Result                            |
+| ------------------------------------ | --------------------------------- |
+| `min_kyc_level` on-chain (`CD645P…`) | `1`                               |
+| `/pool/status` → `minKycLevel`       | `1` — contract read → cache → API |
+| Pool reset after the redeploy        | `treeSize: 0`, `queueDepth: 0`    |
+| Backend anchor vs contract anchor    | match (`27262bd2…`)               |
+
+Two things to know about the live endpoint:
+
+- **`/pool/status` takes ~25s on a cold call.** That is the uncached contract read; it is cached for
+  60s afterwards. A background refresh would remove it if a caller ever cares.
+- **`relayError` still shows a `#4` from 24 August.** Stale, from the old pool, before that bug was
+  fixed. The self-clearing code only fires on a successful spend and there has not been one on the
+  new pool yet, so it clears on the first send.
 
 **What is deployed today** (the baseline this plan starts from, not a prototype): two verified
 Soroban contracts on Stellar testnet, an on-device ZK prover, a working shielded pool with

@@ -188,6 +188,29 @@ open**, and Phase 2.1 produces it as a by-product. See
 **Goal:** a private transfer, provable and non-replayable, on Midnight.
 **Depends on:** Phase 1 passing its gate.
 
+### 2.0 Toolchain and the on-device question ◐
+
+Installed 14 Sep: `compact` CLI 0.5.2, compiler 0.34.0, to `~/.local/bin`. Docker and Node were
+already present. Nothing else needed — no SDK download, no ceremony artifacts.
+
+**Answered by research, not memory** (see
+[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md)):
+
+- ✅ **No trusted setup.** Halo2 with an Inner Product Argument removes the ceremony entirely. This
+  is the one candidate gap from 1.1 that survived, and it is now confirmed — a real advantage the
+  current stack cannot match without a multi-party ceremony before mainnet.
+- ⚠️ **Proving happens in a Docker proof server on port 6300.** The documented paths are browser and
+  Node.js; the SDK's `proofProvider` is described as letting a _backend_ do the ZK work. No mobile
+  path is documented.
+
+**The second point is the real risk of this migration**, and 2.1 must settle it before anything
+downstream is built. Prova's claim is that the amount never leaves the phone, and today an on-device
+Rust prover makes that literally true. A remote proof server would receive the witness — which means
+it would know the amount, and the claim would be gone.
+
+Acceptable outcomes: the prover compiled natively for arm64 (mirroring `modules/prova-prover`), or a
+proof server running on the device itself. Unacceptable: sending witnesses to a server.
+
 ### 2.1 Credential circuit ☐
 
 Port the credential model — issuer signature, `user_id` binding, expiry, KYC level — to Compact.

@@ -76,17 +76,17 @@ Timings are ranges across two runs, not single measurements: the spread on this 
 imply a precision that is not there, and any Midnight comparison has to clear that noise floor to
 mean anything.
 
-| Metric                          | Current (arkworks / BLS12-381 Groth16)      | Midnight       |
-| ------------------------------- | ------------------------------------------- | -------------- |
-| Spend constraints               | **24,729**                                  | _not measured_ |
-| Spend public inputs             | **16**                                      | _not measured_ |
-| Setup time (spend)              | **~800 ms**                                 | _not measured_ |
-| **Prove time (spend), desktop** | **~700–800 ms**                             | _not measured_ |
-| Prove time (shield)             | ~215–240 ms                                 | _not measured_ |
-| Prove time (fold)               | ~1,360–1,580 ms                             | _not measured_ |
-| On-chain verification           | ~49.0M CPU (measured on Soroban)            | _not measured_ |
-| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade) | _unknown_      |
-| Proves on-device                | **Yes** — native Rust module, in production | _not measured_ |
+| Metric                          | Current (arkworks / BLS12-381 Groth16)      | Midnight                                          |
+| ------------------------------- | ------------------------------------------- | ------------------------------------------------- |
+| Spend constraints               | **24,729**                                  | _not measured_                                    |
+| Spend public inputs             | **16**                                      | _not measured_                                    |
+| Setup time (spend)              | **~800 ms**                                 | _not measured_                                    |
+| **Prove time (spend), desktop** | **~700–800 ms**                             | _not measured_                                    |
+| Prove time (shield)             | ~215–240 ms                                 | _not measured_                                    |
+| Prove time (fold)               | ~1,360–1,580 ms                             | _not measured_                                    |
+| On-chain verification           | ~49.0M CPU (measured on Soroban)            | _not measured_                                    |
+| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade) | **None** — Halo2/IPA ✅                           |
+| Proves on-device                | **Yes** — native Rust module, in production | **Unclear — proof server is a Docker service** ⚠️ |
 
 ### The number that decides it
 
@@ -99,7 +99,42 @@ A design that needs a server to prove has a server that knows the amount, and th
 claim is gone. Any alternative that cannot prove on-device is a regression regardless of every other
 merit.
 
-### Why the Midnight column is empty
+### What research settled (14 Sep)
+
+Two of the open questions now have answers, from Midnight's own documentation rather than from
+memory. One is decisively good; the other is the biggest risk in this migration.
+
+**✅ Midnight has no trusted setup.** It uses Halo2 — PLONK arithmetisation with an Inner Product
+Argument over Pedersen commitments — which removes the setup ceremony entirely. This is a **genuine
+advantage the current stack cannot match**: today's keys come from `SETUP_SEED = 42`, which is
+testnet-grade and would need a real multi-party ceremony before mainnet. Midnight removes that
+requirement rather than making it easier.
+
+This is the strongest argument for the migration, and it was the one candidate gap that survived
+Phase 1.1. It is now confirmed.
+
+**⚠️ Proving runs in a proof server, not in the app.** Midnight generates proofs in a **Docker
+service on port 6300**, and the documented guidance is browser and Node.js — the SDK's
+`proofProvider` is explicitly described as letting a backend do the heavy ZK work. No mobile or
+React Native path appears in the documentation.
+
+That matters more here than it would for most projects. Prova's central claim is that **the amount
+never leaves the phone**. Today an on-device Rust prover makes that literally true. A proof server
+that receives the witness would know the amount — and "local proof server" means _the user's
+machine_, which for a web dApp is their laptop and for a phone is nowhere obvious.
+
+Three ways this could go, in order of preference:
+
+| Option                                                  | On-device? | What it would take                                                                               |
+| ------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| Embed the prover natively (as the Rust prover is today) | Yes        | Midnight's prover compiled for arm64 Android and bridged, mirroring `modules/prova-prover`       |
+| Proof server on the user's own device                   | Yes        | A local service inside the app — heavy, but preserves the claim                                  |
+| Remote proof server                                     | **No**     | Would require sending the witness off-device. **This is the one that breaks the product claim.** |
+
+**Phase 2.1 must answer this before anything else.** It is a bigger risk than proving _time_, because
+time is a number to optimise and this is a property to preserve or lose.
+
+### Why the Midnight column is still empty
 
 It cannot be filled by reading documentation. These numbers come from building the smallest real
 circuit — credential + one compliance rule — and measuring it. **Estimating them would be the exact

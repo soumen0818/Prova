@@ -211,10 +211,58 @@ it would know the amount, and the claim would be gone.
 Acceptable outcomes: the prover compiled natively for arm64 (mirroring `modules/prova-prover`), or a
 proof server running on the device itself. Unacceptable: sending witnesses to a server.
 
-### 2.1 Credential circuit ☐
+### 2.1 Credential circuit ☑ — compiles, measured
 
-Port the credential model — issuer signature, `user_id` binding, expiry, KYC level — to Compact.
-Match the existing semantics exactly; the current model is tested and works.
+`privacy/midnight/contracts/compliance.compact` — the same eligibility statement the Soroban spend
+circuit already enforces: credential not expired, KYC level at or above the corridor's minimum, and
+a commitment binding the proof to the credential used.
+
+Proving the _same_ statement twice is the point of Option C: both run side by side and their answers
+are compared before anything is cut over. A circuit that proved something different would make the
+comparison meaningless.
+
+**Measured** (`compact` 0.5.2, compiler 0.34.0, language 0.26):
+
+|                     | Midnight               | Current stack                                |
+| ------------------- | ---------------------- | -------------------------------------------- |
+| Compliance circuit  | 38 IR instructions     | part of the 24,729-constraint spend circuit  |
+| Proving key shipped | **2.7 MB per circuit** | **0 bytes** — derived at runtime from a seed |
+| Verifier key        | 2 KB                   | 2.2 KB embedded in the contract              |
+| Trusted setup       | none                   | required                                     |
+
+**What the compiler taught us.** Compact refused to compile until every witness-derived return value
+was wrapped in `disclose()` — it treats a _hash_ of a secret as a disclosure, because an attacker
+holding a candidate value can hash it and compare. That is a genuine protection the arkworks
+pipeline does not offer: there, `user_id` is simply a public input with nothing forcing anyone to
+notice. Both leak the same thing; only one makes you say so out loud.
+
+**The 2.7 MB proving key is the finding to carry forward.** The current app ships no key at all — it
+derives one from `SETUP_SEED` on first use. Midnight ships a file per circuit, so every circuit adds
+~2.7 MB to an APK that is already 86 MB. Not disqualifying, but it is a real cost and it scales with
+the number of circuits.
+
+### 2.1b On-device proving ☐ ⚠ — **the open risk**
+
+**Settle this before building anything else on Midnight.** It is a bigger risk than proving time:
+time is a number to optimise, this is a property to keep or lose.
+
+Midnight proves in a Docker service on port 6300, and the documented integrations are browser and
+Node.js. Prova's claim is that the amount never leaves the phone, and an on-device Rust prover makes
+that literally true today.
+
+| Outcome                                                                        | On-device? | Verdict                                |
+| ------------------------------------------------------------------------------ | ---------- | -------------------------------------- |
+| Midnight's prover compiled for arm64 and bridged, as `modules/prova-prover` is | Yes        | Preserves the claim                    |
+| Proof server running inside the app on the handset                             | Yes        | Heavy, acceptable                      |
+| Remote proof server the app calls                                              | **No**     | **Breaks the product's central claim** |
+
+The third is not a trade to weigh — a server that receives the witness knows the amount, and the
+whole argument for this product is that nobody does.
+
+**What settling it looks like:** find whether `midnight-proofs` (the Rust Halo2 crate) can be built
+for `aarch64-linux-android`, as the arkworks prover already is. If it can, the path is the one this
+codebase has walked before. If it cannot, Option C still protects us — the Soroban proof keeps
+working and nothing shipped depends on Midnight yet.
 
 ### 2.2 Private value: commitments and nullifiers ☐
 

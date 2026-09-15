@@ -76,17 +76,20 @@ Timings are ranges across two runs, not single measurements: the spread on this 
 imply a precision that is not there, and any Midnight comparison has to clear that noise floor to
 mean anything.
 
-| Metric                          | Current (arkworks / BLS12-381 Groth16)      | Midnight                                          |
-| ------------------------------- | ------------------------------------------- | ------------------------------------------------- |
-| Spend constraints               | **24,729**                                  | _not measured_                                    |
-| Spend public inputs             | **16**                                      | _not measured_                                    |
-| Setup time (spend)              | **~800 ms**                                 | _not measured_                                    |
-| **Prove time (spend), desktop** | **~700–800 ms**                             | _not measured_                                    |
-| Prove time (shield)             | ~215–240 ms                                 | _not measured_                                    |
-| Prove time (fold)               | ~1,360–1,580 ms                             | _not measured_                                    |
-| On-chain verification           | ~49.0M CPU (measured on Soroban)            | _not measured_                                    |
-| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade) | **None** — Halo2/IPA ✅                           |
-| Proves on-device                | **Yes** — native Rust module, in production | **Unclear — proof server is a Docker service** ⚠️ |
+| Metric                          | Current (arkworks / BLS12-381 Groth16)       | Midnight                                          |
+| ------------------------------- | -------------------------------------------- | ------------------------------------------------- |
+| Spend constraints               | **24,729**                                   | _not measured_                                    |
+| Spend public inputs             | **16**                                       | _not measured_                                    |
+| Setup time (spend)              | **~800 ms**                                  | _not measured_                                    |
+| **Prove time (spend), desktop** | **~700–800 ms**                              | _not measured_                                    |
+| Prove time (shield)             | ~215–240 ms                                  | _not measured_                                    |
+| Prove time (fold)               | ~1,360–1,580 ms                              | _not measured_                                    |
+| On-chain verification           | ~49.0M CPU (measured on Soroban)             | _not measured_                                    |
+| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade)  | **None** — Halo2/IPA ✅                           |
+| Proving key, shipped            | **0 bytes** — derived at runtime from a seed | **2.7 MB per circuit**, shipped as a file         |
+| Verifier key                    | 2.2 KB embedded in the contract              | 2 KB per circuit                                  |
+| Compliance circuit size         | part of the 24,729-constraint spend circuit  | **38 IR instructions** (eligibility only)         |
+| Proves on-device                | **Yes** — native Rust module, in production  | **Unclear — proof server is a Docker service** ⚠️ |
 
 ### The number that decides it
 

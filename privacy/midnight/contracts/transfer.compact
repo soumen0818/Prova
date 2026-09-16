@@ -1,0 +1,207 @@
+pragma language_version 0.26;
+
+import CompactStandardLibrary;
+
+// Prova — the private transfer (Phase 2.3 of Docs/progress.md).
+//
+// # What this proves, in one statement
+//
+// "I own a note in the pool, I am allowed to send money, and these two new notes are worth exactly
+// what the old one was" — while revealing the amount to nobody.
+//
+// This is where 2.1 (eligibility) and 2.2 (notes) meet. A transfer needs both: proving you are
+// allowed to send is useless if you do not own the money, and proving you own it is useless if you
+// are not permitted to move it.
+//
+// # Mirrors the Soroban spend circuit
+//
+// `circuits/prover/src/pool/spend.rs` proves nine things. This proves the same set, minus the two
+// that belong to the settlement layer under Option C (destination binding and note encryption —
+// both are about delivering value, which Soroban still owns):
+//
+//   1. Ownership          ownerPk derives from the secret, so only its holder can spend
+//   2. Merkle membership  the input note is a leaf in the tree
+//   3. Nullifier          deterministic, so a second spend collides
+//   4. Output commitments each published leaf commits to the note claimed
+//   5. Range checks       amounts fit in 64 bits — load-bearing, see below
+//   6. Conservation       in == out1 + out2, or money is printed
+//   9. KYC                credential valid, unexpired, at or above the corridor minimum
+//
+// # The one thing that must not be got wrong
+//
+// **Conservation without range checks mints money.** In arkworks, amounts live in a ~255-bit field,
+// so an attacker can pick outputs that sum to the input *modulo the field order* and create value
+// from the wrap-around. The Soroban circuit defends with an explicit `enforce_range` on every
+// amount before the sum is checked.
+//
+// Compact's `Uint<64>` is a *bounded* type — the compiler emits `constrain_bits` for it, which is
+// the same defence expressed by the type rather than by a call. The addition below is therefore
+// checked in two ways: each operand is constrained to 64 bits, and the sum is compared for exact
+// equality. It is worth knowing this is type-enforced here and hand-enforced there, because the
+// hand-enforced version is the one that can be forgotten.
+
+// ---------------------------------------------------------------------------
+// Domain separators — see notes.compact for why these exist.
+// ---------------------------------------------------------------------------
+
+export circuit tOwnerDomain(): Bytes<32> {
+  return pad(32, "prova:owner:v1");
+}
+
+export circuit tNullifierDomain(): Bytes<32> {
+  return pad(32, "prova:nullifier:v1");
+}
+
+export circuit tCommitmentDomain(): Bytes<32> {
+  return pad(32, "prova:commitment:v1");
+}
+
+// ---------------------------------------------------------------------------
+// Ledger
+// ---------------------------------------------------------------------------
+
+// Every note commitment ever published. Historic so a proof survives concurrent inserts.
+export ledger commitments: HistoricMerkleTree<10, Bytes<32>>;
+
+// Spent notes. Presence means burned.
+export ledger nullifiers: Map<Bytes<32>, Boolean>;
+
+// The corridor's KYC policy — public, because a policy the prover could choose is not a policy.
+export ledger requiredKycLevel: Uint<8>;
+
+// ---------------------------------------------------------------------------
+// Witnesses — everything the transfer wants to keep private.
+// ---------------------------------------------------------------------------
+
+witness spenderSecretKey(): Bytes<32>;
+
+// The note being spent.
+witness inputAmount(): Uint<64>;
+
+witness inputRho(): Bytes<32>;
+
+// The two notes being created: one for the recipient, one for change.
+witness output1Amount(): Uint<64>;
+
+witness output1OwnerPk(): Bytes<32>;
+
+witness output1Rho(): Bytes<32>;
+
+witness output2Amount(): Uint<64>;
+
+witness output2OwnerPk(): Bytes<32>;
+
+witness output2Rho(): Bytes<32>;
+
+// The spender's credential.
+witness kycLevel(): Uint<8>;
+
+witness kycExpiry(): Uint<64>;
+
+// The membership path for the input note.
+//
+// A witness, not an argument: the path reveals *where* in the tree the note sits, and leaking that
+// would tell an observer which deposit is being spent — the exact link the pool exists to break.
+// The circuit proves the path reaches an accepted root without the path itself ever being public.
+witness inputPath(): MerkleTreePath<10, Bytes<32>>;
+
+// ---------------------------------------------------------------------------
+// Helpers — identical definitions to notes.compact, so digests agree.
+// ---------------------------------------------------------------------------
+
+export circuit tOwnerPk(ownerSk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([ownerSk, tOwnerDomain()]);
+}
+
+export circuit tCommitment(amount: Uint<64>, ownerPk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>(
+           [persistentHash<Vector<2, Uint<64>>>([amount, 0]),
+            ownerPk,
+            persistentHash<Vector<2, Bytes<32>>>([rho, tCommitmentDomain()])]
+           );
+}
+
+export circuit tNullifier(ownerSk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([ownerSk, rho, tNullifierDomain()]);
+}
+
+// ---------------------------------------------------------------------------
+// The transfer
+// ---------------------------------------------------------------------------
+
+// One note in, two notes out. Nothing about the value is revealed.
+//
+// `currentTime` is an argument rather than a witness: the spender must not choose the time their
+// credential is checked against, or an expired one could claim to still be valid.
+//
+// The Merkle root is NOT an argument. It is recomputed inside the circuit from a private path and
+// then checked against the ledger's accepted set — so the spender cannot name a tree they invented,
+// and the path stays secret. Passing the root in would have been simpler and strictly worse.
+export circuit transfer(currentTime: Uint<64>): Bytes<32> {
+  const ownerSk = spenderSecretKey();
+  const inAmount = inputAmount();
+  const inRho = inputRho();
+
+  // --- 9. KYC. Checked first: it is the cheapest way to reject, and a spender who is not
+  //        permitted to transfer should not have their note examined at all.
+  assert(kycExpiry() >= currentTime, "credential has expired");
+  assert(kycLevel() >= requiredKycLevel, "KYC level below the corridor minimum");
+
+  // --- 1 & 2. Ownership AND membership, together. Neither is worth anything alone.
+  //
+  // The input commitment is rebuilt here from `ownerPk` — which is derived from the spender's
+  // secret — and from the note's own amount and nonce. Proving *that* commitment is in the tree is
+  // what binds the two facts: the note exists, and it is addressed to a key this spender holds.
+  //
+  // An earlier draft computed `ownerPk` and never used it. The circuit still compiled and every
+  // assert still passed, but it proved only that the nullifier came from *some* key — not that the
+  // note being spent belonged to it. That is the difference between a wallet and a free-for-all,
+  // and it is invisible unless you check what each value is actually used for. The Soroban circuit
+  // does the same binding at `spend.rs` §1-2; comparing the two is what surfaced it.
+  const ownerPk = tOwnerPk(ownerSk);
+  const inCommitment = tCommitment(inAmount, ownerPk, inRho);
+
+  // The path must lead to the commitment we just rebuilt — so the note whose membership is proved
+  // is the same note whose amount and owner the rest of this circuit relies on.
+  const path = inputPath();
+  assert(path.leaf == inCommitment, "merkle path does not match the input note");
+
+  // Recompute the root from the path and require the ledger to still accept it.
+  // `HistoricMerkleTree` allows any past root, so a proof built before someone else's deposit is
+  // still good — the same window the Soroban pool provides with its 32-root ring buffer.
+  const computedRoot = merkleTreePathRoot<10, Bytes<32>>(disclose(path));
+  assert(commitments.checkRoot(computedRoot), "input note is not in the pool");
+
+  // --- 3. Nullifier. Deterministic per note, so a second spend produces the same value and is
+  //        rejected here rather than silently succeeding.
+  //
+  // `disclose` is required and correct: publishing the nullifier IS the double-spend mechanism.
+  // It reveals that *a* note was spent, never which one — that link needs `ownerSk`.
+  const nullifier = tNullifier(disclose(ownerSk), disclose(inRho));
+  assert(!nullifiers.member(nullifier), "note already spent");
+
+  // --- 5 & 6. Range and conservation, in that order.
+  //
+  // The ordering is not cosmetic. Conservation checked over unbounded values is not conservation at
+  // all: an attacker picks outputs summing to the input modulo the field order and mints the
+  // difference. Here `Uint<64>` bounds every amount by its type, so the sum below cannot wrap.
+  //
+  // Equality, not `>=`: outputs must account for the input exactly. A `>=` would let value vanish,
+  // which is less alarming than minting and still wrong.
+  const out1 = output1Amount();
+  const out2 = output2Amount();
+  assert(inAmount == out1 + out2, "value not conserved");
+
+  // --- 4. Output commitments. Each new leaf must commit to the note actually claimed, or a spender
+  //        could publish a commitment worth more than the value they proved.
+  const c1 = tCommitment(disclose(out1), disclose(output1OwnerPk()), disclose(output1Rho()));
+  const c2 = tCommitment(disclose(out2), disclose(output2OwnerPk()), disclose(output2Rho()));
+
+  // Burn the input, publish the outputs. Order matters: the nullifier is recorded only after every
+  // check has passed, so a failed transfer leaves no trace.
+  nullifiers.insert(nullifier, true);
+  commitments.insert(c1);
+  commitments.insert(c2);
+
+  return nullifier;
+}

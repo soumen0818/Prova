@@ -11,6 +11,7 @@
   <img alt="Expo" src="https://img.shields.io/badge/Expo_SDK_56-000020?style=for-the-badge&logo=expo&logoColor=white">
   <img alt="Go" src="https://img.shields.io/badge/Go_1.25-00ADD8?style=for-the-badge&logo=go&logoColor=white">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
+  <img alt="Midnight" src="https://img.shields.io/badge/Midnight-1A1A2E?style=for-the-badge&logoColor=white">
   <img alt="Soroban" src="https://img.shields.io/badge/Soroban-393939?style=for-the-badge&logo=stellar&logoColor=white">
   <img alt="Stellar" src="https://img.shields.io/badge/Stellar_Testnet-05192E?style=for-the-badge">
   <img alt="arkworks" src="https://img.shields.io/badge/BLS12--381_Groth16-E6F94E?style=for-the-badge&logoColor=black&color=E6F94E">
@@ -513,6 +514,32 @@ liquidity and no cash-out. Splitting them lets each stay good at its own job, jo
 handoff: a **settlement intent** — a verified statement that a transfer is allowed, carrying nothing
 about who made it or for how much.
 
+### How the two layers divide the work
+
+Two proofs, two questions, one custodian:
+
+```text
+Phone
+  ├─ Midnight proof  →  "is this person allowed to do this?"
+  │                     credential valid · not expired · KYC level met · limits respected
+  └─ Soroban proof   →  "does this person own this note, and is it unspent?"
+                        note ownership · no double-spend · value conserved
+
+Soroban pool contract
+  └─ verifies the value proof and moves the tokens   ← holds custody, atomically
+```
+
+**Custody stays with the Soroban pool** — decided deliberately, not by default
+([Phase 1.3](Docs/v2-phase1-midnight-evaluation.md)). The contract that verifies the proof is the
+contract that holds the money, so nothing moves without a valid proof, in one transaction, with no
+operator in between. Moving custody to a second network would replace that guarantee with a bridge or
+a trusted relay; keeping it means adding Midnight introduces **no new trusted component**.
+
+The honest limit of that choice: until the pool contract verifies a Midnight proof reference
+directly, the compliance proof is advisory to the value layer. Compliance is therefore still enforced
+where it already is — inside the Soroban circuit — and this README does not claim Midnight enforces
+anything on-chain yet.
+
 **Where the privacy layer runs today.** The full privacy model — credential checks, spending limits,
 anti-replay — is **implemented and live on Stellar**, enforced inside the proof by a Soroban contract
 that also custodies the value. That is what the deployed contracts below are. Moving this layer to
@@ -804,20 +831,23 @@ The full, longer list (with exact commands) lives in
 read it before starting any non-trivial change, since Prova is a multi-repo system where the
 circuit, contract, backend, and app must agree on shared formats.
 
-| Doc                                                         | Covers                                                                                     |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [`proposal .md`](Docs/proposal%20.md)                       | The product case: the problem, the persona, why ZK + Stellar, why it's defensible          |
-| [`tech-stack.md`](Docs/tech-stack.md)                       | Stack choices and why, the polyrepo split, the end-to-end technical workflow               |
-| [`implementation-guide.md`](Docs/implementation-guide.md)   | The phase-by-phase build plan and exit criteria — the roadmap below is generated from this |
-| [`shielded-pool.md`](Docs/shielded-pool.md)                 | The note/UTXO design, the Merkle-fold architecture, the full must-not-break invariant list |
-| [`kyc-verification.md`](Docs/kyc-verification.md)           | The verification state machine, credential issuance rules, tiers                           |
-| [`deposit-flow.md`](Docs/deposit-flow.md)                   | How money enters a Prova wallet (simulated vs. real anchor rails)                          |
-| [`account-recovery.md`](Docs/account-recovery.md)           | Cloud backup, envelope encryption, the restore flow                                        |
-| [`signup-and-validation.md`](Docs/signup-and-validation.md) | Sign-up, field validation (client + server), rate limiting, email delivery                 |
-| [`deployment-and-keys.md`](Docs/deployment-and-keys.md)     | Every key, what it can do, where it goes, step-by-step contract deployment                 |
-| [`environments.md`](Docs/environments.md)                   | Environment matrix and secrets handling                                                    |
-| [`design-system.md`](Docs/design-system.md)                 | The UI style guide — dark theme, chartreuse accent, rounded glassy fintech look            |
-| [`branding-assets.md`](Docs/branding-assets.md)             | Every brand/marketing image, spec, and generation prompt                                   |
+| Doc                                                                         | Covers                                                                                                   |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`v2-midnight-architecture.md`](Docs/v2-midnight-architecture.md)           | **The Midnight + Stellar split**: the proposal, and an honest review of what it does and does not settle |
+| [`v2-phase1-midnight-evaluation.md`](Docs/v2-phase1-midnight-evaluation.md) | **The custody decision** (Option C) and the measured baseline any Midnight comparison has to beat        |
+| [`progress.md`](Docs/progress.md)                                           | **The live tracker**: every phase, its exit test, the work log, and what is still manual                 |
+| [`proposal .md`](Docs/proposal%20.md)                                       | The product case: the problem, the persona, why ZK + Stellar, why it's defensible                        |
+| [`tech-stack.md`](Docs/tech-stack.md)                                       | Stack choices and why, the polyrepo split, the end-to-end technical workflow                             |
+| [`implementation-guide.md`](Docs/implementation-guide.md)                   | The phase-by-phase build plan and exit criteria — the roadmap below is generated from this               |
+| [`shielded-pool.md`](Docs/shielded-pool.md)                                 | The note/UTXO design, the Merkle-fold architecture, the full must-not-break invariant list               |
+| [`kyc-verification.md`](Docs/kyc-verification.md)                           | The verification state machine, credential issuance rules, tiers                                         |
+| [`deposit-flow.md`](Docs/deposit-flow.md)                                   | How money enters a Prova wallet (simulated vs. real anchor rails)                                        |
+| [`account-recovery.md`](Docs/account-recovery.md)                           | Cloud backup, envelope encryption, the restore flow                                                      |
+| [`signup-and-validation.md`](Docs/signup-and-validation.md)                 | Sign-up, field validation (client + server), rate limiting, email delivery                               |
+| [`deployment-and-keys.md`](Docs/deployment-and-keys.md)                     | Every key, what it can do, where it goes, step-by-step contract deployment                               |
+| [`environments.md`](Docs/environments.md)                                   | Environment matrix and secrets handling                                                                  |
+| [`design-system.md`](Docs/design-system.md)                                 | The UI style guide — dark theme, chartreuse accent, rounded glassy fintech look                          |
+| [`branding-assets.md`](Docs/branding-assets.md)                             | Every brand/marketing image, spec, and generation prompt                                                 |
 
 ## CI
 

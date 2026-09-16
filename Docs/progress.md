@@ -241,7 +241,7 @@ derives one from `SETUP_SEED` on first use. Midnight ships a file per circuit, s
 ~2.7 MB to an APK that is already 86 MB. Not disqualifying, but it is a real cost and it scales with
 the number of circuits.
 
-### 2.1b On-device proving ☐ ⚠ — **the open risk**
+### 2.1b On-device proving ◐ — **likely viable, needs the NDK to confirm**
 
 **Settle this before building anything else on Midnight.** It is a bigger risk than proving time:
 time is a number to optimise, this is a property to keep or lose.
@@ -259,10 +259,31 @@ that literally true today.
 The third is not a trade to weigh — a server that receives the witness knows the amount, and the
 whole argument for this product is that nobody does.
 
-**What settling it looks like:** find whether `midnight-proofs` (the Rust Halo2 crate) can be built
-for `aarch64-linux-android`, as the arkworks prover already is. If it can, the path is the one this
-codebase has walked before. If it cannot, Option C still protects us — the Soroban proof keeps
-working and nothing shipped depends on Midnight yet.
+**Tested 16 Sep — the answer is encouraging.** `cargo add midnight-proofs` resolves (102 packages,
+Rust 1.96 compatible) and `cargo build --target aarch64-linux-android` gets all the way through
+dependency compilation before stopping at exactly one thing:
+
+```
+error: failed to run custom build command for `blst v0.3.17`
+  error occurred in cc-rs: failed to find tool "aarch64-linux-android-clang"
+```
+
+`blst` is the C implementation of BLS12-381. It needs the NDK's clang, which is missing only because
+the Android SDK was removed from this machine. **Nothing in the Rust code is Android-incompatible** —
+no `std`-only guard, no unsupported intrinsic, no platform gate. It is a toolchain gap.
+
+And it is a gap this repo has already closed: `circuits/prover/build-android.sh` cross-compiles the
+existing arkworks prover with `cargo-ndk` and `ANDROID_NDK_HOME`, for the same target, against the
+same curve. The same recipe applies.
+
+**Status: the native path looks viable, unproven.** To finish it: reinstall the NDK, run the build
+with `cargo-ndk`, and measure proving time on the handset. That turns "looks viable" into the number
+1.2 is still missing.
+
+**What this means for the risk.** The outcome that would break the product — witnesses leaving the
+device for a remote proof server — is no longer the likely one. Midnight's _documented_ path is a
+Docker proof server, but its prover is a Rust crate that appears to cross-compile like any other, and
+this codebase already ships a Rust prover on Android.
 
 ### 2.2 Private value: commitments and nullifiers ☐
 

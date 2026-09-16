@@ -76,20 +76,20 @@ Timings are ranges across two runs, not single measurements: the spread on this 
 imply a precision that is not there, and any Midnight comparison has to clear that noise floor to
 mean anything.
 
-| Metric                          | Current (arkworks / BLS12-381 Groth16)       | Midnight                                          |
-| ------------------------------- | -------------------------------------------- | ------------------------------------------------- |
-| Spend constraints               | **24,729**                                   | _not measured_                                    |
-| Spend public inputs             | **16**                                       | _not measured_                                    |
-| Setup time (spend)              | **~800 ms**                                  | _not measured_                                    |
-| **Prove time (spend), desktop** | **~700–800 ms**                              | _not measured_                                    |
-| Prove time (shield)             | ~215–240 ms                                  | _not measured_                                    |
-| Prove time (fold)               | ~1,360–1,580 ms                              | _not measured_                                    |
-| On-chain verification           | ~49.0M CPU (measured on Soroban)             | _not measured_                                    |
-| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade)  | **None** — Halo2/IPA ✅                           |
-| Proving key, shipped            | **0 bytes** — derived at runtime from a seed | **2.7 MB per circuit**, shipped as a file         |
-| Verifier key                    | 2.2 KB embedded in the contract              | 2 KB per circuit                                  |
-| Compliance circuit size         | part of the 24,729-constraint spend circuit  | **38 IR instructions** (eligibility only)         |
-| Proves on-device                | **Yes** — native Rust module, in production  | **Unclear — proof server is a Docker service** ⚠️ |
+| Metric                          | Current (arkworks / BLS12-381 Groth16)       | Midnight                                                 |
+| ------------------------------- | -------------------------------------------- | -------------------------------------------------------- |
+| Spend constraints               | **24,729**                                   | _not measured_                                           |
+| Spend public inputs             | **16**                                       | _not measured_                                           |
+| Setup time (spend)              | **~800 ms**                                  | _not measured_                                           |
+| **Prove time (spend), desktop** | **~700–800 ms**                              | _not measured_                                           |
+| Prove time (shield)             | ~215–240 ms                                  | _not measured_                                           |
+| Prove time (fold)               | ~1,360–1,580 ms                              | _not measured_                                           |
+| On-chain verification           | ~49.0M CPU (measured on Soroban)             | _not measured_                                           |
+| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade)  | **Unresolved** — KZG, so likely required ⚠️              |
+| Proving key, shipped            | **0 bytes** — derived at runtime from a seed | **2.7 MB per circuit**, shipped as a file                |
+| Verifier key                    | 2.2 KB embedded in the contract              | 2 KB per circuit                                         |
+| Compliance circuit size         | part of the 24,729-constraint spend circuit  | **38 IR instructions** (eligibility only)                |
+| Proves on-device                | **Yes** — native Rust module, in production  | **Likely** — crate cross-compiles; NDK needed to confirm |
 
 ### The number that decides it
 
@@ -107,16 +107,45 @@ merit.
 Two of the open questions now have answers, from Midnight's own documentation rather than from
 memory. One is decisively good; the other is the biggest risk in this migration.
 
-**✅ Midnight has no trusted setup.** It uses Halo2 — PLONK arithmetisation with an Inner Product
-Argument over Pedersen commitments — which removes the setup ceremony entirely. This is a **genuine
-advantage the current stack cannot match**: today's keys come from `SETUP_SEED = 42`, which is
-testnet-grade and would need a real multi-party ceremony before mainnet. Midnight removes that
-requirement rather than making it easier.
+**⚠️ Correction — the trusted setup question is NOT settled, and an earlier note here was wrong.**
 
-This is the strongest argument for the migration, and it was the one candidate gap that survived
-Phase 1.1. It is now confirmed.
+A first pass concluded Midnight uses Halo2 with an Inner Product Argument, which would remove the
+setup ceremony entirely. Checking Midnight's own repository contradicts that: `midnight-zk` describes
+itself as a **"Plonk proof system using KZG commitments"** over BLS12-381 and Jubjub, and
+`midnight-proofs` says the same. **KZG conventionally requires a structured reference string from a
+powers-of-tau ceremony** — the property IPA exists to avoid.
 
-**⚠️ Proving runs in a proof server, not in the app.** Midnight generates proofs in a **Docker
+Halo2 supports both backends; Midnight took the KZG one. The IPA claim came from general Halo2
+material, not from Midnight, and it should not have been recorded as a finding.
+
+What is directly observable from compiling a circuit here:
+
+- No SRS was downloaded, and none is bundled — `~/.compact` holds 95 MB of binaries and nothing that
+  looks like ceremony output.
+- The 2.7 MB proving keys were generated **locally** from the circuit.
+
+That is consistent with either a ceremony whose reference string is embedded in the `zkir` binary
+(18 MB, plausible), or a setup this toolchain performs itself for development. **Those have very
+different implications for mainnet**, and the difference is not visible from the outside.
+
+**Status: open.** Resolving it needs a direct answer from Midnight — is there a production SRS, who
+ran the ceremony, and where is it published? Until then the honest position is that Prova's trusted
+setup problem is _unchanged_, not solved. It was the strongest argument for migrating, so it matters
+that it is unproven rather than confirmed.
+
+**◐ Proving: the documented path is a server, but the crate looks portable.**
+
+Tested directly rather than inferred: `midnight-proofs` resolves as a normal crate and
+`cargo build --target aarch64-linux-android` compiles every dependency until `blst` (the C
+BLS12-381 library) fails for want of the NDK's clang — a missing toolchain, not a platform
+incompatibility. `circuits/prover/build-android.sh` already solves exactly this for the arkworks
+prover, same target, same curve.
+
+So the outcome that would break the product — witnesses leaving the device — is no longer the
+likely one. What follows describes the documented default, which remains true and remains the thing
+to avoid.
+
+**⚠️ The documented path is a proof server, not the app.** Midnight generates proofs in a **Docker
 service on port 6300**, and the documented guidance is browser and Node.js — the SDK's
 `proofProvider` is explicitly described as letting a backend do the heavy ZK work. No mobile or
 React Native path appears in the documentation.

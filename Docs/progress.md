@@ -241,7 +241,7 @@ derives one from `SETUP_SEED` on first use. Midnight ships a file per circuit, s
 ~2.7 MB to an APK that is already 86 MB. Not disqualifying, but it is a real cost and it scales with
 the number of circuits.
 
-### 2.1b On-device proving ◐ — **likely viable, needs the NDK to confirm**
+### 2.1b On-device proving ☑ — **confirmed: builds for arm64 Android**
 
 **Settle this before building anything else on Midnight.** It is a bigger risk than proving time:
 time is a number to optimise, this is a property to keep or lose.
@@ -276,9 +276,25 @@ And it is a gap this repo has already closed: `circuits/prover/build-android.sh`
 existing arkworks prover with `cargo-ndk` and `ANDROID_NDK_HOME`, for the same target, against the
 same curve. The same recipe applies.
 
-**Status: the native path looks viable, unproven.** To finish it: reinstall the NDK, run the build
-with `cargo-ndk`, and measure proving time on the handset. That turns "looks viable" into the number
-1.2 is still missing.
+**Confirmed 16 Sep — it builds.** NDK r27c installed (633 MB, NDK only — no SDK needed), and:
+
+```
+Compiling midnight-curves v0.3.1
+Compiling midnight-proofs v0.8.2
+Finished `release` profile [optimized] target(s) in 21.77s
+```
+
+`cargo build --target aarch64-linux-android --release` succeeds end to end, producing a real
+`libmidnight_proofs.rlib` under `target/aarch64-linux-android/`. `blst` compiles once
+`CC_aarch64_linux_android` points at the NDK's clang — the same environment
+`circuits/prover/build-android.sh` already sets for the arkworks prover.
+
+**The risk that would have broken the product is closed.** Midnight's prover is a normal Rust crate
+that cross-compiles to arm64 Android, so witnesses need never leave the phone. The Docker proof
+server is the documented convenience, not a constraint.
+
+**Still to measure:** proving time on the handset. That needs a circuit bound to this crate through
+a JNI layer, mirroring `modules/prova-prover` — Phase 2.2 work, not a blocker for it.
 
 **What this means for the risk.** The outcome that would break the product — witnesses leaving the
 device for a remote proof server — is no longer the likely one. Midnight's _documented_ path is a

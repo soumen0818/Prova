@@ -76,20 +76,20 @@ Timings are ranges across two runs, not single measurements: the spread on this 
 imply a precision that is not there, and any Midnight comparison has to clear that noise floor to
 mean anything.
 
-| Metric                          | Current (arkworks / BLS12-381 Groth16)       | Midnight                                                 |
-| ------------------------------- | -------------------------------------------- | -------------------------------------------------------- |
-| Spend constraints               | **24,729**                                   | _not measured_                                           |
-| Spend public inputs             | **16**                                       | _not measured_                                           |
-| Setup time (spend)              | **~800 ms**                                  | _not measured_                                           |
-| **Prove time (spend), desktop** | **~700–800 ms**                              | _not measured_                                           |
-| Prove time (shield)             | ~215–240 ms                                  | _not measured_                                           |
-| Prove time (fold)               | ~1,360–1,580 ms                              | _not measured_                                           |
-| On-chain verification           | ~49.0M CPU (measured on Soroban)             | _not measured_                                           |
-| Trusted setup                   | Required (`SETUP_SEED = 42`, testnet-grade)  | **Unresolved** — KZG, so likely required ⚠️              |
-| Proving key, shipped            | **0 bytes** — derived at runtime from a seed | **2.7 MB per circuit**, shipped as a file                |
-| Verifier key                    | 2.2 KB embedded in the contract              | 2 KB per circuit                                         |
-| Compliance circuit size         | part of the 24,729-constraint spend circuit  | **38 IR instructions** (eligibility only)                |
-| Proves on-device                | **Yes** — native Rust module, in production  | **Likely** — crate cross-compiles; NDK needed to confirm |
+| Metric                          | Current (arkworks / BLS12-381 Groth16)        | Midnight                                                              |
+| ------------------------------- | --------------------------------------------- | --------------------------------------------------------------------- |
+| Spend constraints               | **24,729**                                    | _not measured_                                                        |
+| Spend public inputs             | **16**                                        | _not measured_                                                        |
+| Setup time (spend)              | **~800 ms**                                   | _not measured_                                                        |
+| **Prove time (spend), desktop** | **~700–800 ms**                               | _not measured_                                                        |
+| Prove time (shield)             | ~215–240 ms                                   | _not measured_                                                        |
+| Prove time (fold)               | ~1,360–1,580 ms                               | _not measured_                                                        |
+| On-chain verification           | ~49.0M CPU (measured on Soroban)              | _not measured_                                                        |
+| Trusted setup                   | Required — `SETUP_SEED = 42`, **no ceremony** | Required — official SRS exists, **transcript unpublished**            |
+| Proving key, shipped            | **0 bytes** — derived at runtime from a seed  | **2.7 MB per circuit**, shipped as a file                             |
+| Verifier key                    | 2.2 KB embedded in the contract               | 2 KB per circuit                                                      |
+| Compliance circuit size         | part of the 24,729-constraint spend circuit   | **38 IR instructions** (eligibility only)                             |
+| Proves on-device                | **Yes** — native Rust module, in production   | **Yes** — `midnight-proofs` 0.8.2 builds for aarch64-linux-android ✅ |
 
 ### The number that decides it
 
@@ -128,10 +128,35 @@ That is consistent with either a ceremony whose reference string is embedded in 
 (18 MB, plausible), or a setup this toolchain performs itself for development. **Those have very
 different implications for mainnet**, and the difference is not visible from the outside.
 
-**Status: open.** Resolving it needs a direct answer from Midnight — is there a production SRS, who
-ran the ceremony, and where is it published? Until then the honest position is that Prova's trusted
-setup problem is _unchanged_, not solved. It was the strongest argument for migrating, so it matters
-that it is unproven rather than confirmed.
+**Researched 16 Sep — partly answered.** Midnight ledger **v7.0.0** switched to "the official
+Midnight Structured Reference String" alongside midnight-zk 1.0, and states that **all proofs and
+verifier keys generated with the previous SRS became invalid**. Mainnet is dated late March 2026.
+
+| Question                                        | Answer                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Is there a trusted setup?                       | **Yes** — KZG needs one, and Midnight ships an official SRS                                |
+| Does a production SRS exist?                    | **Yes**, since ledger v7.0.0                                                               |
+| Who ran the ceremony; is the transcript public? | **Not published anywhere findable** — not in the README, the release overview, or the blog |
+
+**What this means for Prova.** The migration does not _remove_ the trusted-setup problem; it
+**transfers** it. Today the assumption is ours and plainly inadequate — `SETUP_SEED = 42` is a
+constant in our own source, with no ceremony at all. After migrating it belongs to Midnight's
+ceremony, and a real multi-party ceremony run by others is almost certainly stronger than a
+hardcoded seed.
+
+But "almost certainly" is doing work there, and it should not have to. **A trusted setup whose
+transcript is not published cannot be independently verified**, which is the entire point of holding
+one. For a product whose pitch is provable honesty, inheriting an unverifiable assumption is a poor
+trade for inheriting a verifiable one.
+
+**Still open, and worth asking Midnight directly:** who contributed, is the transcript published, and
+can a third party verify it? Not answerable from public documentation; it needs their Discord or a
+GitHub issue. The answer decides whether this is an upgrade or a lateral move.
+
+**Revised verdict.** This is **no longer the strongest argument for migrating** — it was, while it
+looked like Midnight removed setups entirely. It is now a _probable modest improvement on an
+unverified basis_. The case for Midnight has to rest on something else: developer experience, the
+`disclose` discipline the compiler enforces, and its private-state model.
 
 **◐ Proving: the documented path is a server, but the crate looks portable.**
 

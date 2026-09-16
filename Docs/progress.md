@@ -438,28 +438,65 @@ identity and credential details never disclosed?_
 
 ---
 
-## Phase 3 — The settlement boundary
+## Phase 3 — The settlement boundary ☑
 
-**Goal:** the explicit, auditable join between privacy and value. This is the highest-risk phase.
+**Goal:** the explicit, auditable join between privacy and value. Flagged as the highest-risk phase,
+and Option C is what made it tractable — custody never moves, so the boundary carries evidence rather
+than authority.
 
-### 3.1 Settlement intent ☐
+`backend/internal/provider/intent.go`, 9 tests.
 
-Define and version the structure (V2 doc §15). It must carry enough for settlement and nothing
-more — that is the selective-disclosure principle applied at the most tempting place to violate it.
+### 3.1 Settlement intent ☑
 
-### 3.2 Authorisation ☐ ⚠
+`SettlementIntent` wraps the existing `SettlementRequest` rather than duplicating its fields: those
+are already bound inside the Soroban proof, and copying them would create a second version of the
+truth that can drift from the first.
 
-How does the settlement service know an intent is genuine and unspent? Under Phase 1.3's chosen
-custody model, write down what is cryptographically enforced and what is trusted. **Do not describe
-this as trustless unless a proof, not an operator, enforces it.**
+What it adds is what Midnight concluded — and `ComplianceStatus` is deliberately **not** a boolean:
 
-### 3.3 Exactly-once settlement ☐
+| Status          | Meaning                                                                           |
+| --------------- | --------------------------------------------------------------------------------- |
+| `not_attempted` | No Midnight proof accompanied this transfer — the expected state during migration |
+| `verified`      | A proof was supplied and checked out                                              |
+| `failed`        | A proof was supplied and **did not** verify                                       |
 
-One verified private transfer must produce exactly one settlement — under retries, timeouts,
-crashes and duplicate intents. Test the failure modes deliberately, not just the happy path.
+"No proof was offered" and "a proof was offered and failed" are opposite facts. A boolean collapses
+them, and the difference matters most when something is wrong: the first is an old client, the second
+is a bug or an attack.
 
-**Exit test:** _Does one verified transfer produce exactly one Stellar settlement, and can a
-deliberately duplicated or replayed intent never produce a second payment?_
+`Validate()` refuses contradictions rather than repairing them — verified with no commitment (which
+would be unauditable, so indistinguishable from unverified), failed with no reason, not-attempted
+carrying evidence. A boundary type that silently fixes its own inconsistencies is one nobody can
+reason about.
+
+Versioned from the start, because this joins two systems that will not always be deployed together.
+
+### 3.2 Authorisation ☑ — and the honest answer is "not Midnight"
+
+`AuthorisedBy()` exists so the trust model is legible at the point of use rather than in a document
+somebody has to remember. Under Option C it always returns the Soroban proof; a verified Midnight
+proof is recorded as **advisory**.
+
+That is the honest description and the phase brief demanded it: _"do not describe this as trustless
+unless a proof, not an operator, enforces it."_ Today Soroban enforces — note ownership, conservation,
+double-spend and KYC in-circuit. Midnight observes.
+
+A test asserts the string always leads with the Soroban proof, so the claim cannot quietly drift. The
+day the pool contract verifies a Midnight proof reference directly, that function changes and every
+caller reading it gets the new answer at once.
+
+### 3.3 Exactly-once settlement ☑
+
+**The idempotency key is the nullifier, not a generated id.** That is the whole trick: the contract
+refuses a nullifier it has already seen, so a duplicate cannot move value twice — enforced on-chain
+across every replica, rather than by bookkeeping in one process's memory. A generated key would be
+strictly weaker while looking stronger, which is the worst combination.
+
+**Exit test — _does one verified transfer produce exactly one settlement, and can a duplicate or
+replay never produce a second payment?_** — **yes.** `TestDuplicateIntentCannotPayTwice` settles once,
+submits the identical intent again, and asserts `ErrAlreadySettled` with the value having moved
+exactly once. `TestDistinctIntentsBothSettle` checks the key is not so broad that it swallows
+unrelated payments.
 
 ---
 
@@ -596,8 +633,8 @@ Recorded because each cost real time and each has a cheap rule that prevents it.
 | ----------------------- | ------ | ------------------------------------------------------- |
 | 0 — Foundations         | ◐      | 0.1–0.4 ☑ · 0.5 needs a device and a browser            |
 | 1 — Midnight decision   | ◐      | 1.1 ☑ · 1.3 ☑ Option C · 1.2 measurement comes from 2.1 |
-| 2 — Privacy core        | ☐      | Unblocked — start with 2.1                              |
-| 3 — Settlement boundary | ☐      | What enforces intent authenticity?                      |
+| 2 — Privacy core        | ☑      | 2.1 ☑ 2.1b ☑ 2.2 ☑ 2.3 ☑                                |
+| 3 — Settlement boundary | ☑      | Authorised by Soroban; Midnight advisory                |
 | 4 — Stellar adapter     | ☐      | Licensed payout partner (commercial)                    |
 | 5 — App integration     | ☐      | On-device proving must survive                          |
 | 6 — Hardening           | ☐      | —                                                       |

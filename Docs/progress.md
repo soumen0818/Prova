@@ -353,7 +353,83 @@ Notes, commitments, nullifier derivation, replay rejection. The **semantics** ca
 `Docs/shielded-pool.md`; the **primitives** must be whatever Midnight supports natively. Do not port
 Poseidon-over-BLS12-381 if Midnight has a native equivalent.
 
-### 2.3 Compliance policy in-circuit ☐
+### 2.3 The full transfer ☑ — compiles, and the key size is now a real finding
+
+`privacy/midnight/contracts/transfer.compact` — where 2.1 and 2.2 meet. One note in, two notes out,
+proving in a single circuit that the spender owns the money **and** is allowed to move it. Either
+half alone is useless.
+
+Mirrors seven of the nine obligations in `circuits/prover/src/pool/spend.rs`, omitting the two that
+belong to the settlement layer under Option C (destination binding, note encryption — both are about
+delivering value, which Soroban still owns).
+
+**Measured:**
+
+|                          | transfer    |
+| ------------------------ | ----------- |
+| IR instructions          | 357         |
+| Public inputs            | 1           |
+| `constrain_bits` emitted | **20**      |
+| Asserts                  | 6           |
+| Hashes                   | 14          |
+| **Proving key**          | **18.6 MB** |
+
+**A real bug, caught by comparing against Soroban rather than by reading.**
+
+The first version computed `ownerPk` from the spender's secret and then **never used it**. Every
+assert passed, the circuit compiled, and it was wrong in the way that matters most: it proved the
+nullifier came from _some_ key, but never that the note being spent belonged to that key. **Anyone
+could have spent anyone's note.**
+
+Nothing flagged it — an unused binding is not an error, and the circuit looked complete. What
+surfaced it was checking each value against what `spend.rs` §1-2 does with its equivalent: Soroban
+rebuilds the input commitment _from_ `ownerPk` and proves that commitment is in the tree, which is
+what ties ownership to the note.
+
+The fix does the same, and corrected a second mistake on the way. Membership is now proved with a
+**private Merkle path** (`merkleTreePathRoot`) rather than by passing the root as an argument. A path
+reveals _where in the tree_ a note sits, and leaking that would tell an observer which deposit is
+being spent — the exact link the pool exists to break. The simpler design would have been strictly
+worse.
+
+The circuit grew from 284 instructions to 357 and from 5 asserts to 6: the fix is real, not cosmetic.
+
+**The anti-minting defence is type-enforced, and it was worth verifying rather than assuming.**
+
+Conservation checked over unbounded values is not conservation: an attacker picks outputs summing to
+the input _modulo the field order_ and mints the difference. The Soroban circuit defends with an
+explicit `enforce_range` on every amount before the sum.
+
+Compact's `Uint<64>` is bounded by its type, and the IR confirms the compiler acts on it — 18
+`constrain_bits` instructions, the amounts at 64 bits and KYC levels at 8. The conservation assert
+reads `constrain_bits → add → test_eq` in the IR: the sum is range-constrained _before_ equality is
+tested. Same defence, enforced by the type rather than by a call that can be forgotten.
+
+**The proving-key total is now a product question, not a curiosity.**
+
+| Circuit                | Key         |
+| ---------------------- | ----------- |
+| `proveEligibility`     | 2.7 MB      |
+| `setMinKycLevel`       | 2.7 MB      |
+| `createNote`           | 5.0 MB      |
+| `spendNote`            | 2.7 MB      |
+| **`transfer`**         | **18.6 MB** |
+| **Total (5 circuits)** | **31.6 MB** |
+
+Keys scale with circuit size, and `transfer` — the one a user actually needs — is by far the largest.
+The current app ships **zero** bytes of proving key: it derives one from `SETUP_SEED` at runtime in
+about 800 ms.
+
+On an APK already at 86 MB, shipping ~19 MB for the transfer circuit alone is a **22% increase** for
+the minimum viable set. That is not disqualifying, and it may be reducible (fewer circuits, shared
+keys, or fetch-on-first-use), but it is now the most concrete cost the migration carries and it
+should be stated in any comparison.
+
+### 2.3b Policy as data — already done ☑
+
+The corridor's KYC minimum is `export ledger requiredKycLevel` — public, on-chain, set by the
+verifier rather than the prover. Identical reasoning to Phase 0.3 on Soroban: a policy the prover can
+choose is not a policy. No further work; the ledger declaration _is_ the mechanism.
 
 The policy set from Phase 0.3, expressed as Midnight constraints.
 

@@ -1,3 +1,4 @@
 # Compiler output: proving keys are 2.7 MB each and regenerate from the .compact source.
 # Committing them would put ~5.5 MB of derived binary in every clone for no benefit.
 build/
+build-notes/

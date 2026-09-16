@@ -1,0 +1,180 @@
+pragma language_version 0.26;
+
+import CompactStandardLibrary;
+
+// Prova — private value: commitments and nullifiers (Phase 2.2 of Docs/progress.md).
+//
+// # What this is
+//
+// The note model Prova already runs on Stellar, expressed in Compact. Value lives as **notes**
+// (like cash), not account balances: a note is created by publishing a commitment, and spent by
+// publishing a nullifier. An observer sees both and can link neither to an amount, an owner, or
+// each other.
+//
+// The definitions are deliberately identical to `circuits/prover/src/pool/mod.rs`:
+//
+//   ownerPk    = H(ownerSk, OWNER_DOMAIN)     the address that receives notes
+//   commitment = H(amount, ownerPk, rho)      the leaf published on-chain
+//   nullifier  = H(ownerSk, rho)              published when the note is spent
+//
+// Same structure, different hash: Soroban uses Poseidon over BLS12-381 because that is what its
+// pairing host functions verify; here we use Compact's `persistentHash`, which is what Midnight's
+// proof system is built around. **The two therefore produce different digests for the same note.**
+// That is expected and is not a problem under Option C — the Soroban pool remains the custodian and
+// the sole authority on which notes exist. This contract is a parallel model used to compare
+// behaviour, not a second ledger of record.
+//
+// # Why each field exists
+//
+// `rho` is a fresh random nonce per note. Without it, two notes with the same amount and owner
+// would produce the same commitment, and an observer could tell that Alice received 50 twice.
+//
+// The nullifier is derived from `ownerSk` — the *secret* — rather than the commitment, which is
+// what makes it unlinkable: anyone can see a nullifier was published, nobody can work out which
+// commitment it burned without knowing the key.
+//
+// It is also **deterministic**: spending the same note twice produces the same nullifier both
+// times, so the second attempt collides with the first and is rejected. A random nullifier would
+// make double-spending undetectable, which is the whole reason this construction exists.
+
+// ---------------------------------------------------------------------------
+// Domain separators
+// ---------------------------------------------------------------------------
+
+// Distinct constants so a value hashed in one role can never be reused in another.
+//
+// Without separation, `ownerPk` and `userId` would both be `H(ownerSk, x)` and a credential
+// identifier could be passed off as a spending address. The Soroban circuit uses the same idea with
+// OWNER_DOMAIN = 1 and USER_ID_DOMAIN = 2.
+export circuit ownerDomain(): Bytes<32> {
+  return pad(32, "prova:owner:v1");
+}
+
+export circuit nullifierDomain(): Bytes<32> {
+  return pad(32, "prova:nullifier:v1");
+}
+
+export circuit commitmentDomain(): Bytes<32> {
+  return pad(32, "prova:commitment:v1");
+}
+
+// ---------------------------------------------------------------------------
+// Ledger — what the chain holds. All of it is public; none of it is revealing.
+// ---------------------------------------------------------------------------
+
+// Commitments of every note ever created.
+//
+// `HistoricMerkleTree` rather than `MerkleTree`, deliberately. A plain tree invalidates every
+// outstanding membership proof the moment anyone inserts, so two people spending at the same time
+// would race and one would always lose. The historic variant keeps past roots and accepts proofs
+// against any of them.
+//
+// This is the same problem the Soroban pool solves with a 32-root ring buffer — proofs stay valid
+// for a window rather than a single block — and it is satisfying that both designs arrived at it
+// independently. Here it is a library type rather than something we maintain by hand.
+export ledger noteCommitments: HistoricMerkleTree<10, Bytes<32>>;
+
+// Nullifiers already seen. Presence means the note is spent.
+//
+// Compact has no Set type, so a Map to Boolean is the idiom. The value is never read for anything
+// but existence.
+export ledger spentNullifiers: Map<Bytes<32>, Boolean>;
+
+// ---------------------------------------------------------------------------
+// Witnesses — private, never leave the device.
+// ---------------------------------------------------------------------------
+
+// The spending key. Everything else about ownership derives from this, and it is the one value
+// whose disclosure would let someone else spend.
+witness ownerSecretKey(): Bytes<32>;
+
+// The note being spent: its nonce and its amount.
+witness noteRho(): Bytes<32>;
+
+witness noteAmount(): Uint<64>;
+
+// ---------------------------------------------------------------------------
+// Pure circuits — the note algebra, with no ledger access.
+// ---------------------------------------------------------------------------
+
+// `ownerPk = H(ownerSk, OWNER_DOMAIN)` — the address a note is addressed to.
+//
+// Takes the key as an argument rather than reading the witness, so it is callable from both the
+// spend path and any test that wants to build a note for a known key.
+export circuit deriveOwnerPk(ownerSk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([ownerSk, ownerDomain()]);
+}
+
+// `commitment = H(amount, ownerPk, rho)` — the leaf published when a note is created.
+//
+// Reveals nothing on its own: `rho` is fresh per note, so the same amount to the same owner looks
+// different every time.
+export circuit noteCommitment(amount: Uint<64>, ownerPk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>(
+           [persistentHash<Vector<2, Uint<64>>>([amount, 0]),
+            ownerPk,
+            persistentHash<Vector<2, Bytes<32>>>([rho, commitmentDomain()])]
+           );
+}
+
+// `nullifier = H(ownerSk, rho)` — published when the note is spent.
+//
+// Derived from the secret, so it cannot be linked to its commitment by an observer; deterministic,
+// so a second spend of the same note produces the same value and collides.
+export circuit noteNullifier(ownerSk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([ownerSk, rho, nullifierDomain()]);
+}
+
+// ---------------------------------------------------------------------------
+// Ledger circuits
+// ---------------------------------------------------------------------------
+
+// Create a note: publish its commitment.
+//
+// The amount is disclosed here because this models a **deposit** — value entering the pool from
+// outside, where the sum is already public on the settlement chain. Hiding it would be theatre: the
+// Soroban `shield` transaction shows the same figure.
+export circuit createNote(amount: Uint<64>, ownerPk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
+  const commitment = noteCommitment(disclose(amount), disclose(ownerPk), disclose(rho));
+  noteCommitments.insert(commitment);
+  return commitment;
+}
+
+// Spend a note: prove ownership and membership, then burn it.
+//
+// The order matters. Membership and ownership are checked *before* the nullifier is recorded, so a
+// failed spend leaves no trace — recording first would let anyone burn a note they cannot prove
+// they own, simply by submitting and failing.
+export circuit spendNote(merkleRoot: MerkleTreeDigest): Bytes<32> {
+  const ownerSk = ownerSecretKey();
+  const rho = noteRho();
+  const amount = noteAmount();
+
+  // 1. The note must exist in the tree, at a root the ledger still accepts.
+  //
+  // `checkRoot` against a HistoricMerkleTree accepts any past root, so a proof built moments before
+  // someone else's deposit is still good. On Soroban this is the 32-root window.
+  //
+  // The root is a `MerkleTreeDigest`, not a raw Bytes<32> — a distinct type for a distinct thing,
+  // which stops an arbitrary 32 bytes being passed where a tree root is meant.
+  assert(noteCommitments.checkRoot(disclose(merkleRoot)), "unknown merkle root");
+
+  // 2. The nullifier must be unseen. This is the double-spend check.
+  //
+  // `disclose` on both inputs, declared once here rather than at each use below.
+  //
+  // The compiler is right to demand it: the nullifier IS a function of the spending key, and
+  // publishing it is unavoidable — it is the entire double-spend mechanism. What the declaration
+  // says is that we understand the exposure and accept it, which is true and worth stating.
+  //
+  // What is exposed: an observer learns a nullifier exists. What is not: which commitment it burned,
+  // whose it was, or for how much. Recovering any of that needs `ownerSk`, which never leaves the
+  // device. The Soroban circuit publishes the same value with the same reasoning.
+  const nullifier = noteNullifier(disclose(ownerSk), disclose(rho));
+  assert(!spentNullifiers.member(nullifier), "note already spent");
+
+  // 3. Burn it.
+  //
+  spentNullifiers.insert(nullifier, true);
+  return nullifier;
+}

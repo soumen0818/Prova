@@ -301,7 +301,53 @@ device for a remote proof server — is no longer the likely one. Midnight's _do
 Docker proof server, but its prover is a Rust crate that appears to cross-compile like any other, and
 this codebase already ships a Rust prover on Android.
 
-### 2.2 Private value: commitments and nullifiers ☐
+### 2.2 Private value: commitments and nullifiers ☑ — compiles, measured
+
+`privacy/midnight/contracts/notes.compact` — the note model Prova already runs on Stellar, expressed
+in Compact:
+
+```
+ownerPk    = H(ownerSk, OWNER_DOMAIN)     the address that receives notes
+commitment = H(amount, ownerPk, rho)      the leaf published on-chain
+nullifier  = H(ownerSk, rho)              published when the note is spent
+```
+
+Same structure as `circuits/prover/src/pool/mod.rs`, different hash — Poseidon there because
+Soroban's pairing host functions verify it, `persistentHash` here because that is what Midnight's
+proof system is built around. **The two produce different digests for the same note**, which is fine
+under Option C: the Soroban pool stays the custodian and the only authority on which notes exist.
+This is a parallel model for comparing behaviour, not a second ledger of record.
+
+**Measured:**
+
+| Circuit                  | IR instructions | Public inputs | Proving key |
+| ------------------------ | --------------- | ------------- | ----------- |
+| `createNote`             | 85              | 5             | **5.0 MB**  |
+| `spendNote`              | 101             | 1             | 2.7 MB      |
+| `proveEligibility` (2.1) | 38              | 1             | 2.7 MB      |
+
+Only ledger-touching circuits become provable ZK circuits; the pure helpers (`noteCommitment`,
+`noteNullifier`, `deriveOwnerPk`) are inlined.
+
+**Two things the standard library gave us for free.**
+
+`HistoricMerkleTree` accepts membership proofs against any past root, so a proof built moments before
+someone else's deposit is still valid. That is the identical problem the Soroban pool solves with a
+hand-maintained 32-root ring buffer — here it is a library type. Both designs arrived at the same
+answer independently, which is some evidence the answer is right.
+
+There is no `Set` type; `Map<Bytes<32>, Boolean>` is the idiom for the nullifier set.
+
+**The proving-key total is now the number to watch.** Three circuits, **10.4 MB** of keys. The
+current app ships _none_ — it derives one from a seed at runtime. On an APK already at 86 MB this is
+real, and it grows per circuit. Worth measuring against what a full port would need before treating
+it as settled.
+
+**The compiler kept doing its job.** It rejected `Bytes<32>` where a `MerkleTreeDigest` belongs — a
+distinct type for a distinct thing, so arbitrary bytes cannot be passed as a tree root — and refused
+to publish the nullifier until the disclosure was declared. Publishing it is unavoidable (it _is_ the
+double-spend mechanism), but Compact makes you say so. The arkworks version publishes the same value
+with nothing prompting anyone to notice.
 
 Notes, commitments, nullifier derivation, replay rejection. The **semantics** carry over from
 `Docs/shielded-pool.md`; the **primitives** must be whatever Midnight supports natively. Do not port

@@ -126,6 +126,32 @@ export circuit tNullifier(ownerSk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
 }
 
 // ---------------------------------------------------------------------------
+// The deposit
+// ---------------------------------------------------------------------------
+
+// Value entering the pool from outside.
+//
+// Until this existed, `transfer` was the contract's only entry point — and it can only *spend* a
+// note that is already in the tree. The pool had no way to be filled: every transfer asserted
+// membership against a tree that nothing could ever insert into, so no valid spend was possible.
+// That gap was invisible while the circuits were only ever compiled, and it surfaced the moment a
+// test tried to construct a passing case.
+//
+// Everything here is public, deliberately. A deposit is value crossing the boundary from the
+// settlement chain, where the amount and the recipient are already visible on the Soroban `shield`
+// transaction. Hiding them here would be theatre — the same reasoning as `createNote` in
+// notes.compact. Privacy begins at the *transfer*, which is where the link is actually broken.
+//
+// Note what this does NOT do: it does not check that the depositor really holds the value they
+// claim. Under Option C that check belongs to Soroban, which remains the custodian — this contract
+// models the note tree, it does not hold funds.
+export circuit deposit(amount: Uint<64>, ownerPk: Bytes<32>, rho: Bytes<32>): Bytes<32> {
+  const commitment = tCommitment(disclose(amount), disclose(ownerPk), disclose(rho));
+  commitments.insert(commitment);
+  return commitment;
+}
+
+// ---------------------------------------------------------------------------
 // The transfer
 // ---------------------------------------------------------------------------
 

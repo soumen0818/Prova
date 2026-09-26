@@ -3,19 +3,22 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Prova's Midnight privacy layer — Compact contracts and their tests.",
+  "description": "Prova's Midnight privacy layer \u2014 Compact contracts and their tests.",
   "scripts": {
     "//build": "Recompiles every contract. Output is gitignored: keys are megabytes and regenerate in seconds.",
     "build": "compact compile contracts/compliance.compact build && compact compile contracts/notes.compact build-notes && compact compile contracts/transfer.compact build-transfer",
     "//test": "Builds first: the tests import the generated contracts, and build output is gitignored, so a fresh clone has nothing to import.",
     "test": "npm run build && vitest run",
-    "//mutants": "Breaks each security check in turn and verifies the tests notice. Slow — eight compile-and-test cycles.",
+    "//mutants": "Breaks each security check in turn and verifies the tests notice. Slow \u2014 eight compile-and-test cycles.",
     "mutants": "./mutants.sh",
-    "//bench": "Times real proof generation. Needs a proof server on :6300 — see bench/RESULTS.md.",
+    "//bench": "Times real proof generation. Needs a proof server on :6300 \u2014 see bench/RESULTS.md.",
     "bench": "node bench/prove.mjs",
-    "//deploy": "Deploys to a Midnight network. Run deploy:check first — it verifies everything without spending anything.",
-    "deploy:check": "node deploy/deploy.mjs --network preview --dry-run",
-    "deploy": "node deploy/deploy.mjs --network preview"
+    "//deploy": "Deploys to a Midnight network. Run deploy:check first \u2014 it verifies everything without spending anything.",
+    "deploy:check": "node deploy/deploy.mjs --dry-run",
+    "deploy": "node deploy/deploy.mjs",
+    "//wallet": "Generates a deployment wallet and prints the address to fund. Seed goes to .env, never stdout.",
+    "wallet:new": "node deploy/new-wallet.mjs",
+    "wallet:show": "node deploy/new-wallet.mjs --show"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "^0.19.0",
@@ -25,7 +28,14 @@
     "@midnight-ntwrk/midnight-js-level-private-state-provider": "^4.1.1",
     "@midnight-ntwrk/midnight-js-network-id": "^4.1.1",
     "@midnight-ntwrk/midnight-js-node-zk-config-provider": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "^4.1.1",
     "@midnight-ntwrk/midnight-js-types": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-utils": "^4.1.1",
+    "@midnight-ntwrk/testkit-js": "^4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "^1.2.0",
+    "@midnight-ntwrk/wallet-sdk-hd": "^3.0.3",
+    "@scure/bip39": "^2.4.0",
+    "pino": "^10.3.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   }

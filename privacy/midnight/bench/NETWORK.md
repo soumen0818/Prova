@@ -9,7 +9,7 @@ memory (`testnet-02`) are **retired and no longer resolve** — that network was
 | Service | Endpoint | Verified |
 |---|---|---|
 | Node RPC | `https://rpc.preview.midnight.network` | `system_chain` → `"Midnight Preview"` |
-| Node WS | `wss://rpc.preview.midnight.network` | not exercised |
+| Node WS | `wss://rpc.preview.midnight.network` | WebSocket handshake accepted |
 | Indexer | `https://indexer.preview.midnight.network/api/v4/graphql` | returned block 1031282 |
 | Indexer WS | `wss://indexer.preview.midnight.network/api/v4/graphql/ws` | not exercised |
 | Faucet | `https://midnight-tmnight-preview.nethermind.dev/` | HTTP 200, rate limited |
@@ -18,6 +18,15 @@ memory (`testnet-02`) are **retired and no longer resolve** — that network was
 Chain health at time of check: 12 peers, `isSyncing: false`.
 
 Note the indexer path is **`/api/v4/graphql`**. `/api/v1/graphql` does not work.
+
+**The wallet needs the `wss://` node URL, not the `https://` one.** It follows blocks by
+subscription, which is WebSocket only. Given the https URL it retries `Timed out trying to connect`
+indefinitely while every preflight check still passes — those are plain POSTs and work fine over
+https. The two URLs are therefore tracked separately in `deploy/deploy.mjs` (`node` vs `nodeWs`),
+and the sync wait is bounded so this failure announces itself instead of hanging.
+
+The indexer WebSocket requires the `graphql-transport-ws` subprotocol; a handshake without it is
+rejected with HTTP 400, which looks like an outage and is not one.
 
 ## The proof server is always local
 

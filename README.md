@@ -496,7 +496,7 @@ Prova splits one job across two networks, each doing what it is best at:
 
 | Layer                      | Network      | Responsibility                                                                       | Status                                                                                                   |
 | -------------------------- | ------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| **Privacy + compliance**   | **Midnight** | Proves a transfer is legal without revealing the amount, the sender or the recipient | **In progress** — the design is set; see [v2-midnight-architecture.md](Docs/v2-midnight-architecture.md) |
+| **Privacy + compliance**   | **Midnight** | Proves a transfer is legal without revealing the amount, the sender or the recipient | **Circuits written, tested and proven** — 39 tests, 11/11 mutants killed, real proofs at 5.4 s; **not yet deployed** ([why](privacy/midnight/deploy/BLOCKED.md)) |
 | **Settlement + liquidity** | **Stellar**  | Moves the actual value, and connects to the anchors people cash out through          | **Live on testnet**                                                                                      |
 | **Application**            | Prova        | The app, the transfer lifecycle, and the join between the two                        | **Live**                                                                                                 |
 
@@ -547,6 +547,48 @@ Midnight is the current work, and the reasoning behind it (including what is set
 still open) is written up in
 [v2-midnight-architecture.md](Docs/v2-midnight-architecture.md) and
 [progress.md](Docs/progress.md).
+
+### What the Midnight layer is today
+
+Three Compact contracts in [`privacy/midnight/`](privacy/midnight/), written to prove the same
+statements the Soroban circuits already enforce, so the two can be compared before anything is cut
+over. They compile, they execute, and they produce real zero-knowledge proofs.
+
+**Proving costs**, measured against a local proof server on a Ryzen 5 7235HS
+([full results](privacy/midnight/bench/RESULTS.md)):
+
+| Circuit | What it proves | Warm | Prover key | Proof |
+|---|---|---:|---:|---:|
+| `proveEligibility` | KYC level and expiry | **864 ms** | 2.7 MB | 4508 B |
+| `transfer` | ownership, membership, nullifier, conservation, KYC | **5.4 s** | 18.6 MB | 4508 B |
+
+The value layer costs roughly 6× the compliance layer — that gap is the price of proving ownership
+of money rather than eligibility to move it. Proof size is constant regardless of circuit
+complexity, so on-chain verification cost does not grow as the circuits do.
+
+**What testing found that compilation could not.** The circuits had compiled cleanly for weeks. The
+first time they were actually executed, three real defects surfaced:
+
+- **The pool had no entrance.** `transfer` was the only circuit, and it can only spend a note
+  already in the tree — so no valid transfer was constructible at all. `deposit` was added.
+- **A test that passed against a broken circuit.** The ownership test was written with the
+  attacker's change output addressed to their own key — the natural thing to write. Re-introducing
+  the ownership bug deliberately, the suite still reported 15/15 green while the contract was fully
+  exploitable. A real attacker addresses the change to the victim. That is why
+  [`mutants.sh`](privacy/midnight/mutants.sh) now exists: it breaks each of the 11 security-critical
+  checks in turn and verifies the tests notice. **11 killed, 0 survived.**
+- **A compliance layer that enforced nothing.** Neither contract had a constructor, so
+  `minKycLevel` defaulted to 0 (admitting every credential) and `policyAuthority` to 32 zero bytes —
+  a hash nobody can find a preimage for, so the policy could never be changed. Permissive *and*
+  unfixable. Both contracts now take constructor arguments.
+
+**Not yet deployed, and why.** The wallet, funding, dust generation and preflight all work against
+the Preview network — including a real signed on-chain transaction. The final `deployContract` call
+fails on a toolchain version split: our compiler emits an `async initialState` that the stable
+`midnight-js` line calls synchronously, and no published combination of compiler, runtime and SDK
+agrees. Four combinations were tested and are written up in
+[`deploy/BLOCKED.md`](privacy/midnight/deploy/BLOCKED.md), along with what to try next. The contract
+source is not the obstacle — it compiles unchanged at an older language version.
 
 ### Trust boundaries
 
@@ -836,6 +878,9 @@ circuit, contract, backend, and app must agree on shared formats.
 | [`v2-midnight-architecture.md`](Docs/v2-midnight-architecture.md)           | **The Midnight + Stellar split**: the proposal, and an honest review of what it does and does not settle |
 | [`v2-phase1-midnight-evaluation.md`](Docs/v2-phase1-midnight-evaluation.md) | **The custody decision** (Option C) and the measured baseline any Midnight comparison has to beat        |
 | [`progress.md`](Docs/progress.md)                                           | **The live tracker**: every phase, its exit test, the work log, and what is still manual                 |
+| [`midnight/bench/RESULTS.md`](privacy/midnight/bench/RESULTS.md)             | **Proving benchmarks**: 5.4 s transfer, 864 ms eligibility, and what they say about running on a phone   |
+| [`midnight/bench/NETWORK.md`](privacy/midnight/bench/NETWORK.md)             | Verified Preview endpoints, and why the proof server is always local                                     |
+| [`midnight/deploy/BLOCKED.md`](privacy/midnight/deploy/BLOCKED.md)           | **Why the contracts are not deployed yet**: the toolchain version split, four combinations tested        |
 | [`proposal .md`](Docs/proposal%20.md)                                       | The product case: the problem, the persona, why ZK + Stellar, why it's defensible                        |
 | [`tech-stack.md`](Docs/tech-stack.md)                                       | Stack choices and why, the polyrepo split, the end-to-end technical workflow                             |
 | [`implementation-guide.md`](Docs/implementation-guide.md)                   | The phase-by-phase build plan and exit criteria — the roadmap below is generated from this               |

@@ -229,13 +229,28 @@ console.log('ok');
 const done = (p) => typeof p?.isStrictlyComplete === 'function' && p.isStrictlyComplete();
 const allSynced = (s) => done(s.shielded.state.progress) && done(s.unshielded.progress) && done(s.dust.state.progress);
 
-const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 600_000);
-process.stdout.write('  syncing…                ');
+// A first sync scans the whole chain: shielded and dust each walk ~255k indices at roughly 160
+// per second, so 25-30 minutes is normal and 10 was simply wrong. The unshielded wallet finishes in
+// seconds by comparison, which is why funds show up long before the wallet is usable.
+const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 2_700_000);
+console.log('  syncing…                (first sync scans the chain — expect 25-30 min)');
 let state;
+const pctOf = (p) => {
+  const at = Number(p?.appliedIndex ?? 0);
+  const to = Number(p?.highestRelevantWalletIndex ?? 0);
+  return to > 0 ? Math.min(100, Math.floor((at / to) * 100)) : 0;
+};
 try {
   state = await Rx.firstValueFrom(
     wallet.state().pipe(
+      Rx.tap((s) => {
+        const line = `    shielded ${String(pctOf(s.shielded.state.progress)).padStart(3)}%  `
+          + `dust ${String(pctOf(s.dust.state.progress)).padStart(3)}%  `
+          + `unshielded ${done(s.unshielded.progress) ? 'done' : '…'}`;
+        process.stdout.write(`\r${line}`);
+      }),
       Rx.filter(allSynced),
+      Rx.tap(() => process.stdout.write('\n')),
       Rx.timeout({ first: SYNC_TIMEOUT_MS }),
     ),
   );
@@ -352,6 +367,7 @@ const deployments = [
     name: 'transfer',
     module: Transfer,
     zkDir: 'build-transfer',
+    dts: 'build-transfer/contract/index.d.ts',
     args: [REQUIRED_KYC],
     verify: (led) => {
       if (led.requiredKycLevel !== REQUIRED_KYC) {
@@ -364,6 +380,7 @@ const deployments = [
     name: 'compliance',
     module: Compliance,
     zkDir: 'build',
+    dts: 'build/contract/index.d.ts',
     args: [policyCommitment, REQUIRED_KYC],
     verify: (led) => {
       if (hex(led.policyAuthority) === '00'.repeat(32)) {
@@ -376,6 +393,19 @@ const deployments = [
     },
   },
 ];
+
+/**
+ * The witness names a contract declares, read from the compiler's generated typings.
+ *
+ * Parsed rather than hardcoded so the list cannot drift from the contract: adding a witness to a
+ * .compact file and forgetting to add it here would otherwise fail at deploy time, after the fees.
+ */
+async function witnessNames(dtsPath) {
+  const dts = await readFile(dtsPath, 'utf8');
+  const block = dts.match(/export type Witnesses<PS> = \{([\s\S]*?)\n\}/);
+  if (!block) throw new Error(`could not find the Witnesses block in ${dtsPath}`);
+  return [...block[1].matchAll(/^\s{2}([A-Za-z0-9_]+)\(/gm)].map((m) => m[1]);
+}
 
 const results = [];
 for (const d of deployments) {
@@ -396,8 +426,28 @@ for (const d of deployments) {
 
   // `compiledContract`, not `contract`: deployContract takes the compiled form, which carries the
   // witnesses and the on-disk ZK assets alongside the contract class.
+  //
+  // The witnesses must all be present even though deployment only runs the *constructor*, which
+  // reads none of them: the generated `Contract` class validates that every declared witness is a
+  // function at construction time and throws otherwise. Passing `{}` fails with
+  // "does not contain a function-valued field named spenderSecretKey".
+  //
+  // They are stubs that throw, deliberately. Deployment must never call one, so a stub that returns
+  // a plausible zero value would hide a real bug behind a silently wrong proof; one that throws
+  // turns the same mistake into a stack trace naming the witness.
+  const witnesses = Object.fromEntries(
+    (await witnessNames(d.dts)).map((name) => [
+      name,
+      () => {
+        throw new Error(
+          `witness '${name}' was called during deployment — the constructor should not read witnesses`,
+        );
+      },
+    ]),
+  );
+
   const compiled = CompiledContract.make(d.name, d.module.Contract).pipe(
-    CompiledContract.withWitnesses({}),
+    CompiledContract.withWitnesses(witnesses),
     CompiledContract.withCompiledFileAssets(d.zkDir),
   );
 

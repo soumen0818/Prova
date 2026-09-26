@@ -10,10 +10,14 @@
     "//test": "Builds first: the tests import the generated contracts, and build output is gitignored, so a fresh clone has nothing to import.",
     "test": "npm run build && vitest run",
     "//mutants": "Breaks each security check in turn and verifies the tests notice. Slow — eight compile-and-test cycles.",
-    "mutants": "./mutants.sh"
+    "mutants": "./mutants.sh",
+    "//bench": "Times real proof generation. Needs a proof server on :6300 — see bench/RESULTS.md.",
+    "bench": "node bench/prove.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "^0.19.0",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "^4.1.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   }

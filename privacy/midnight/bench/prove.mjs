@@ -9,7 +9,7 @@
 // for a versioned header it does not document, which is a good reason to use the real client.
 //
 // Requires a proof server:
-//   docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:latest \
+//   docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:7.0.0-rc.1 \
 //     -- 'midnight-proof-server --verbose'
 //
 // Usage: node bench/prove.mjs [iterations]
@@ -65,8 +65,14 @@ const contract = new Transfer.Contract({
 const ctx = (id, state) =>
   createCircuitContext(id, CONTRACT_ADDRESS, COIN_PUBLIC_KEY, state, {});
 
+// The corridor minimum the benchmarked contract is deployed with. Matches the tests and the deploy
+// default; the witness credential below sits above it, so the KYC branch is exercised rather than
+// short-circuited — proving cost should reflect the checks that actually run.
+const REQUIRED_KYC = 1n;
+
 // --- Set up a spendable note ---------------------------------------------------------------
-const init = await contract.initialState(createConstructorContext({}, COIN_PUBLIC_KEY));
+const init = await contract.initialState(
+  createConstructorContext({}, COIN_PUBLIC_KEY), REQUIRED_KYC);
 const dep = await contract.impureCircuits.deposit(
   ctx('deposit', init.currentContractState), 100n, ownerPk, rho);
 const state = dep.context.callContext.currentQueryContext.state;
@@ -138,7 +144,11 @@ const compliance = new Compliance.Contract({
   credentialKycLevel: read(cred.kycLevel),
   credentialExpiry: read(cred.expiry),
 });
-const cInit = await compliance.initialState(createConstructorContext({}, COIN_PUBLIC_KEY));
+const cInit = await compliance.initialState(
+  createConstructorContext({}, COIN_PUBLIC_KEY),
+  Compliance.pureCircuits.policyCommitment(b32(77)),
+  REQUIRED_KYC,
+);
 const cRes = await compliance.impureCircuits.proveEligibility(
   ctx('proveEligibility', cInit.currentContractState.data), 1_700_000_000n);
 const cCall = cRes.context.callProofDataTrace.at(-1);

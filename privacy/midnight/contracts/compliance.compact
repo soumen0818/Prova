@@ -49,6 +49,36 @@ export ledger minKycLevel: Uint<8>;
 export ledger policyAuthority: Bytes<32>;
 
 // ---------------------------------------------------------------------------
+// Construction — the one chance to set the policy.
+// ---------------------------------------------------------------------------
+
+// Without this, both ledger fields default to zero, and that combination is worse than it looks.
+//
+// `policyAuthority` of 32 zero bytes is not an open door — it is a *sealed* one. The authority
+// check compares a hash against it, and finding a userId that hashes to zero means inverting
+// `persistentHash`. So nobody can call `setMinKycLevel`, ever. Combined with `minKycLevel`
+// defaulting to 0, the contract admits every credential — including level 0 — and offers no way to
+// raise the bar afterwards. A compliance layer that enforces nothing and cannot be fixed.
+//
+// That is not a bug in a circuit; every assert was correct. It is the deployed *state* being wrong,
+// which is invisible until something executes, and unfixable once deployed: a Midnight contract's
+// ledger is fixed at construction, so the remedy is a redeploy at a new address — orphaning every
+// note in the old tree.
+//
+// `policyCommitment` is an argument rather than a hardcoded constant or a witness. It is the option
+// that survives: the same contract code deploys with a throwaway key on preview and an operator key
+// on mainnet, and the secret behind it never appears in this repository.
+// The `disclose` calls are required and correct. Writing to a ledger publishes, and the compiler
+// will not let a constructor argument reach one silently. Both values are *meant* to be public:
+// `minKycLevel` is the corridor policy, which is worthless if hidden (a policy the prover could
+// choose is not a policy), and `policyAuthority` is a commitment — publishing it reveals nothing
+// about the secret behind it, which is the entire reason it is a commitment and not an address.
+constructor(policyCommitment: Bytes<32>, initialMinKyc: Uint<8>) {
+  policyAuthority = disclose(policyCommitment);
+  minKycLevel = disclose(initialMinKyc);
+}
+
+// ---------------------------------------------------------------------------
 // Witnesses — private inputs that never leave the device.
 // ---------------------------------------------------------------------------
 
@@ -127,9 +157,23 @@ export circuit setMinKycLevel(newMinimum: Uint<8>): [] {
   const userId = credentialUserId();
   // Compared, never returned. The hash is checked against the stored authority inside the circuit,
   // so nothing derived from the secret reaches the caller — which is why this needs no `disclose`.
-  assert(persistentHash<Vector<2, Bytes<32>>>([disclose(userId), pad(32, "prova:policy:v1")]) ==
-         policyAuthority,
+  assert(policyCommitment(disclose(userId)) == policyAuthority,
          "not authorised to change policy"
          );
   minKycLevel = disclose(newMinimum);
+}
+
+// The commitment a policy secret produces — the value `policyAuthority` must be set to at
+// construction for that secret to control the policy afterwards.
+//
+// This was inlined inside `setMinKycLevel` until the constructor needed it. That was a real
+// problem, not a tidiness one: the derivation existed only inside a circuit, so a deployer had no
+// way to compute the argument they were being asked to supply, and would have had to reimplement
+// the hash off-chain and hope it matched. Exporting it means the deploy script and the contract
+// agree by construction.
+//
+// Pure and public: it takes the secret as an argument rather than reading the witness, and reveals
+// nothing — inverting it is the hash-preimage problem the authority check relies on.
+export circuit policyCommitment(policySecret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([policySecret, pad(32, "prova:policy:v1")]);
 }

@@ -6,7 +6,7 @@ Phase 1.2 was empty — the circuits had been compiled and (later) executed, but
 Reproduce with:
 
 ```
-docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:latest \
+docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:7.0.0-rc.1 \
   -- 'midnight-proof-server --verbose'
 npm run build
 node bench/prove.mjs 3
@@ -18,7 +18,7 @@ node bench/prove.mjs 3
 |---|---|
 | CPU | AMD Ryzen 5 7235HS, 8 cores |
 | RAM | 23 GB |
-| Proof server | `midnightnetwork/proof-server:latest`, in Docker, same machine |
+| Proof server | `midnightnetwork/proof-server:7.0.0-rc.1`, in Docker, same machine |
 
 Proving runs **on the server, not in-process** — the times below are round-trip over localhost
 HTTP. Network cost is negligible here; on a phone this becomes either an on-device prover or a
@@ -34,7 +34,15 @@ Steady-state, warm. Three iterations after discarding cold start.
 | `transfer` | ownership, membership, nullifier, conservation, KYC | **5413 ms** | 5184–5802 | 18.6 MB | 4508 B |
 
 Cold start is substantial: the first `transfer` proof of a fresh server took **14.6 s**, roughly
-2.7× the warm figure, because the 18.6 MB proving key has to be loaded first.
+2.7× the warm figure, because the 18.6 MB proving key has to be loaded first. A later run against a
+freshly started container produced a **28 s** first proof, so treat cold start as highly variable
+and discard it — benchmark against a server that has already proven once, or the average is
+meaningless.
+
+Re-measured after the constructors were added (`requiredKycLevel` is now non-zero, so the KYC
+branch genuinely runs rather than passing trivially): **5520 ms** transfer, **~820 ms**
+eligibility. Unchanged within noise, as expected — a constructor runs once at deployment, not per
+proof.
 
 ## What these numbers say
 
@@ -63,8 +71,10 @@ The phone number is the remaining unknown, and it is the one that decides the ar
 ## Caveats
 
 - Compiled with `compact` 0.5.2, language version 0.26.
-- Proof server is `:latest`, pulled 2026-09-20. Not pinned — worth pinning before these numbers are
-  quoted anywhere that matters.
+- Proof server pinned to `7.0.0-rc.1`, digest
+  `sha256:f5ca7be1890f9ccf5a4b344aec0bcc695332df525214ea4a11bc52b9990cb229`. It was originally run
+  as `:latest`, which resolved to this same image — but `:latest` moves, and a benchmark quoted
+  against a moving target means nothing.
 - Single machine, single run of three. Enough to establish magnitude, not enough for a regression
   threshold.
 - `transfer` is benchmarked at Merkle depth 10. A production tree would be deeper, and the path

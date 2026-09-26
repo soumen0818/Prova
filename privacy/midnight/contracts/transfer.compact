@@ -70,6 +70,24 @@ export ledger nullifiers: Map<Bytes<32>, Boolean>;
 export ledger requiredKycLevel: Uint<8>;
 
 // ---------------------------------------------------------------------------
+// Construction
+// ---------------------------------------------------------------------------
+
+// `requiredKycLevel` has no setter anywhere in this contract, so whatever it is at construction is
+// what it stays. Without a constructor that value is 0, and the KYC assert in `transfer` — the one
+// checked first, deliberately, as the cheapest way to reject — passes for every credential ever
+// presented, including level 0. The check would run on every transfer and never once reject.
+//
+// The compliance contract had a subtler version of the same problem (an authority nobody can prove,
+// so a policy nobody can change). Here it is blunter: there is no setter to be locked out of.
+//
+// `disclose` for the same reason as in compliance.compact: writing to a ledger publishes, and the
+// corridor minimum is meant to be public. A policy the prover could choose is not a policy.
+constructor(initialRequiredKyc: Uint<8>) {
+  requiredKycLevel = disclose(initialRequiredKyc);
+}
+
+// ---------------------------------------------------------------------------
 // Witnesses — everything the transfer wants to keep private.
 // ---------------------------------------------------------------------------
 

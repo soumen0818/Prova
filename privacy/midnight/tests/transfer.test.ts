@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as Transfer from '../build-transfer/contract/index.js';
-import { Harness, validInputs, bytes32, hex, NOW } from './harness.js';
+import { Harness, validInputs, bytes32, hex, NOW, REQUIRED_KYC } from './harness.js';
 
 // Prova — the transfer circuit, executed.
 //
@@ -206,6 +206,29 @@ describe('transfer — KYC', () => {
     // The boundary. `>=` means a credential expiring this second is still good; an off-by-one here
     // would lock out every user at the exact moment of renewal.
     h.inputs.kycExpiry = NOW;
+
+    await expect(h.transfer()).resolves.toBeDefined();
+  });
+
+  it('rejects a credential below the corridor minimum', async () => {
+    // The transfer suite had no test for the level check at all until the constructor made the
+    // minimum non-zero — with a corridor at 0, every credential passed and there was nothing to
+    // assert. The check ran on every transfer and could never reject.
+    const h = await Harness.create();
+    await h.seedInputNote();
+
+    h.inputs.kycLevel = REQUIRED_KYC - 1n;
+
+    await expect(h.transfer()).rejects.toThrow(/KYC level below the corridor minimum/);
+  });
+
+  it('accepts a credential at exactly the corridor minimum', async () => {
+    // `>=`, matching compliance.compact and the Soroban circuit. The two contracts must agree on
+    // this boundary or a spender eligible under one would be refused by the other.
+    const h = await Harness.create();
+    await h.seedInputNote();
+
+    h.inputs.kycLevel = REQUIRED_KYC;
 
     await expect(h.transfer()).resolves.toBeDefined();
   });

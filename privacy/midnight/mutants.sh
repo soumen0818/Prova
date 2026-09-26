@@ -94,6 +94,25 @@ run_mutant "kyc: expiry check removed" \
   'assert(kycExpiry() >= currentTime, "credential has expired");' \
   ''
 
+# 9. KYC level: removed. Untestable until the constructor made the minimum non-zero — against a
+#    corridor of 0 this mutant is indistinguishable from the real circuit, because the check it
+#    deletes could never reject anything anyway.
+run_mutant "kyc: level check removed" \
+  'assert(kycLevel() >= requiredKycLevel, "KYC level below the corridor minimum");' \
+  ''
+
+# 10. KYC level: boundary flipped, excluding everyone sitting exactly at the minimum.
+run_mutant "kyc: level boundary flipped to >" \
+  'assert(kycLevel() >= requiredKycLevel, "KYC level below the corridor minimum");' \
+  'assert(kycLevel() > requiredKycLevel, "KYC level below the corridor minimum");'
+
+# 11. The constructor itself: silently ignore the deployed policy and leave the old zero default.
+#     This is the regression that motivated the whole change — a contract that compiles, passes
+#     every circuit-level test, and enforces nothing.
+run_mutant "constructor: required KYC not stored" \
+  'requiredKycLevel = disclose(initialRequiredKyc);' \
+  'requiredKycLevel = 0;'
+
 echo
 echo "killed $pass, survived $fail"
 [ "$fail" -eq 0 ]

@@ -73,6 +73,15 @@ export const validInputs = (): TransferInputs => {
 export const NOW = 1_700_000_000n;
 
 /**
+ * The KYC minimum the test corridor deploys with.
+ *
+ * Non-zero on purpose. A contract deployed at 0 admits every credential, so a passing KYC test
+ * against it proves nothing — the check would run and never reject. At 1, `kycLevel: 0n` is a case
+ * the circuit genuinely refuses, which is what makes the acceptance tests mean something.
+ */
+export const REQUIRED_KYC = 1n;
+
+/**
  * A live contract whose witnesses read from a mutable `inputs` record.
  *
  * `deposit` seeds the tree; `transfer` spends. State is threaded between them by hand because each
@@ -105,10 +114,14 @@ export class Harness {
     } as never);
   }
 
-  static async create(inputs: TransferInputs = validInputs()): Promise<Harness> {
+  static async create(
+    inputs: TransferInputs = validInputs(),
+    requiredKyc: bigint = REQUIRED_KYC,
+  ): Promise<Harness> {
     const h = new Harness(inputs);
     const init = await h.contract.initialState(
       createConstructorContext({}, COIN_PUBLIC_KEY),
+      requiredKyc,
     );
     // `initialState` hands back a ContractState, whose ledger lives under `.data`; a circuit hands
     // back the ChargedState itself. Normalising here means `ledger` below has one shape to handle.

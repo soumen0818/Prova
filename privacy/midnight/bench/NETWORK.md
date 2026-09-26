@@ -30,7 +30,7 @@ That is also why `bench/RESULTS.md` treats "prove on device vs. prove on a serve
 architectural question rather than a performance tradeoff. The answer is not free.
 
 ```
-docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:latest \
+docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:7.0.0-rc.1 \
   -- 'midnight-proof-server --verbose'
 ```
 

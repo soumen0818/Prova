@@ -4,7 +4,7 @@ import {
   createCircuitContext,
 } from '@midnight-ntwrk/compact-runtime';
 import * as Compliance from '../build/contract/index.js';
-import { COIN_PUBLIC_KEY, CONTRACT_ADDRESS, bytes32, hex, NOW } from './harness.js';
+import { COIN_PUBLIC_KEY, CONTRACT_ADDRESS, bytes32, hex, NOW, REQUIRED_KYC } from './harness.js';
 
 // Prova — the eligibility circuit, executed.
 //
@@ -24,6 +24,16 @@ const validCredential = (): Credential => ({
   expiry: 2_000_000_000n,
 });
 
+/**
+ * The secret behind the deployed policy authority, and its commitment.
+ *
+ * The contract stores only the commitment; holding `POLICY_SECRET` is what authorises a change.
+ * Deriving it through the contract's own exported circuit rather than rehashing it here is the
+ * point — if the two ever disagreed, the tests would agree with themselves and not with the chain.
+ */
+const POLICY_SECRET = bytes32(77);
+const POLICY_COMMITMENT = Compliance.pureCircuits.policyCommitment(POLICY_SECRET);
+
 class ComplianceHarness {
   cred: Credential;
   private contract: Compliance.Contract<Record<string, never>>;
@@ -38,9 +48,17 @@ class ComplianceHarness {
     } as never);
   }
 
-  static async create(cred: Credential = validCredential()): Promise<ComplianceHarness> {
+  static async create(
+    cred: Credential = validCredential(),
+    minKyc: bigint = REQUIRED_KYC,
+    authority: Uint8Array = POLICY_COMMITMENT,
+  ): Promise<ComplianceHarness> {
     const h = new ComplianceHarness(cred);
-    const init = await h.contract.initialState(createConstructorContext({}, COIN_PUBLIC_KEY));
+    const init = await h.contract.initialState(
+      createConstructorContext({}, COIN_PUBLIC_KEY),
+      authority,
+      minKyc,
+    );
     // `initialState` hands back a ContractState, whose ledger lives under `.data`; a circuit hands
     // back the ChargedState itself. Normalising here means `ledger` below has one shape to handle
     // and tests never have to know which call produced the state they are looking at.
@@ -91,21 +109,30 @@ describe('proveEligibility', () => {
   // Getting it wrong silently excludes every user sitting precisely at the threshold, which is the
   // largest group, since anchors issue the minimum that satisfies the corridor.
   //
-  // These cannot raise the minimum first: `policyAuthority` defaults to 32 zero bytes and no
-  // reachable credential hashes to it (see the deployed-defaults block below), so a fresh contract's
-  // minimum is stuck at 0. The boundary is therefore exercised at the only threshold a deployed
-  // contract actually has. This is a real limitation of the current contract, not of the test —
-  // when a constructor sets the authority, these should be rewritten to sweep a raised minimum.
-  it('accepts a credential at exactly the minimum level', async () => {
-    const h = await ComplianceHarness.create();
-    expect(h.ledger.minKycLevel).toBe(0n);
+  // An earlier version of these tests could only probe the boundary at 0, because the contract had
+  // no constructor and its minimum was stuck there permanently. They now sweep several thresholds,
+  // which is what actually pins `>=`: at every level, exactly-the-minimum passes and one below
+  // fails. A `>` would break the first half of that at every single threshold.
+  for (const minimum of [0n, 1n, 3n, 255n]) {
+    it(`accepts a credential at exactly the minimum (${minimum})`, async () => {
+      const h = await ComplianceHarness.create(validCredential(), minimum);
+      expect(h.ledger.minKycLevel).toBe(minimum);
 
-    h.cred.kycLevel = 0n;
-    await expect(h.proveEligibility()).resolves.toBeDefined();
-  });
+      h.cred.kycLevel = minimum;
+      await expect(h.proveEligibility()).resolves.toBeDefined();
+    });
+
+    if (minimum > 0n) {
+      it(`rejects a credential one level below the minimum (${minimum})`, async () => {
+        const h = await ComplianceHarness.create(validCredential(), minimum);
+        h.cred.kycLevel = minimum - 1n;
+        await expect(h.proveEligibility()).rejects.toThrow(/KYC level below the required minimum/);
+      });
+    }
+  }
 
   it('accepts a credential above the minimum level', async () => {
-    const h = await ComplianceHarness.create();
+    const h = await ComplianceHarness.create(validCredential(), 2n);
     h.cred.kycLevel = 5n;
     await expect(h.proveEligibility()).resolves.toBeDefined();
   });
@@ -137,6 +164,42 @@ describe('proveEligibility', () => {
 });
 
 describe('setMinKycLevel', () => {
+  // This test could not exist before the constructor. With `policyAuthority` defaulting to 32 zero
+  // bytes, no credential could ever satisfy the check, so the *authorised* path was unreachable and
+  // only the rejection could be tested. A policy that can never be changed is not a policy either.
+  it('lets the holder of the policy secret change the minimum', async () => {
+    const h = await ComplianceHarness.create();
+    expect(h.ledger.minKycLevel).toBe(REQUIRED_KYC);
+
+    h.cred.userId = POLICY_SECRET;
+    await h.setMinKycLevel(4n);
+    expect(h.ledger.minKycLevel).toBe(4n);
+  });
+
+  it('lets the policy be lowered as well as raised', async () => {
+    // Corridors relax as well as tighten; a one-way ratchet would be a different contract.
+    const h = await ComplianceHarness.create(validCredential(), 5n);
+    h.cred.userId = POLICY_SECRET;
+    await h.setMinKycLevel(2n);
+    expect(h.ledger.minKycLevel).toBe(2n);
+  });
+
+  it('actually changes who is eligible', async () => {
+    // The point of the whole mechanism: raising the bar must exclude someone it previously admitted.
+    // Without this, `setMinKycLevel` could write to a field nothing reads and every other test here
+    // would still pass.
+    const h = await ComplianceHarness.create(validCredential(), 1n);
+    h.cred.kycLevel = 3n;
+    await expect(h.proveEligibility()).resolves.toBeDefined();
+
+    h.cred.userId = POLICY_SECRET;
+    await h.setMinKycLevel(4n);
+
+    h.cred.userId = bytes32(11);
+    h.cred.kycLevel = 3n;
+    await expect(h.proveEligibility()).rejects.toThrow(/KYC level below the required minimum/);
+  });
+
   it('rejects a caller who does not know the policy secret', async () => {
     const h = await ComplianceHarness.create();
     // The authority is a commitment; this credential does not hash to it.
@@ -153,38 +216,41 @@ describe('setMinKycLevel', () => {
   });
 });
 
-describe('deployed defaults — what an uninitialised contract actually permits', () => {
-  // Neither `minKycLevel` nor `policyAuthority` has a constructor, so both start at zero. That is
-  // not a bug in the circuits, but it is a live deployment hazard, and it is the kind of thing that
-  // is invisible until something executes. These tests pin the real behaviour so that when a
-  // constructor is added, they fail and have to be revisited deliberately.
+describe('deployed state — what the constructor actually establishes', () => {
+  // These replace a block that pinned the *broken* defaults: with no constructor, `minKycLevel` and
+  // `policyAuthority` both started at zero, which admitted every credential and locked the policy
+  // permanently — a compliance layer enforcing nothing, with no way to fix it after deployment.
+  //
+  // Keeping those tests green would have meant keeping the bug. They are replaced rather than
+  // removed, so the same facts are still asserted, now about a contract that works.
 
-  it('admits any credential, because the default minimum is zero', async () => {
+  it('stores exactly the policy it was deployed with', async () => {
     const h = await ComplianceHarness.create();
-    expect(h.ledger.minKycLevel).toBe(0n);
-
-    // A level-0 credential — the weakest expressible — satisfies a freshly deployed corridor.
-    h.cred.kycLevel = 0n;
-    await expect(h.proveEligibility()).resolves.toBeDefined();
+    expect(h.ledger.minKycLevel).toBe(REQUIRED_KYC);
+    expect(hex(h.ledger.policyAuthority)).toBe(hex(POLICY_COMMITMENT));
   });
 
-  it('locks the policy permanently, because the default authority is unreachable', async () => {
-    // `policyAuthority` defaults to 32 zero bytes — a value nobody chose and, being a hash preimage
-    // problem, one nobody can produce a credential for.
-    //
-    // The good news: a fresh deployment cannot be seized. I expected the opposite — that the zero
-    // default would be trivially claimable — and checked instead of assuming. `bytes32(0)` does not
-    // hash to zero, and finding a userId that does means inverting `persistentHash`.
-    //
-    // The bad news is the same fact from the other side: the minimum is frozen at 0 forever. The
-    // contract cannot enforce any corridor policy at all, and there is no path to fixing it after
-    // deployment. That combination — permissive default, unchangeable — is the part that matters
-    // before this goes near a testnet.
+  it('never leaves the authority at the unreachable zero default', async () => {
+    // The specific regression. 32 zero bytes is not an open door but a sealed one — nothing hashes
+    // to it, so `setMinKycLevel` could never be called by anyone. This asserts the deployed contract
+    // is not in that state.
     const h = await ComplianceHarness.create();
-    expect(hex(h.ledger.policyAuthority)).toBe('00'.repeat(32));
+    expect(hex(h.ledger.policyAuthority)).not.toBe('00'.repeat(32));
+  });
 
-    h.cred.userId = bytes32(0);
-    await expect(h.setMinKycLevel(4n)).rejects.toThrow(/not authorised to change policy/);
-    expect(h.ledger.minKycLevel).toBe(0n);
+  it('rejects the weakest credential at the deployed minimum', async () => {
+    // The corridor deploys at 1, not 0, so level 0 is a case the circuit genuinely refuses. At the
+    // old default this was impossible to demonstrate: every credential passed.
+    const h = await ComplianceHarness.create();
+    h.cred.kycLevel = 0n;
+    await expect(h.proveEligibility()).rejects.toThrow(/KYC level below the required minimum/);
+  });
+
+  it('can still be deployed permissively, if that is deliberate', async () => {
+    // A minimum of 0 remains expressible — it is now a choice made at deploy time rather than a
+    // default nobody picked. That distinction is the whole fix.
+    const h = await ComplianceHarness.create(validCredential(), 0n);
+    h.cred.kycLevel = 0n;
+    await expect(h.proveEligibility()).resolves.toBeDefined();
   });
 });

@@ -52,7 +52,7 @@ That is also why `bench/RESULTS.md` treats "prove on device vs. prove on a serve
 architectural question rather than a performance tradeoff. The answer is not free.
 
 ```
-docker run -d --rm -p 6300:6300 midnightntwrk/proof-server:8.0.3
+docker run -d --rm -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3
 ```
 
 First boot downloads public parameters (~1 minute) and does not persist them across `--rm`

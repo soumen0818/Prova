@@ -6,7 +6,7 @@ Phase 1.2 was empty — the circuits had been compiled and (later) executed, but
 Reproduce with:
 
 ```
-docker run -d --rm -p 6300:6300 midnightntwrk/proof-server:8.0.3
+docker run -d --rm -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3
 npm run build
 node bench/prove.mjs 3
 ```

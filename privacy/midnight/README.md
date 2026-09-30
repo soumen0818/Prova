@@ -117,7 +117,7 @@ Start the locally controlled proof server:
 
 ```bash
 docker run -d --rm --name prova-midnight-proof-server \
-  -p 6300:6300 midnightntwrk/proof-server:8.0.3
+  -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3
 ```
 
 Then verify every dependency without spending and deploy:

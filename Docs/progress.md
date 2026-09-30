@@ -150,7 +150,7 @@ transaction. Splitting across two networks breaks that.
 **Chosen: C.** Soroban keeps custody and keeps enforcing; Midnight proves compliance alongside it.
 No new trusted component, and both proofs can run side by side before anything is cut over. Full
 reasoning, including the honest cost, in
-[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md) §1.3.
+the [Midnight architecture review](v2-midnight-architecture.md).
 
 The options as they were weighed:
 
@@ -174,7 +174,7 @@ on-chain.
 system cannot, and is the custody model decided?_ — **custody: yes** (Option C — Soroban keeps value
 and enforcement, Midnight proves compliance, no new trusted component). **Measured case: still
 open**, and Phase 2.1 produces it as a by-product. See
-[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md).
+[v2-midnight-architecture.md](v2-midnight-architecture.md).
 
 > **Gate: passed on custody, open on measurement.** Phase 2 proceeds, but 2.1 must produce the
 > on-device proving number before anything downstream depends on Midnight. If a phone cannot build
@@ -194,7 +194,7 @@ Installed 14 Sep: `compact` CLI 0.5.2, compiler 0.34.0, to `~/.local/bin`. Docke
 already present. Nothing else needed — no SDK download, no ceremony artifacts.
 
 **Answered by research, not memory** (see
-[v2-phase1-midnight-evaluation.md](v2-phase1-midnight-evaluation.md)):
+[v2-midnight-architecture.md](v2-midnight-architecture.md)):
 
 - ✅ **No trusted setup.** Halo2 with an Inner Product Argument removes the ceremony entirely. This
   is the one candidate gap from 1.1 that survived, and it is now confirmed — a real advantage the

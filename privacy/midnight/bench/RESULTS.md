@@ -6,8 +6,7 @@ Phase 1.2 was empty — the circuits had been compiled and (later) executed, but
 Reproduce with:
 
 ```
-docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:7.0.0-rc.1 \
-  -- 'midnight-proof-server --verbose'
+docker run -d --rm -p 6300:6300 midnightntwrk/proof-server:8.0.3
 npm run build
 node bench/prove.mjs 3
 ```
@@ -18,7 +17,7 @@ node bench/prove.mjs 3
 |---|---|
 | CPU | AMD Ryzen 5 7235HS, 8 cores |
 | RAM | 23 GB |
-| Proof server | `midnightnetwork/proof-server:7.0.0-rc.1`, in Docker, same machine |
+| Proof server | `midnightntwrk/proof-server:8.0.3`, in Docker, same machine |
 
 Proving runs **on the server, not in-process** — the times below are round-trip over localhost
 HTTP. Network cost is negligible here; on a phone this becomes either an on-device prover or a
@@ -30,37 +29,35 @@ Steady-state, warm. Three iterations after discarding cold start.
 
 | Circuit | What it proves | Avg | Range | Prover key | Proof |
 |---|---|---:|---:|---:|---:|
-| `proveEligibility` | KYC level + expiry | **864 ms** | 787–1007 | 2.7 MB | 4508 B |
-| `transfer` | ownership, membership, nullifier, conservation, KYC | **5413 ms** | 5184–5802 | 18.6 MB | 4508 B |
+| `proveEligibility` | issuer signature, holder binding, KYC, expiry, replay | **1848 ms** | 1746–1979 | 5.5 MB | 4860 B |
+| `transfer` | ownership, membership, nullifier, conservation, KYC | **6117 ms** | 5999–6178 | 18.6 MB | 4508 B |
 
-Cold start is substantial: the first `transfer` proof of a fresh server took **14.6 s**, roughly
-2.7× the warm figure, because the 18.6 MB proving key has to be loaded first. A later run against a
-freshly started container produced a **28 s** first proof, so treat cold start as highly variable
-and discard it — benchmark against a server that has already proven once, or the average is
-meaningless.
+Cold start is substantial: the first current-toolchain `transfer` proof after starting the server
+took **21.9 s**, versus **6.1 s** warm. Key loading and initialization make one cold observation too
+variable for a threshold, so the table uses three warm runs.
 
-Re-measured after the constructors were added (`requiredKycLevel` is now non-zero, so the KYC
-branch genuinely runs rather than passing trivially): **5520 ms** transfer, **~820 ms**
-eligibility. Unchanged within noise, as expected — a constructor runs once at deployment, not per
-proof.
+These measurements supersede the earlier unsigned-credential benchmark. The current
+`proveEligibility` circuit verifies the issuer's Schnorr signature, binds the credential to its
+holder, checks policy, and records the one-time Stellar settlement decision.
 
 ## What these numbers say
 
-**The value layer costs ~6× the compliance layer.** `proveEligibility` checks two inequalities;
-`transfer` adds a depth-10 Merkle path, three commitment hashes, a nullifier, and conservation.
-That gap is the price of proving ownership of money rather than merely eligibility to move it.
+**The experimental value circuit costs ~3.3× the authenticated compliance circuit.** Transfer adds
+a depth-10 Merkle path, commitments, a nullifier, and conservation. This is not an apples-to-apples
+product comparison: the transfer contract still has its older raw KYC witnesses and is deliberately
+not deployed; the signed compliance contract is the Midnight V2 submission path.
 
-**Proof size is constant at 4508 bytes** regardless of circuit complexity — expected for this proof
-system, and the reason on-chain verification cost does not grow as the circuits do.
+**Proof size is circuit-dependent in this stack:** 4508 bytes for transfer and 4860 bytes for
+authenticated eligibility. Do not assume proof size is constant across different circuits.
 
-**5.4 s is a desktop number, and the mobile question is still open.** A Ryzen 5 with 8 cores and
+**6.1 s is a desktop number, and the mobile question is still open.** A Ryzen 5 with 8 cores and
 23 GB of RAM is not a phone. Two things have to be measured before the direction is settled:
 
 1. **On-device proving.** The honest expectation is several times slower — phone cores are weaker
    and thermally limited, and the 18.6 MB key has to be held in memory on a device where that is
    a real constraint. If that lands above ~30 s, on-device proving for transfers is not viable as
    a foreground user action, whatever else is true.
-2. **Remote proving.** 5.4 s server-side plus round-trip is plausible as a product experience, but
+2. **Remote proving.** 6.1 s server-side plus round-trip is plausible as a product experience, but
    it means the witness — the spending key, the amount, the recipient — leaves the device. That
    defeats the point of the privacy layer unless the proof server is the user's own. This is a
    design decision, not a benchmark.
@@ -70,11 +67,10 @@ The phone number is the remaining unknown, and it is the one that decides the ar
 
 ## Caveats
 
-- Compiled with `compact` 0.5.2, language version 0.26.
-- Proof server pinned to `7.0.0-rc.1`, digest
-  `sha256:f5ca7be1890f9ccf5a4b344aec0bcc695332df525214ea4a11bc52b9990cb229`. It was originally run
-  as `:latest`, which resolved to this same image — but `:latest` moves, and a benchmark quoted
-  against a moving target means nothing.
+- Compact compiler 0.31.1, language 0.23.0, runtime 0.16.0, ledger 8.0.2.
+- Proof server `8.0.3`, digest `sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab`.
+- Measured under Node 26.8.2; Node 22 is the supported app/CI version, so rerun there before treating
+  these times as a regression threshold.
 - Single machine, single run of three. Enough to establish magnitude, not enough for a regression
   threshold.
 - `transfer` is benchmarked at Merkle depth 10. A production tree would be deeper, and the path

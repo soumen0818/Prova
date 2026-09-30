@@ -31,3 +31,7 @@ bin/
 # Build output
 dist/
 build/
+
+# Midnight JS LevelDB contains local private contract state and maintenance keys.
+# It must never be committed with the public deployment receipt.
+privacy/midnight/midnight-level-db/

@@ -1,0 +1,77 @@
+// Adapted from midnightntwrk/example-zkloan (Apache-2.0).
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+
+// Compact 0.23 does not yet expose jubjubSchnorrVerify in the standard library. This module uses
+// the same Jubjub Schnorr construction as the official ZKLoan example and constrains the
+// witness-assisted challenge reduction so a prover cannot choose an arbitrary challenge.
+module schnorr {
+  import CompactStandardLibrary;
+
+  export struct SchnorrSignature {
+    announcement: JubjubPoint;
+    response: Field;
+  }
+
+  struct SchnorrHashInput<#n> {
+    ann_x: Field;
+    ann_y: Field;
+    pk_x: Field;
+    pk_y: Field;
+    msg: Vector<n, Field>;
+  }
+
+  // transientHash is a BLS12-381 field value. Jubjub multiplication needs a subgroup scalar, so
+  // the witness supplies the canonical quotient and 248-bit remainder.
+  witness getSchnorrReduction(challengeHash: Field): [Uint<7>, Uint<248>];
+
+  export circuit schnorrVerify<#n>(
+    msg: Vector<n, Field>,
+    signature: SchnorrSignature,
+    pk: JubjubPoint
+  ): [] {
+    const { announcement, response } = signature;
+    const challengeHash: Field =
+      transientHash<SchnorrHashInput<n>>(
+        SchnorrHashInput<n> {
+          ann_x: jubjubPointX(announcement),
+          ann_y: jubjubPointY(announcement),
+          pk_x: jubjubPointX(pk),
+          pk_y: jubjubPointY(pk),
+          msg: msg
+        }
+      );
+
+    const TWO_248: Field =
+      452312848583266388373324160190187140051835877600158453279131187530910662656 as Field;
+    const [quotient, challenge] = getSchnorrReduction(challengeHash);
+
+    // floor((BLS12-381 scalar prime - 1) / 2^248) is 115. The bound makes this an integer
+    // decomposition instead of an equality only modulo the field prime.
+    assert(disclose(quotient) < 116, "Schnorr quotient out of range");
+    assert(
+      disclose(quotient) * TWO_248 + (disclose(challenge) as Field) == challengeHash,
+      "Invalid challenge reduction"
+    );
+
+    const scalar: Field = disclose(challenge) as Field;
+    const lhs: JubjubPoint = ecMulGenerator(response);
+    const rhs: JubjubPoint = ecAdd(announcement, ecMul(pk, scalar));
+    assert(
+      jubjubPointX(lhs) == jubjubPointX(rhs) && jubjubPointY(lhs) == jubjubPointY(rhs),
+      "Invalid credential signature"
+    );
+  }
+
+  export pure circuit schnorrChallenge(
+    ann_x: Field,
+    ann_y: Field,
+    pk_x: Field,
+    pk_y: Field,
+    msg: Vector<4, Field>
+  ): Field {
+    return transientHash<SchnorrHashInput<4>>(
+      SchnorrHashInput<4> { ann_x: ann_x, ann_y: ann_y, pk_x: pk_x, pk_y: pk_y, msg: msg }
+    );
+  }
+}

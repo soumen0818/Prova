@@ -17,7 +17,7 @@ import (
  *
  * # Why it is not a second proof system
  *
- * Under Option C (Docs/v2-phase1-midnight-evaluation.md §1.3) the Soroban pool remains the custodian
+ * Under Option C (Docs/v2-midnight-architecture.md) the Soroban pool remains the custodian
  * and keeps enforcing everything it enforces today: note ownership, conservation, double-spend, and
  * KYC in-circuit. The Midnight proof runs *alongside* that, and this type is how the two are
  * compared.

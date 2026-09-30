@@ -8,6 +8,9 @@
 <p align="center"><em>A transfer is accepted because it can be <b>proven</b> legal — not because someone saw it.</em></p>
 
 <p align="center">
+  <a href="https://github.com/soumen0818/Prova/actions/workflows/midnight-ci.yml">
+    <img alt="Midnight CI" src="https://github.com/soumen0818/Prova/actions/workflows/midnight-ci.yml/badge.svg">
+  </a>
   <img alt="Expo" src="https://img.shields.io/badge/Expo_SDK_56-000020?style=for-the-badge&logo=expo&logoColor=white">
   <img alt="Go" src="https://img.shields.io/badge/Go_1.25-00ADD8?style=for-the-badge&logo=go&logoColor=white">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
@@ -150,7 +153,25 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | **Feedback form**       | [Submit feedback ↗](https://forms.gle/DVGDyJiRxeQ5QxuG7)                                                                                                                       |
 | **Feedback responses**  | [Response sheet ↗](https://docs.google.com/spreadsheets/d/16Rxrb8Tt8Va-EvP4jV3ayRW_0iJd23LAEmRPc3WthGs/edit?usp=sharing)                                                       |
 
-### Requirements
+The links above are the existing Prova V1/Stellar product. The Midnight V2 challenge status is
+tracked separately so a reviewer is never asked to mistake the older demo for a live Midnight flow.
+
+### Midnight V2 challenge status
+
+| Requirement | Status | Evidence / next gate |
+| --- | --- | --- |
+| Meaningful Midnight privacy model | Contract complete; product integration pending | [Privacy model and circuit](privacy/midnight/README.md) |
+| Minimum 3 passing tests | **Done locally — 39 passing** | [Compliance tests](privacy/midnight/tests/compliance.test.ts) |
+| CI workflow and passing run | Workflow added; green GitHub run still required | [Midnight CI](.github/workflows/midnight-ci.yml) |
+| Approved idea from provided list | External evidence required | Add approval link or screenshot after organizer approval |
+| Minimum 10 / 15 meaningful commits | **Done — 129 commits before this work** | `git rev-list --count HEAD` |
+| Complete README, setup, and usage | In progress | [Midnight README](privacy/midnight/README.md) |
+| Live Midnight Preprod MVP + address | Initial contract deployed; managed replacement in progress; V2 app flow not integrated | [Deployment status and on-chain address](privacy/midnight/deploy/STATUS.md) |
+| Test-output screenshot | Missing manual artifact | Capture the green 39-test output |
+| One-minute V2 demo video | Missing | Record only after the integrated flow works |
+| Product X profile linked | Missing | Create the profile, then add its public link |
+
+### Existing Prova V1 evidence
 
 | Requirement                             | Status        | Where                                                                              |
 | --------------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
@@ -162,7 +183,7 @@ Everything a reviewer needs, in one place. Every link below was checked live at 
 | Monitoring / analytics                  | Done          | [Monitoring](#monitoring-and-operations)                                           |
 | Project structure + documentation       | Done          | [Repository layout](#repository-layout) · [Documentation map](#documentation-map)  |
 | Contracts on Stellar testnet            | Done          | Both contract IDs above, verifiable on Stellar Expert                              |
-| 15+ meaningful commits                  | Done — **93** | `git rev-list --count HEAD`                                                        |
+| 15+ meaningful commits                  | Done — **129+** | `git rev-list --count HEAD`                                                      |
 | Public GitHub repository                | Done          | [github.com/soumen0818/Prova](https://github.com/soumen0818/Prova)                 |
 | User feedback collection                | Done          | [Feedback](#feedback)                                                              |
 | Proof of wallet interactions            | Partial       | [On-chain activity](#on-chain-activity) — see the note there                       |
@@ -488,21 +509,23 @@ security model behind every entrypoint: [`contracts/README.md`](contracts/README
 | **ZK circuits**               | arkworks (Rust): `ark-groth16`, `ark-crypto-primitives` (Poseidon) | An active, audited Rust Groth16 stack over the one curve Soroban actually supports                                                                  |
 | **Blockchain**                | Stellar Testnet · Soroban RPC · Horizon                            | Settlement, contract calls, existing SEP/anchor network                                                                                             |
 | **Shared contracts**          | TypeScript (`shared/src`) + Go (`shared/go/schema`)                | Hand-mirrored, not generated — every cross-repo shape has tests on both sides                                                                       |
-| **CI/CD**                     | GitHub Actions, one path-filtered workflow per component           | Only the changed component's pipeline runs                                                                                                          |
+| **CI/CD**                     | GitHub Actions                                                     | Existing component/build/deploy workflows plus a Midnight workflow; green Midnight run must still be verified                                       |
 
 ## Architecture
 
-Prova splits one job across two networks, each doing what it is best at:
+The intended V2 architecture splits one job across two networks. Its Midnight-to-Stellar handoff is still being integrated:
 
 | Layer                      | Network      | Responsibility                                                                       | Status                                                                                                   |
 | -------------------------- | ------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| **Privacy + compliance**   | **Midnight** | Proves a transfer is legal without revealing the amount, the sender or the recipient | **Circuits written, tested and proven** — 39 tests, 11/11 mutants killed, real proofs at 5.4 s; **not yet deployed** ([why](privacy/midnight/deploy/BLOCKED.md)) |
+| **Privacy + compliance**   | **Midnight** | Proves a private, issuer-signed credential meets a public KYC policy and records a settlement authorization | **39 tests passing; initial Preprod contract deployed**, managed replacement and app integration tracked in [status](privacy/midnight/deploy/STATUS.md) |
 | **Settlement + liquidity** | **Stellar**  | Moves the actual value, and connects to the anchors people cash out through          | **Live on testnet**                                                                                      |
-| **Application**            | Prova        | The app, the transfer lifecycle, and the join between the two                        | **Live**                                                                                                 |
+| **Application**            | Prova        | The app, the transfer lifecycle, and the join between the two                        | **V1 live; V2 cross-chain handoff not integrated**                                                     |
+
+The diagram shows the intended V2 flow, not a completed product path.
 
 ```mermaid
 flowchart LR
-    phone["Phone\nbuilds the proof"] --> privacy["Privacy layer\ncredential, limits, no double-spend"]
+    phone["Phone\nbuilds the proof"] --> privacy["Midnight credential proof\nKYC and expiry"]
     privacy --> intent["Settlement intent\n'this transfer is allowed'"]
     intent --> stellar["Stellar\nmoves the value"]
     stellar --> anchor["Anchor\nlocal cash-out"]
@@ -521,7 +544,7 @@ Two proofs, two questions, one custodian:
 ```text
 Phone
   ├─ Midnight proof  →  "is this person allowed to do this?"
-  │                     credential valid · not expired · KYC level met · limits respected
+  │                     credential valid · not expired · KYC level met
   └─ Soroban proof   →  "does this person own this note, and is it unspent?"
                         note ownership · no double-spend · value conserved
 
@@ -530,15 +553,15 @@ Soroban pool contract
 ```
 
 **Custody stays with the Soroban pool** — decided deliberately, not by default
-([Phase 1.3](Docs/v2-phase1-midnight-evaluation.md)). The contract that verifies the proof is the
+([architecture review](Docs/v2-midnight-architecture.md)). The contract that verifies the proof is the
 contract that holds the money, so nothing moves without a valid proof, in one transaction, with no
 operator in between. Moving custody to a second network would replace that guarantee with a bridge or
-a trusted relay; keeping it means adding Midnight introduces **no new trusted component**.
+a trusted relay. A V2 handoff that relies on a relay would add that relay as a trust boundary.
 
 The honest limit of that choice: until the pool contract verifies a Midnight proof reference
-directly, the compliance proof is advisory to the value layer. Compliance is therefore still enforced
-where it already is — inside the Soroban circuit — and this README does not claim Midnight enforces
-anything on-chain yet.
+directly, the Midnight decision is advisory to the Stellar value layer. The Midnight contract
+enforces its own credential policy and replay set; it does not authorize Soroban transfers today.
+The existing Soroban circuit continues to enforce its KYC constraints for actual value movement.
 
 **Where the privacy layer runs today.** The full privacy model — credential checks, spending limits,
 anti-replay — is **implemented and live on Stellar**, enforced inside the proof by a Soroban contract
@@ -559,12 +582,12 @@ over. They compile, they execute, and they produce real zero-knowledge proofs.
 
 | Circuit | What it proves | Warm | Prover key | Proof |
 |---|---|---:|---:|---:|
-| `proveEligibility` | KYC level and expiry | **864 ms** | 2.7 MB | 4508 B |
-| `transfer` | ownership, membership, nullifier, conservation, KYC | **5.4 s** | 18.6 MB | 4508 B |
+| `proveEligibility` | issuer signature, holder binding, KYC level and expiry | **1.85 s** | 5.5 MiB | 4860 B |
+| `transfer` | ownership, membership, nullifier, conservation, KYC | **6.12 s** | 18.6 MiB | 4508 B |
 
-The value layer costs roughly 6× the compliance layer — that gap is the price of proving ownership
-of money rather than eligibility to move it. Proof size is constant regardless of circuit
-complexity, so on-chain verification cost does not grow as the circuits do.
+The experimental value circuit takes roughly 3.3× as long to prove as compliance in this local
+benchmark. Proof size varies between these two circuits. These measurements do not establish a
+Preprod verification fee or end-to-end transfer latency.
 
 **What testing found that compilation could not.** The circuits had compiled cleanly for weeks. The
 first time they were actually executed, three real defects surfaced:
@@ -582,13 +605,11 @@ first time they were actually executed, three real defects surfaced:
   a hash nobody can find a preimage for, so the policy could never be changed. Permissive *and*
   unfixable. Both contracts now take constructor arguments.
 
-**Not yet deployed, and why.** The wallet, funding, dust generation and preflight all work against
-the Preview network — including a real signed on-chain transaction. The final `deployContract` call
-fails on a toolchain version split: our compiler emits an `async initialState` that the stable
-`midnight-js` line calls synchronously, and no published combination of compiler, runtime and SDK
-agrees. Four combinations were tested and are written up in
-[`deploy/BLOCKED.md`](privacy/midnight/deploy/BLOCKED.md), along with what to try next. The contract
-source is not the obstacle — it compiles unchanged at an older language version.
+**Deployment.** The compiler/SDK mismatch described in
+[`deploy/BLOCKED.md`](privacy/midnight/deploy/BLOCKED.md) was resolved by pinning a compatible
+toolchain. The current Preprod deployment receipt and independently verifiable public state are
+tracked in [`deploy/STATUS.md`](privacy/midnight/deploy/STATUS.md). Deployment alone does not make
+the Stellar settlement flow enforce a Midnight decision; that integration is a separate gate.
 
 ### Trust boundaries
 
@@ -693,9 +714,9 @@ Run everything locally: see each component's own README for the exact commands
 
 ## Repository layout
 
-A single git repository, one folder per component, each with its own toolchain, tests, and CI
-workflow. Every component below has its own detailed `README.md` — this file is the map, not the
-whole manual.
+A single git repository, one folder per component, each with its own toolchain and tests. The
+repository has tracked CI/build/deploy workflows, including Midnight. Every component below has
+its own detailed `README.md` — this file is the map, not the whole manual.
 
 | Folder                     | Stack                    | What it is                                                                                                                                                 |
 | -------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -758,8 +779,10 @@ Prova/
 │       └── lib/                     server-only session + backend client (COMPLIANCE_TOKEN never
 │                                    reaches the browser)
 │
+├── privacy/midnight/                 Compact privacy contract, tests, and Preprod deployer
+│
 ├── Docs/                            product, architecture, and phase-by-phase design docs
-├── .github/workflows/               one path-filtered CI workflow per component
+├── .github/workflows/               submission CI, path-filtered to Midnight changes
 └── README.md                        this file
 ```
 
@@ -773,6 +796,7 @@ Prova/
 | Stellar CLI          | ≥ 27                                         | contracts (deploy), circuits (dev tools)              |
 | Docker + Compose     | recent                                       | backend (Postgres + Redis)                            |
 | Expo dev client      | —                                            | mobile (Expo Go cannot load the native prover module) |
+| Compact              | 0.31.1                                       | Midnight privacy contract                             |
 
 ## Getting started
 
@@ -819,6 +843,7 @@ one place to look, not a scavenger hunt across scripts:
 | `backend/` | `.env.example` | `DATABASE_URL`, `REDIS_URL`, `POOL_CONTRACT_ID`, `CONTRACT_ID`, `RELAYER_KEY`, `ANCHOR_SEED`, `SMTP_*` (Gmail App Password compatible), `AUTH_MODE`               |
 | `mobile/`  | `.env.example` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_STELLAR_NETWORK`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_DEPOSIT_MODE`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (cloud backup) |
 | `web/`     | `.env.example` | `PROVA_API_URL`, `OPS_PASSWORD`, `OPS_SESSION_SECRET`, `COMPLIANCE_TOKEN` (must equal the backend's) — the marketing pages need none of these                     |
+| `privacy/midnight/` | `.env.example` | Deployment wallet, policy authority, issuer, KYC minimum, trusted policy time, and local proof-server URL |
 
 No secret is ever required to run the app locally — `AUTH_MODE=development` accepts a fixed dev OTP
 and `DEPOSIT_MODE=simulated` credits a local counter with no chain or anchor involved. The one key
@@ -832,6 +857,7 @@ see the danger-ranked key table in [`Docs/deployment-and-keys.md`](Docs/deployme
 | Phone (secure enclave) | Yes — that's where it's computed    | Yes — that's where credentials live | No — never on-chain balances of its own       |
 | Soroban contracts      | No — only commitments/nullifiers    | No                                  | Yes — the pool contract custodies real tokens |
 | Go backend             | No                                  | No — only an opaque `userId` hash   | No                                            |
+| Midnight contract      | No                                  | No — verifies a private credential   | No — records only settlement decisions        |
 | Licensed anchors       | Only their own leg (deposit/payout) | Yes — that's their regulatory role  | Only during on/off-ramp                       |
 
 If you take one thing from this table: **the backend is the least trusted-with-secrets component in
@@ -850,6 +876,10 @@ breached.
   `Docs/deployment-and-keys.md` §1.
 - Every unauthenticated endpoint (there's no session before sign-in) sits behind rate limiting, so a
   script can't burn an SMS/email budget or brute-force a six-digit code.
+
+The exact Midnight observer model—including the intentional link that becomes possible when the
+Stellar nullifier is published—is documented in
+[`privacy/midnight/README.md`](privacy/midnight/README.md#privacy-model).
 
 ## Troubleshooting
 
@@ -876,11 +906,11 @@ circuit, contract, backend, and app must agree on shared formats.
 | Doc                                                                         | Covers                                                                                                   |
 | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [`v2-midnight-architecture.md`](Docs/v2-midnight-architecture.md)           | **The Midnight + Stellar split**: the proposal, and an honest review of what it does and does not settle |
-| [`v2-phase1-midnight-evaluation.md`](Docs/v2-phase1-midnight-evaluation.md) | **The custody decision** (Option C) and the measured baseline any Midnight comparison has to beat        |
 | [`progress.md`](Docs/progress.md)                                           | **The live tracker**: every phase, its exit test, the work log, and what is still manual                 |
+| [`midnight/README.md`](privacy/midnight/README.md)                           | **Submission implementation**: setup, privacy model, tests, deployment, and known limitations           |
 | [`midnight/bench/RESULTS.md`](privacy/midnight/bench/RESULTS.md)             | **Proving benchmarks**: 5.4 s transfer, 864 ms eligibility, and what they say about running on a phone   |
-| [`midnight/bench/NETWORK.md`](privacy/midnight/bench/NETWORK.md)             | Verified Preview endpoints, and why the proof server is always local                                     |
-| [`midnight/deploy/BLOCKED.md`](privacy/midnight/deploy/BLOCKED.md)           | **Why the contracts are not deployed yet**: the toolchain version split, four combinations tested        |
+| [`midnight/bench/NETWORK.md`](privacy/midnight/bench/NETWORK.md)             | Verified Midnight endpoints, and why the proof server is always local                                   |
+| [`midnight/deploy/STATUS.md`](privacy/midnight/deploy/STATUS.md)             | Current Preprod readiness, deployment gate, and exact resume sequence                                   |
 | [`proposal .md`](Docs/proposal%20.md)                                       | The product case: the problem, the persona, why ZK + Stellar, why it's defensible                        |
 | [`tech-stack.md`](Docs/tech-stack.md)                                       | Stack choices and why, the polyrepo split, the end-to-end technical workflow                             |
 | [`implementation-guide.md`](Docs/implementation-guide.md)                   | The phase-by-phase build plan and exit criteria — the roadmap below is generated from this               |
@@ -896,30 +926,14 @@ circuit, contract, backend, and app must agree on shared formats.
 
 ## CI
 
-All workflows live in [`.github/workflows/`](.github/workflows/) and are **path-filtered** — each
-runs only when something it actually depends on changes.
+[`midnight-ci.yml`](.github/workflows/midnight-ci.yml) is the repository's submission workflow.
+It runs on Midnight changes and manual dispatch, installs Node 22 and Compact 0.31.1, uses
+`npm ci`, recompiles every Compact contract, type-checks the harness, and runs all 39 tests.
 
-| Workflow           | Runs on changes to                        | Checks                            |
-| ------------------ | ----------------------------------------- | --------------------------------- |
-| `web-ci.yml`       | `web/`, `shared/src/`                     | typecheck, Prettier, `next build` |
-| `mobile-ci.yml`    | `mobile/`, `shared/src/`                  | typecheck, `expo lint`, Prettier  |
-| `shared-ci.yml`    | `shared/src/`                             | typecheck, build                  |
-| `backend-ci.yml`   | `backend/`, `shared/go/`                  | `gofmt`, `go vet`, build, tests   |
-| `contracts-ci.yml` | `contracts/`, `circuits/`                 | fmt, clippy, wasm build, tests    |
-| `circuits-ci.yml`  | `circuits/`                               | fmt, clippy, tests                |
-| `docker-ci.yml`    | `backend/`, `shared/go/`, `.dockerignore` | image build + compose validation  |
-
-The filters follow the **real** dependency graph, not the folder names, because the two disagree in
-three places:
-
-- The Go backend consumes `shared/go` through a `replace` directive, so a change there compiles into
-  it — `backend-ci` watches `shared/go/**` for that reason.
-- `contracts/pool` builds real Groth16 proofs in its tests via `prova-prover` as a path
-  dev-dependency, so `contracts-ci` watches `circuits/**`.
-- The Node pipelines watch `shared/src/**` rather than all of `shared/**`, so a Go-only edit does not
-  run the mobile and web jobs for nothing.
-
-A web-only change therefore runs `web-ci` and nothing else.
+The workflow file is now present, but a **passing run is not claimed until these changes are
+committed and pushed to GitHub**. The badge at the top links directly to the run history, which is
+the reviewable evidence once it turns green. Existing backend, circuits, contracts, shared, web,
+mobile, Docker, and deployment workflows are also tracked under [`.github/workflows`](.github/workflows/).
 
 ## Roadmap
 

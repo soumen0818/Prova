@@ -1,179 +1,152 @@
-pragma language_version 0.26;
+pragma language_version 0.23;
 
 import CompactStandardLibrary;
+import "schnorr" prefix Schnorr_;
 
-// Prova — compliance proof (Phase 2.1 of Docs/progress.md).
-//
-// # What this proves
-//
-// "This person is allowed to make this transfer" — without revealing who they are, what their
-// credential says, or how much they are sending.
-//
-// It is deliberately the SAME statement the Soroban spend circuit already enforces in
-// `circuits/prover/src/pool/spend.rs` §9. Proving the same thing twice, in two systems, is the
-// point: under Option C (Docs/v2-phase1-midnight-evaluation.md §1.3) both run side by side and their
-// answers are compared before anything is cut over. A circuit that proved something *different*
-// would make that comparison meaningless.
-//
-// # What this deliberately does NOT do
-//
-// It does not move value, hold value, or decide whether a note may be spent. Custody stays with the
-// Soroban pool contract, which keeps verifying note ownership, conservation and double-spend. This
-// circuit answers eligibility only.
-//
-// # The public/private split
-//
-// Private (witness, never leaves the device):
-//   - the credential: user id, KYC level, expiry
-//
-// Public (ledger / arguments, visible on-chain):
-//   - the policy being proved against: minimum KYC level, current time
-//   - a commitment to the credential, so the same credential cannot be silently swapped
-//
-// Note what is absent from both: the amount, the recipient, and the sender's identity. Those are the
-// Soroban circuit's business, and nothing here needs them to decide eligibility.
+export { Schnorr_SchnorrSignature };
 
-// ---------------------------------------------------------------------------
-// Ledger — the corridor's policy, public by design.
-// ---------------------------------------------------------------------------
+// Prova's Midnight role is deliberately narrow: privately prove that an authenticated credential
+// satisfies the corridor policy, then publish one decision commitment bound to a Stellar spend.
+// Stellar remains the value layer. Midnight never sees the amount, sender, recipient, or raw
+// credential.
 
-// Minimum KYC level a transfer must satisfy.
-//
-// Public and stored on-chain for the same reason it is a public input on Soroban (Phase 0.3): a
-// policy the prover could choose is not a policy. The verifier supplies it, so raising the bar
-// actually raises it.
+export struct ComplianceCredential {
+  userId: Bytes<32>;
+  kycLevel: Uint<8>;
+  expiry: Uint<64>;
+  credentialId: Bytes<32>;
+  signature: Schnorr_SchnorrSignature;
+}
+
+// Public policy. The issuer key is a Jubjub point because its Schnorr signature is verified inside
+// the zero-knowledge circuit. policyTime is an authority-maintained Unix timestamp: Compact 0.23
+// has no chain-time primitive, so accepting a caller-provided timestamp would let an attacker pass
+// zero and revive an expired credential.
 export ledger minKycLevel: Uint<8>;
-
-// Who may change the policy. A commitment, not an address, so the operator's key is not published
-// alongside the rule it controls.
+export ledger policyTime: Uint<64>;
 export ledger policyAuthority: Bytes<32>;
+export ledger credentialIssuer: JubjubPoint;
 
-// ---------------------------------------------------------------------------
-// Construction — the one chance to set the policy.
-// ---------------------------------------------------------------------------
+// The public cross-chain authorization surface. It stores a domain-separated hash of the Stellar
+// nullifier, not the nullifier itself. Once the Stellar nullifier is published, observers can link
+// the two transactions; before settlement, they cannot guess a random 32-byte nullifier.
+export ledger approvedSettlements: Set<Bytes<32>>;
 
-// Without this, both ledger fields default to zero, and that combination is worse than it looks.
-//
-// `policyAuthority` of 32 zero bytes is not an open door — it is a *sealed* one. The authority
-// check compares a hash against it, and finding a userId that hashes to zero means inverting
-// `persistentHash`. So nobody can call `setMinKycLevel`, ever. Combined with `minKycLevel`
-// defaulting to 0, the contract admits every credential — including level 0 — and offers no way to
-// raise the bar afterwards. A compliance layer that enforces nothing and cannot be fixed.
-//
-// That is not a bug in a circuit; every assert was correct. It is the deployed *state* being wrong,
-// which is invisible until something executes, and unfixable once deployed: a Midnight contract's
-// ledger is fixed at construction, so the remedy is a redeploy at a new address — orphaning every
-// note in the old tree.
-//
-// `policyCommitment` is an argument rather than a hardcoded constant or a witness. It is the option
-// that survives: the same contract code deploys with a throwaway key on preview and an operator key
-// on mainnet, and the secret behind it never appears in this repository.
-// The `disclose` calls are required and correct. Writing to a ledger publishes, and the compiler
-// will not let a constructor argument reach one silently. Both values are *meant* to be public:
-// `minKycLevel` is the corridor policy, which is worthless if hidden (a policy the prover could
-// choose is not a policy), and `policyAuthority` is a commitment — publishing it reveals nothing
-// about the secret behind it, which is the entire reason it is a commitment and not an address.
-constructor(policyCommitment: Bytes<32>, initialMinKyc: Uint<8>) {
-  policyAuthority = disclose(policyCommitment);
+constructor(
+  initialPolicyAuthority: Bytes<32>,
+  initialCredentialIssuer: JubjubPoint,
+  initialMinKyc: Uint<8>,
+  initialPolicyTime: Uint<64>
+) {
+  policyAuthority = disclose(initialPolicyAuthority);
+  credentialIssuer = disclose(initialCredentialIssuer);
   minKycLevel = disclose(initialMinKyc);
+  policyTime = disclose(initialPolicyTime);
 }
 
-// ---------------------------------------------------------------------------
-// Witnesses — private inputs that never leave the device.
-// ---------------------------------------------------------------------------
+// Credential and holder material remain private. The issuer signs userId, level, expiry, and a
+// random credentialId. holderSecret must derive the signed userId, preventing a copied credential
+// package from being used by a different wallet.
+witness complianceCredential(): ComplianceCredential;
+witness credentialHolderSecret(): Bytes<32>;
+witness policySecret(): Bytes<32>;
 
-// The holder's opaque identifier. On Soroban this is Poseidon(ownerSk, domain) — derived from the
-// spending key so a credential cannot be lifted onto a different wallet.
-witness credentialUserId(): Bytes<32>;
-
-// The KYC level the anchor attested to.
-witness credentialKycLevel(): Uint<8>;
-
-// When the credential stops being valid, as a Unix timestamp.
-witness credentialExpiry(): Uint<64>;
-
-// ---------------------------------------------------------------------------
-// Circuits
-// ---------------------------------------------------------------------------
-
-// Prove eligibility to transfer, disclosing nothing but the answer.
-//
-// `currentTime` is an argument rather than a witness for the same reason it is a public input on
-// Soroban: the holder must not be able to choose the time their credential is checked against.
-// Passing it in means the verifier decides, and an expired credential cannot be rescued by lying
-// about the date.
-//
-// Returns a commitment binding this proof to the exact credential used. Without it a proof would say
-// "some valid credential exists", which is not the same claim — the commitment is what lets the
-// value layer later tie a specific transfer to a specific eligibility check.
-export circuit proveEligibility(currentTime: Uint<64>): Bytes<32> {
-  const userId = credentialUserId();
-  const kycLevel = credentialKycLevel();
-  const expiry = credentialExpiry();
-
-  // 1. The credential must not have expired.
-  //
-  // Mirrors `expiry >= current_time` in the Soroban circuit. Stated as a comparison rather than a
-  // subtraction because Compact checks the bound directly; the arkworks version has to prove the
-  // difference is non-negative by decomposing it into bits.
-  assert(expiry >= currentTime, "credential has expired");
-
-  // 2. The level must meet the corridor's requirement.
-  //
-  // `>=`, not `>`: a credential at exactly the minimum qualifies. The Soroban circuit has a test
-  // asserting precisely this boundary, because getting it wrong would silently exclude every user
-  // sitting at the threshold.
-  assert(kycLevel >= minKycLevel, "KYC level below the required minimum");
-
-  // 3. Bind the proof to this credential.
-  //
-  // `disclose` is required and is the right call, not a way around the compiler.
-  //
-  // Compact refuses to let a witness leave a circuit — even hashed — unless the disclosure is
-  // declared, because a hash is still a function of the secret. That is a real protection: an
-  // attacker who can guess a user id can hash their guess and compare. The declaration is a
-  // deliberate statement that this leak is understood and accepted.
-  //
-  // What is accepted here: the returned commitment is derived from the user id, so anyone holding a
-  // candidate id can test it. That is the same exposure the Soroban circuit already has — `user_id`
-  // is a PUBLIC input there, published in full with every transfer. This is strictly less
-  // revealing, and it is what makes the two proofs comparable at all: without a shared handle,
-  // nothing could tie a Midnight eligibility proof to the Soroban spend it authorises.
-  //
-  // The expiry is included so two proofs from the same credential at different times differ;
-  // otherwise an old proof would be byte-identical to a fresh one and replayable as such.
-  return persistentHash<Vector<3, Bytes<32>>>(
-           [disclose(userId),
-            pad(32, "prova:eligibility:v1"),
-            persistentHash<Vector<2, Uint<64>>>([currentTime, disclose(expiry)])]
-           );
+export pure circuit policyCommitment(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([secret, pad(32, "prova:policy:v2")]);
 }
 
-// Raise or lower the corridor's minimum KYC level.
-//
-// Authorised by proving knowledge of the secret behind `policyAuthority` rather than by an address
-// check — the caller demonstrates control without revealing which key they hold.
+export pure circuit credentialUserId(holderSecret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    holderSecret,
+    pad(32, "prova:credential-holder:v1")
+  ]);
+}
+
+// Exported so the credential issuer signs exactly the message the circuit verifies.
+export pure circuit credentialMessage(
+  userId: Bytes<32>,
+  kycLevel: Uint<8>,
+  expiry: Uint<64>,
+  credentialId: Bytes<32>
+): Vector<4, Field> {
+  return [
+    transientHash<Bytes<32>>(userId),
+    kycLevel as Field,
+    expiry as Field,
+    transientHash<Bytes<32>>(credentialId)
+  ];
+}
+
+// Exported so the issuer can use the compiled contract's exact hash implementation.
+export pure circuit schnorrChallenge(
+  ann_x: Field,
+  ann_y: Field,
+  pk_x: Field,
+  pk_y: Field,
+  msg: Vector<4, Field>
+): Field {
+  return Schnorr_schnorrChallenge(ann_x, ann_y, pk_x, pk_y, msg);
+}
+
+export pure circuit settlementDecision(stellarNullifier: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    stellarNullifier,
+    pad(32, "prova:stellar-eligibility:v1")
+  ]);
+}
+
+circuit assertPolicyAuthority(): [] {
+  assert(
+    policyCommitment(policySecret()) == policyAuthority,
+    "not authorised to change policy"
+  );
+}
+
+// Prove one authenticated, holder-bound credential is eligible and authorize exactly one Stellar
+// settlement. Reusing the same settlement nullifier is rejected on the Midnight ledger.
+export circuit proveEligibility(stellarNullifier: Bytes<32>): Bytes<32> {
+  const credential = complianceCredential();
+
+  assert(
+    credentialUserId(credentialHolderSecret()) == credential.userId,
+    "credential belongs to another holder"
+  );
+
+  const message = credentialMessage(
+    credential.userId,
+    credential.kycLevel,
+    credential.expiry,
+    credential.credentialId
+  );
+  Schnorr_schnorrVerify<4>(message, credential.signature, credentialIssuer);
+
+  assert(credential.expiry >= policyTime, "credential has expired");
+  assert(
+    credential.kycLevel >= minKycLevel,
+    "KYC level below the required minimum"
+  );
+
+  const decision = disclose(settlementDecision(stellarNullifier));
+  assert(!approvedSettlements.member(decision), "settlement already authorised");
+  approvedSettlements.insert(decision);
+  return decision;
+}
+
 export circuit setMinKycLevel(newMinimum: Uint<8>): [] {
-  const userId = credentialUserId();
-  // Compared, never returned. The hash is checked against the stored authority inside the circuit,
-  // so nothing derived from the secret reaches the caller — which is why this needs no `disclose`.
-  assert(policyCommitment(disclose(userId)) == policyAuthority,
-         "not authorised to change policy"
-         );
+  assertPolicyAuthority();
   minKycLevel = disclose(newMinimum);
 }
 
-// The commitment a policy secret produces — the value `policyAuthority` must be set to at
-// construction for that secret to control the policy afterwards.
-//
-// This was inlined inside `setMinKycLevel` until the constructor needed it. That was a real
-// problem, not a tidiness one: the derivation existed only inside a circuit, so a deployer had no
-// way to compute the argument they were being asked to supply, and would have had to reimplement
-// the hash off-chain and hope it matched. Exporting it means the deploy script and the contract
-// agree by construction.
-//
-// Pure and public: it takes the secret as an argument rather than reading the witness, and reveals
-// nothing — inverting it is the hash-preimage problem the authority check relies on.
-export circuit policyCommitment(policySecret: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<2, Bytes<32>>>([policySecret, pad(32, "prova:policy:v1")]);
+// The authority may advance time but cannot move it backwards to revive expired credentials.
+export circuit setPolicyTime(newPolicyTime: Uint<64>): [] {
+  assertPolicyAuthority();
+  assert(newPolicyTime >= policyTime, "policy time cannot move backwards");
+  policyTime = disclose(newPolicyTime);
+}
+
+// Rotation invalidates credentials signed only by the old issuer, matching the Stellar pool's
+// emergency anchor-rotation behavior.
+export circuit setCredentialIssuer(newIssuer: JubjubPoint): [] {
+  assertPolicyAuthority();
+  credentialIssuer = disclose(newIssuer);
 }

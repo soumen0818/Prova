@@ -1,5 +1,11 @@
 # Deployment: blocked on a toolchain version split
 
+> **Historical investigation — resolved 2026-09-30.** The working tuple is Compact compiler
+> 0.31.1 / language 0.23.0 / runtime 0.16.0 / Midnight JS 4.1.1. All 39 tests and the Preprod
+> preflight now pass. See [STATUS.md](STATUS.md) for the current deployment state.
+
+The remainder of this file preserves the failed combinations and diagnosis that led to the fix.
+
 **Status as of 2026-09-26.** Everything up to the contract-deployment call works and is proven on
 chain. The final call fails because no published combination of compiler, runtime and `midnight-js`
 agrees with the others.

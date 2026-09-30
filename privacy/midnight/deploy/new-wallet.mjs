@@ -18,7 +18,18 @@
 
 import { setNetworkId, getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 
-const NETWORK = 'preview';
+const networkFlag = process.argv.indexOf('--network');
+const requestedNetwork = networkFlag === -1 ? 'preprod' : process.argv[networkFlag + 1];
+const supportedNetworks = new Set(['preview', 'preprod']);
+
+if (!supportedNetworks.has(requestedNetwork)) {
+  console.error(
+    `\n  ✗ unsupported Midnight network "${requestedNetwork ?? ''}"; use preview or preprod.\n`,
+  );
+  process.exit(1);
+}
+
+export const NETWORK = requestedNetwork;
 setNetworkId(NETWORK);
 
 const { FluentWalletBuilder } = await import('@midnight-ntwrk/testkit-js');
@@ -28,15 +39,28 @@ const Rx = await import('rxjs');
 const { randomBytes } = await import('node:crypto');
 const { readFileSync, writeFileSync, existsSync } = await import('node:fs');
 
-export const PREVIEW_ENV = {
+const NETWORKS = {
+  preview: {
+    indexer: 'https://indexer.preview.midnight.network/api/v4/graphql',
+    indexerWS: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
+    node: 'https://rpc.preview.midnight.network',
+    nodeWS: 'wss://rpc.preview.midnight.network',
+    faucet: 'https://midnight-tmnight-preview.nethermind.dev/',
+  },
+  preprod: {
+    indexer: 'https://indexer.preprod.midnight.network/api/v4/graphql',
+    indexerWS: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
+    node: 'https://rpc.preprod.midnight.network',
+    nodeWS: 'wss://rpc.preprod.midnight.network',
+    faucet: 'https://midnight-tmnight-preprod.nethermind.dev/',
+  },
+};
+
+export const NETWORK_ENV = {
   walletNetworkId: NETWORK,
   networkId: NETWORK,
-  indexer: 'https://indexer.preview.midnight.network/api/v4/graphql',
-  indexerWS: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
-  node: 'https://rpc.preview.midnight.network',
-  nodeWS: 'wss://rpc.preview.midnight.network',
+  ...NETWORKS[NETWORK],
   proofServer: process.env.PROOF_SERVER ?? 'http://localhost:6300',
-  faucet: undefined,
 };
 
 /** Dust options as the official example configures them for a public network. */
@@ -47,7 +71,7 @@ export const dustOptions = () => ({
 });
 
 /** Build (without starting) the wallet for a hex seed. */
-export async function buildWallet(seedHex, env = PREVIEW_ENV) {
+export async function buildWallet(seedHex, env = NETWORK_ENV) {
   const builder = FluentWalletBuilder.forEnvironment(env).withDustOptions(dustOptions());
   return builder.withSeed(seedHex).buildWithoutStarting();
 }
@@ -106,7 +130,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log('─'.repeat(70));
     console.log('\n  Seed written to .env (gitignored, mode 600). It was not printed here.');
     console.log('\n  Next:');
-    console.log('    1. Fund the address above at https://midnight-tmnight-preview.nethermind.dev/');
+    console.log(`    1. Fund the address above at ${NETWORK_ENV.faucet}`);
     console.log('    2. Wait for tDUST to accrue from the tNIGHT received');
     console.log('    3. npm run deploy\n');
   }

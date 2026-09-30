@@ -1,10 +1,23 @@
-# Midnight network endpoints — verified 2026-09-26
+# Midnight network endpoints — verified 2026-09-30
 
-All checked live from this machine on the date above. Recorded because the endpoints I had from
-memory (`testnet-02`) are **retired and no longer resolve** — that network was replaced by
-`preview`, and guessing at hostnames cost a detour worth not repeating.
+All checked live from this machine on the date above. Prova's submission target is **Preprod**;
+Preview remains available only for explicit development commands.
 
-## Preview (the current public test network)
+## Preprod (submission target)
+
+| Service | Endpoint | Verified |
+|---|---|---|
+| Node RPC | `https://rpc.preprod.midnight.network` | `system_chain` → `"Midnight Preprod"` |
+| Node WS | `wss://rpc.preprod.midnight.network` | wallet subscription connected |
+| Indexer | `https://indexer.preprod.midnight.network/api/v4/graphql` | block query returned |
+| Indexer WS | `wss://indexer.preprod.midnight.network/api/v4/graphql/ws` | wallet synchronized |
+| Faucet | `https://midnight-tmnight-preprod.nethermind.dev/` | HTTP 200 |
+| Proof server | `http://localhost:6300` | local 8.0.3 container responded |
+
+`npm run deploy:check` verifies the RPC, indexer, local proof server, and all required prover keys
+without creating a wallet transaction.
+
+## Preview (optional development network)
 
 | Service | Endpoint | Verified |
 |---|---|---|
@@ -22,7 +35,7 @@ Note the indexer path is **`/api/v4/graphql`**. `/api/v1/graphql` does not work.
 **The wallet needs the `wss://` node URL, not the `https://` one.** It follows blocks by
 subscription, which is WebSocket only. Given the https URL it retries `Timed out trying to connect`
 indefinitely while every preflight check still passes — those are plain POSTs and work fine over
-https. The two URLs are therefore tracked separately in `deploy/deploy.mjs` (`node` vs `nodeWs`),
+https. The two URLs are tracked separately in `deploy/new-wallet.mjs` (`node` vs `nodeWS`),
 and the sync wait is bounded so this failure announces itself instead of hanging.
 
 The indexer WebSocket requires the `graphql-transport-ws` subprotocol; a handshake without it is
@@ -39,8 +52,7 @@ That is also why `bench/RESULTS.md` treats "prove on device vs. prove on a serve
 architectural question rather than a performance tradeoff. The answer is not free.
 
 ```
-docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:7.0.0-rc.1 \
-  -- 'midnight-proof-server --verbose'
+docker run -d --rm -p 6300:6300 midnightntwrk/proof-server:8.0.3
 ```
 
 First boot downloads public parameters (~1 minute) and does not persist them across `--rm`
@@ -48,13 +60,9 @@ containers, so a fresh container re-fetches. Drop `--rm` and reuse the container
 
 ## What deployment still needs
 
-Network access is **not** the blocker it was assumed to be — all four services above are reachable.
-What is still required:
+Network access, wallet derivation, DUST registration logic, prover keys, and constructor validation are
+verified. The generated Preprod wallet currently reports `0 NIGHT`.
 
-1. A wallet with a funded address. The faucet dispenses tNIGHT, which is then registered for tDUST
-   generation in the wallet; tDUST is what pays fees.
-2. That registration step goes through Lace or the wallet SDK, and is the part that needs a human
-   decision about key custody — not something to do unilaterally with a key that will later hold
-   value.
-
-Everything up to that point is verified working.
+Fund the public address recorded in [`deploy/STATUS.md`](../deploy/STATUS.md), then run
+`npm run wallet:status` followed by `npm run deploy`. The deployer registers eligible NIGHT UTXOs
+for DUST through the wallet SDK, waits for DUST, deploys, and verifies the resulting public state.

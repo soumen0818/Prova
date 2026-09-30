@@ -1,18 +1,11 @@
-// Deploy Prova's Compact contracts to the Midnight Preview network.
+// Deploy Prova's authenticated compliance contract to Midnight Preprod (or explicit Preview).
 //
 // # What this deploys, and why the arguments matter
 //
-// Both contracts take constructor arguments that decide what the deployed instance *enforces*, and
-// a Midnight contract's ledger is fixed at construction — there is no migration. Getting these
-// wrong means redeploying at a new address, which orphans every note in the old tree.
-//
-//   transfer(initialRequiredKyc)                the corridor minimum, permanently
-//   compliance(policyCommitment, initialMinKyc) the policy authority, permanently
-//
-// Deployed without a constructor, both defaulted to zero: a corridor minimum of 0 admits every
-// credential including level 0, and a policy authority of 32 zero bytes is a hash nobody can
-// produce a preimage for, so `setMinKycLevel` could never be called by anyone. A compliance layer
-// enforcing nothing, with no way to fix it. That is the bug this script exists on the other side of.
+// Midnight authenticates a private credential and records a one-time authorization bound to the
+// Stellar settlement nullifier. The experimental Midnight value-transfer contracts are compiled
+// and tested, but deliberately not deployed: Stellar remains Prova's settlement layer. Constructor
+// state fixes the policy authority, credential issuer, KYC minimum, and initial trusted policy time.
 //
 // # The wallet
 //
@@ -29,37 +22,30 @@
 //
 // # Usage
 //
-//   npm run wallet:new         # generate a deployment wallet, print the address to fund
-//   npm run deploy:check       # verify everything without spending
-//   npm run deploy
+//   npm run wallet:new            # generate a Preprod deployment wallet
+//   npm run deploy:check          # verify Preprod without spending
+//   npm run deploy                # deploy to Preprod
+//   npm run deploy:check:preview  # explicitly test Preview instead
 
-import { setNetworkId, getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { ecMulGenerator, signatureVerifyingKey } from '@midnight-ntwrk/compact-runtime';
+import { validatePassword } from '@midnight-ntwrk/midnight-js-utils';
 
-// Must happen before anything that encodes an address or builds a wallet: the network identifier is
-// global state read at construction time, and `preview` is not one of the values the older
-// `@midnight-ntwrk/wallet` enum knew about.
-setNetworkId('preview');
-
-import { readFile } from 'node:fs/promises';
-import * as Transfer from '../build-transfer/contract/index.js';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as Compliance from '../build/contract/index.js';
-import { PREVIEW_ENV, buildWallet, unshieldedAddress } from './new-wallet.mjs';
+import { NETWORK_ENV, buildWallet, unshieldedAddress } from './new-wallet.mjs';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const net = PREVIEW_ENV;
+const net = NETWORK_ENV;
 const PROOF_SERVER = net.proofServer;
 
-/**
- * The corridor's minimum KYC level, applied to both contracts.
- *
- * Non-zero on purpose: at 0 the check runs on every transfer and can never reject, so a deployment
- * would demonstrate no enforcement at all. 1 is low enough to test against and high enough that
- * level 0 is genuinely refused.
- */
+// Non-zero by default so the deployed policy demonstrably rejects level-zero credentials.
 const REQUIRED_KYC = BigInt(process.env.REQUIRED_KYC ?? '1');
+const POLICY_TIME = BigInt(process.env.POLICY_TIME ?? Math.floor(Date.now() / 1000));
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -69,6 +55,12 @@ const fail = (msg) => {
 };
 
 const hex = (b) => Buffer.from(b).toString('hex');
+if (REQUIRED_KYC < 0n || REQUIRED_KYC > 255n) {
+  fail(`REQUIRED_KYC must be an integer from 0 to 255; got ${REQUIRED_KYC}.`);
+}
+if (POLICY_TIME < 0n || POLICY_TIME > 18_446_744_073_709_551_615n) {
+  fail(`POLICY_TIME must fit in an unsigned 64-bit integer; got ${POLICY_TIME}.`);
+}
 
 // ---------------------------------------------------------------------------
 // Preflight — fail before touching the chain, not halfway through
@@ -97,6 +89,39 @@ if (policySecret.every((b) => b === 0)) {
 // silently reproducing the exact bug being fixed.
 const policyCommitment = Compliance.pureCircuits.policyCommitment(policySecret);
 
+const issuerSecretHex = process.env.CREDENTIAL_ISSUER_SECRET;
+if (!issuerSecretHex) {
+  fail(
+    'CREDENTIAL_ISSUER_SECRET is not set. Run `npm run issuer:new` to create one safely.',
+  );
+}
+if (!/^[0-9a-fA-F]{64}$/.test(issuerSecretHex)) {
+  fail(
+    `CREDENTIAL_ISSUER_SECRET must be 64 hex characters; got ${issuerSecretHex.length}.`,
+  );
+}
+
+const JUBJUB_ORDER =
+  6554484396890773809930967563523245729705921265872317281365359162392183254199n;
+const issuerScalar = BigInt(`0x${issuerSecretHex}`) % JUBJUB_ORDER;
+if (issuerScalar === 0n) {
+  fail('CREDENTIAL_ISSUER_SECRET reduces to zero and cannot sign credentials. Generate a new key.');
+}
+const credentialIssuer = ecMulGenerator(issuerScalar);
+
+const maintenanceSigningKey = process.env.CONTRACT_MAINTENANCE_KEY?.trim().replace(/^"|"$/g, '');
+if (!maintenanceSigningKey) {
+  fail(
+    'CONTRACT_MAINTENANCE_KEY is not set. Run `npm run maintenance:new` to create one safely.',
+  );
+}
+try {
+  // Decode it before wallet sync. A malformed key must never be discovered after an hour-long scan.
+  signatureVerifyingKey(maintenanceSigningKey);
+} catch {
+  fail('CONTRACT_MAINTENANCE_KEY is not a valid Midnight contract signing key.');
+}
+
 console.log(`\nProva — Midnight deployment`);
 console.log('─'.repeat(70));
 console.log(`  network          ${getNetworkId()}`);
@@ -105,6 +130,8 @@ console.log(`  indexer          ${net.indexer}`);
 console.log(`  proof server     ${PROOF_SERVER}`);
 console.log(`  required KYC     ${REQUIRED_KYC}`);
 console.log(`  policy authority ${hex(policyCommitment).slice(0, 32)}…`);
+console.log(`  policy time      ${POLICY_TIME}`);
+console.log(`  issuer key       ${credentialIssuer.x.toString(16).slice(0, 32)}…`);
 console.log(`  mode             ${DRY_RUN ? 'DRY RUN — nothing will be deployed' : 'LIVE'}`);
 console.log('─'.repeat(70));
 
@@ -120,11 +147,27 @@ async function check(label, fn) {
   }
 }
 
+async function retry(fn, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      }
+    }
+  }
+  throw lastError;
+}
+
 const rpc = async (method, params = []) => {
   const r = await fetch(net.node, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
@@ -134,33 +177,35 @@ const rpc = async (method, params = []) => {
 
 console.log('\nPreflight');
 const ok = [
-  await check('node', async () => {
-    const chain = await rpc('system_chain');
-    const health = await rpc('system_health');
-    if (health.isSyncing) throw new Error('node is still syncing');
-    return `${chain}, ${health.peers} peers`;
-  }),
-  await check('indexer', async () => {
-    const r = await fetch(net.indexer, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: '{ block { height } }' }),
-    });
-    const j = await r.json();
-    if (j.errors) throw new Error(j.errors[0].message);
-    return `block ${j.data.block.height}`;
-  }),
+  await check('node', () =>
+    retry(async () => {
+      const chain = await rpc('system_chain');
+      const health = await rpc('system_health');
+      const syncStatus = health.isSyncing ? 'syncing reported' : 'ready';
+      return `${chain}, ${health.peers} peers, ${syncStatus}`;
+    }),
+  ),
+  await check('indexer', () =>
+    retry(async () => {
+      const r = await fetch(net.indexer, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: '{ block { height } }' }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const j = await r.json();
+      if (j.errors) throw new Error(j.errors[0].message);
+      return `block ${j.data.block.height}`;
+    }),
+  ),
   await check('proof server', async () => {
     const r = await fetch(PROOF_SERVER, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return 'local';
   }),
   await check('compiled artifacts', async () => {
-    for (const [dir, keys] of [
-      ['build-transfer', ['transfer', 'deposit']],
-      ['build', ['proveEligibility', 'setMinKycLevel']],
-    ]) {
-      for (const k of keys) await readFile(`${dir}/keys/${k}.prover`);
+    for (const key of ['proveEligibility', 'setMinKycLevel', 'setPolicyTime', 'setCredentialIssuer']) {
+      await readFile(`build/keys/${key}.prover`);
     }
     return 'prover keys present';
   }),
@@ -170,16 +215,17 @@ if (!ok.every(Boolean)) {
   fail('preflight failed — nothing was deployed. Fix the above and re-run.');
 }
 
-console.log('\nContracts');
-console.log(`  transfer      constructor(requiredKyc = ${REQUIRED_KYC})`);
-console.log(`  compliance    constructor(policyAuthority = ${hex(policyCommitment).slice(0, 16)}…, minKyc = ${REQUIRED_KYC})`);
+console.log('\nContract');
+console.log(
+  `  compliance    constructor(authority = ${hex(policyCommitment).slice(0, 16)}…, minKyc = ${REQUIRED_KYC}, policyTime = ${POLICY_TIME})`,
+);
 
 if (DRY_RUN) {
   console.log('\n  Dry run complete. Everything above is reachable and consistent.');
   console.log('  Re-run without --dry-run to deploy.\n');
   console.log('  Deploying additionally needs a funded wallet:');
   console.log('    npm run wallet:new      generate one and print its address');
-  console.log('    then fund it at https://midnight-tmnight-preview.nethermind.dev/\n');
+  console.log(`    then fund it at ${net.faucet}\n`);
   process.exit(0);
 }
 
@@ -198,6 +244,14 @@ if (!/^[0-9a-fA-F]{64}$/.test(seedHex)) {
     '    does not match any standard BIP39 mapping. Run `npm run wallet:new` instead.',
   );
 }
+
+// This is not an independent secret: anyone with the wallet seed already controls deployment.
+// Prefix the high-entropy hash so it satisfies the SDK's three-character-class policy, then
+// validate it before the expensive wallet sync rather than during post-finalization persistence.
+const storagePassword = `Pv!${createHash('sha256')
+  .update(`prova:private-state:v1:${seedHex}`)
+  .digest('hex')}`;
+validatePassword(storagePassword);
 
 const Rx = await import('rxjs');
 const { ZswapSecretKeys, DustSecretKey } = await import('@midnight-ntwrk/midnight-js-protocol/ledger');
@@ -229,12 +283,13 @@ console.log('ok');
 const done = (p) => typeof p?.isStrictlyComplete === 'function' && p.isStrictlyComplete();
 const allSynced = (s) => done(s.shielded.state.progress) && done(s.unshielded.progress) && done(s.dust.state.progress);
 
-// A first sync scans the whole chain: shielded and dust each walk ~255k indices at roughly 160
-// per second, so 25-30 minutes is normal and 10 was simply wrong. The unshielded wallet finishes in
-// seconds by comparison, which is why funds show up long before the wallet is usable.
-const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 2_700_000);
-console.log('  syncing…                (first sync scans the chain — expect 25-30 min)');
+// A first sync scans the whole chain. Runtime varies substantially with CPU and current chain size;
+// on Preprod the DUST scan has exceeded 45 minutes even while continuously making progress. Keep a
+// generous guard and allow operators to override it without editing this file.
+const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 7_200_000);
+console.log('  syncing…                (a first Preprod sync can take well over 45 min)');
 let state;
+let lastProgressLine = '';
 const pctOf = (p) => {
   const at = Number(p?.appliedIndex ?? 0);
   const to = Number(p?.highestRelevantWalletIndex ?? 0);
@@ -247,10 +302,12 @@ try {
         const line = `    shielded ${String(pctOf(s.shielded.state.progress)).padStart(3)}%  `
           + `dust ${String(pctOf(s.dust.state.progress)).padStart(3)}%  `
           + `unshielded ${done(s.unshielded.progress) ? 'done' : '…'}`;
-        process.stdout.write(`\r${line}`);
+        if (line !== lastProgressLine) {
+          console.log(line);
+          lastProgressLine = line;
+        }
       }),
       Rx.filter(allSynced),
-      Rx.tap(() => process.stdout.write('\n')),
       Rx.timeout({ first: SYNC_TIMEOUT_MS }),
     ),
   );
@@ -280,7 +337,7 @@ if (dustBalance === 0n) {
     fail(
       'no dust, and no unregistered NIGHT to generate it from.\n' +
       `    Fund this address, then re-run:\n      ${address}\n` +
-      '    Faucet: https://midnight-tmnight-preview.nethermind.dev/',
+      `    Faucet: ${net.faucet}`,
     );
   }
 
@@ -334,9 +391,10 @@ const { NodeZkConfigProvider } = await import('@midnight-ntwrk/midnight-js-node-
 const { indexerPublicDataProvider } = await import('@midnight-ntwrk/midnight-js-indexer-public-data-provider');
 const { levelPrivateStateProvider } = await import('@midnight-ntwrk/midnight-js-level-private-state-provider');
 const { httpClientProofProvider } = await import('@midnight-ntwrk/midnight-js-http-client-proof-provider');
-const { CompiledContract } = await import('@midnight-ntwrk/compact-js');
+// Use the protocol package's documented access layer rather than relying on npm to hoist the
+// transitive `@midnight-ntwrk/compact-js` package into node_modules.
+const { CompiledContract } = await import('@midnight-ntwrk/midnight-js-protocol/compact-js');
 const { ttlOneHour } = await import('@midnight-ntwrk/midnight-js-utils');
-const { createHash } = await import('node:crypto');
 
 // The wallet adapter `midnight-js-contracts` expects. Note these are METHODS, not properties — an
 // earlier version passed plain fields and would have failed here even with a working wallet.
@@ -360,36 +418,33 @@ const midnightProvider = { submitTx: (tx) => wallet.submitTransaction(tx) };
 // machine cannot read each other's state. The password is derived from the wallet seed rather than
 // prompted for: it keeps deployment non-interactive, and it is not an additional secret — anyone
 // holding the seed controls the wallet anyway.
-const storagePassword = createHash('sha256').update(`prova:private-state:v1:${seedHex}`).digest('hex');
-
 const deployments = [
-  {
-    name: 'transfer',
-    module: Transfer,
-    zkDir: 'build-transfer',
-    dts: 'build-transfer/contract/index.d.ts',
-    args: [REQUIRED_KYC],
-    verify: (led) => {
-      if (led.requiredKycLevel !== REQUIRED_KYC) {
-        throw new Error(`requiredKycLevel is ${led.requiredKycLevel}, expected ${REQUIRED_KYC}`);
-      }
-      return `requiredKycLevel = ${led.requiredKycLevel}`;
-    },
-  },
   {
     name: 'compliance',
     module: Compliance,
     zkDir: 'build',
     dts: 'build/contract/index.d.ts',
-    args: [policyCommitment, REQUIRED_KYC],
+    args: [policyCommitment, credentialIssuer, REQUIRED_KYC, POLICY_TIME],
     verify: (led) => {
-      if (hex(led.policyAuthority) === '00'.repeat(32)) {
-        throw new Error('policyAuthority is the unreachable zero default');
-      }
       if (hex(led.policyAuthority) !== hex(policyCommitment)) {
         throw new Error('policyAuthority does not match the secret provided');
       }
-      return `minKycLevel = ${led.minKycLevel}, authority set`;
+      if (
+        led.credentialIssuer.x !== credentialIssuer.x ||
+        led.credentialIssuer.y !== credentialIssuer.y
+      ) {
+        throw new Error('credentialIssuer does not match CREDENTIAL_ISSUER_SECRET');
+      }
+      if (led.minKycLevel !== REQUIRED_KYC) {
+        throw new Error(`minKycLevel is ${led.minKycLevel}, expected ${REQUIRED_KYC}`);
+      }
+      if (led.policyTime !== POLICY_TIME) {
+        throw new Error(`policyTime is ${led.policyTime}, expected ${POLICY_TIME}`);
+      }
+      if (!led.approvedSettlements.isEmpty()) {
+        throw new Error('a new compliance contract must have no approved settlements');
+      }
+      return `minKycLevel = ${led.minKycLevel}, policyTime = ${led.policyTime}, issuer set`;
     },
   },
 ];
@@ -430,7 +485,7 @@ for (const d of deployments) {
   // The witnesses must all be present even though deployment only runs the *constructor*, which
   // reads none of them: the generated `Contract` class validates that every declared witness is a
   // function at construction time and throws otherwise. Passing `{}` fails with
-  // "does not contain a function-valued field named spenderSecretKey".
+  // "does not contain a function-valued field named complianceCredential".
   //
   // They are stubs that throw, deliberately. Deployment must never call one, so a stub that returns
   // a plausible zero value would hide a real bug behind a silently wrong proof; one that throws
@@ -451,22 +506,64 @@ for (const d of deployments) {
     CompiledContract.withCompiledFileAssets(d.zkDir),
   );
 
-  const deployed = await deployContract(providers, { compiledContract: compiled, args: d.args });
-  const contractAddress = deployed.deployTxData.public.contractAddress;
+  const deployed = await deployContract(providers, {
+    compiledContract: compiled,
+    args: d.args,
+    signingKey: maintenanceSigningKey,
+  });
+  const receipt = deployed.deployTxData.public;
+  const contractAddress = receipt.contractAddress;
   console.log(`  address   ${contractAddress}`);
+  console.log(`  tx id     ${receipt.txId}`);
+  console.log(`  tx hash   ${receipt.txHash}`);
+  console.log(`  block     ${receipt.blockHeight} (${receipt.blockHash})`);
 
   // Read the deployed state back and confirm the constructor did what was asked. Trusting that the
   // arguments landed is precisely the assumption that produced the zero-default bug.
   const onChain = await providers.publicDataProvider.queryContractState(contractAddress);
   console.log(`  verified  ${d.verify(d.module.ledger(onChain.data))}`);
 
-  results.push({ name: d.name, address: contractAddress });
+  results.push({
+    name: d.name,
+    address: contractAddress,
+    txId: String(receipt.txId),
+    txHash: String(receipt.txHash),
+    blockHeight: receipt.blockHeight,
+    blockHash: String(receipt.blockHash),
+    blockTimestamp: receipt.blockTimestamp,
+    status: String(receipt.status),
+  });
 }
 
+const deploymentManifest = {
+  schemaVersion: 1,
+  network: getNetworkId(),
+  rpc: net.node,
+  indexer: net.indexer,
+  deployerAddress: address,
+  maintenanceVerifyingKey: signatureVerifyingKey(maintenanceSigningKey),
+  constructor: {
+    policyAuthority: hex(policyCommitment),
+    credentialIssuer: {
+      x: credentialIssuer.x.toString(),
+      y: credentialIssuer.y.toString(),
+    },
+    minKycLevel: REQUIRED_KYC.toString(),
+    policyTime: POLICY_TIME.toString(),
+  },
+  contracts: results,
+};
+await mkdir('deployments', { recursive: true });
+await writeFile(
+  `deployments/${getNetworkId()}.json`,
+  `${JSON.stringify(deploymentManifest, null, 2)}\n`,
+  { mode: 0o644 },
+);
+
 console.log(`\n${'─'.repeat(70)}`);
-console.log('Deployed to Midnight Preview:\n');
+console.log(`Deployed to Midnight ${getNetworkId()}:\n`);
 for (const r of results) console.log(`  ${r.name.padEnd(12)} ${r.address}`);
-console.log('\n  Keep POLICY_SECRET safe — it is the only way to change the corridor policy.\n');
+console.log('\n  Keep POLICY_SECRET and CREDENTIAL_ISSUER_SECRET offline and backed up.\n');
 
 // The wallet holds open websockets; without this the process hangs after a successful deployment,
 // which reads as a failure.

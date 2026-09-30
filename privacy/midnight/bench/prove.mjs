@@ -9,14 +9,14 @@
 // for a versioned header it does not document, which is a good reason to use the real client.
 //
 // Requires a proof server:
-//   docker run -d --rm -p 6300:6300 midnightnetwork/proof-server:7.0.0-rc.1 \
-//     -- 'midnight-proof-server --verbose'
+//   docker run -d --rm -p 6300:6300 midnightntwrk/proof-server:8.0.3
 //
 // Usage: node bench/prove.mjs [iterations]
 
 import {
   createConstructorContext,
   createCircuitContext,
+  ecMulGenerator,
   proofDataIntoSerializedPreimage,
 } from '@midnight-ntwrk/compact-runtime';
 import { httpClientProvingProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
@@ -62,8 +62,6 @@ const contract = new Transfer.Contract({
   inputPath: (ctx) => [ctx.privateState, path],
 });
 
-const ctx = (id, state) =>
-  createCircuitContext(id, CONTRACT_ADDRESS, COIN_PUBLIC_KEY, state, {});
 
 // The corridor minimum the benchmarked contract is deployed with. Matches the tests and the deploy
 // default; the witness credential below sits above it, so the KYC branch is exercised rather than
@@ -73,9 +71,14 @@ const REQUIRED_KYC = 1n;
 // --- Set up a spendable note ---------------------------------------------------------------
 const init = await contract.initialState(
   createConstructorContext({}, COIN_PUBLIC_KEY), REQUIRED_KYC);
-const dep = await contract.impureCircuits.deposit(
-  ctx('deposit', init.currentContractState), 100n, ownerPk, rho);
-const state = dep.context.callContext.currentQueryContext.state;
+const initialTransferContext = createCircuitContext(
+  CONTRACT_ADDRESS,
+  init.currentZswapLocalState,
+  init.currentContractState,
+  init.currentPrivateState,
+);
+const dep = contract.impureCircuits.deposit(initialTransferContext, 100n, ownerPk, rho);
+const state = dep.context.currentQueryContext.state;
 path = Transfer.ledger(state).commitments.findPathForLeaf(dep.result);
 
 const zkConfig = new BuildDirZKConfig('build-transfer');
@@ -89,8 +92,7 @@ const prover = httpClientProvingProvider(PROOF_SERVER, zkConfig);
  */
 async function preimageFor(circuitId, run) {
   const res = await run();
-  // Depth-first, root last: this circuit's call is the final entry.
-  const call = res.context.callProofDataTrace.at(-1);
+  const call = res.proofData;
   return proofDataIntoSerializedPreimage(
     call.input,
     call.output,
@@ -128,7 +130,7 @@ console.log(`Host:         ${process.platform} ${process.arch}\n`);
 
 console.log('transfer — 1 note in, 2 out, KYC check, merkle depth 10');
 await benchmark('transfer', 'transfer', () =>
-  contract.impureCircuits.transfer(ctx('transfer', state), 1_700_000_000n));
+  contract.impureCircuits.transfer(dep.context, 1_700_000_000n));
 
 // The eligibility circuit, for contrast. It proves the KYC statement alone — no note, no merkle
 // path, no conservation — so the gap between the two is the cost of the value layer, which is the
@@ -138,20 +140,67 @@ const Compliance = await import('../build/contract/index.js');
 const complianceZk = new BuildDirZKConfig('build');
 const complianceProver = httpClientProvingProvider(PROOF_SERVER, complianceZk);
 
-const cred = { userId: b32(11), kycLevel: 3n, expiry: 2_000_000_000n };
-const compliance = new Compliance.Contract({
-  credentialUserId: read(cred.userId),
-  credentialKycLevel: read(cred.kycLevel),
-  credentialExpiry: read(cred.expiry),
-});
-const cInit = await compliance.initialState(
-  createConstructorContext({}, COIN_PUBLIC_KEY),
-  Compliance.pureCircuits.policyCommitment(b32(77)),
-  REQUIRED_KYC,
+const JUBJUB_ORDER =
+  6554484396890773809930967563523245729705921265872317281365359162392183254199n;
+const TWO_248 =
+  452312848583266388373324160190187140051835877600158453279131187530910662656n;
+const issuerSecret = 123_456_789n;
+const issuerPublic = ecMulGenerator(issuerSecret);
+const holderSecret = b32(11);
+const credentialId = b32(22);
+const policySecret = b32(77);
+const userId = Compliance.pureCircuits.credentialUserId(holderSecret);
+const credentialMessage = Compliance.pureCircuits.credentialMessage(
+  userId,
+  3n,
+  2_000_000_000n,
+  credentialId,
 );
-const cRes = await compliance.impureCircuits.proveEligibility(
-  ctx('proveEligibility', cInit.currentContractState.data), 1_700_000_000n);
-const cCall = cRes.context.callProofDataTrace.at(-1);
+const nonce = 424_242n;
+const announcement = ecMulGenerator(nonce);
+const fullChallenge = Compliance.pureCircuits.schnorrChallenge(
+  announcement.x,
+  announcement.y,
+  issuerPublic.x,
+  issuerPublic.y,
+  credentialMessage,
+);
+const challenge = fullChallenge % TWO_248;
+const credential = {
+  userId,
+  kycLevel: 3n,
+  expiry: 2_000_000_000n,
+  credentialId,
+  signature: {
+    announcement,
+    response: (nonce + challenge * issuerSecret) % JUBJUB_ORDER,
+  },
+};
+const compliancePrivateState = { credential, holderSecret, policySecret };
+const compliance = new Compliance.Contract({
+  complianceCredential: ({ privateState }) => [privateState, privateState.credential],
+  credentialHolderSecret: ({ privateState }) => [privateState, privateState.holderSecret],
+  policySecret: ({ privateState }) => [privateState, privateState.policySecret],
+  getSchnorrReduction: ({ privateState }, challengeHash) => [
+    privateState,
+    [challengeHash / TWO_248, challengeHash % TWO_248],
+  ],
+});
+const cInit = compliance.initialState(
+  createConstructorContext(compliancePrivateState, COIN_PUBLIC_KEY),
+  Compliance.pureCircuits.policyCommitment(policySecret),
+  issuerPublic,
+  REQUIRED_KYC,
+  1_700_000_000n,
+);
+const complianceContext = createCircuitContext(
+  CONTRACT_ADDRESS,
+  cInit.currentZswapLocalState,
+  cInit.currentContractState,
+  cInit.currentPrivateState,
+);
+const cRes = compliance.impureCircuits.proveEligibility(complianceContext, b32(33));
+const cCall = cRes.proofData;
 const cPre = proofDataIntoSerializedPreimage(
   cCall.input, cCall.output, cCall.publicTranscript, cCall.privateTranscriptOutputs, 'proveEligibility');
 console.log(`  preimage: ${cPre.length} bytes`);

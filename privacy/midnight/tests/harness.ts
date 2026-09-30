@@ -136,21 +136,21 @@ export class Harness {
     return Transfer.ledger(this.state as never);
   }
 
-  private context(circuitId: string) {
-    return createCircuitContext(circuitId, CONTRACT_ADDRESS, COIN_PUBLIC_KEY, this.state as never, {});
+  private context() {
+    return createCircuitContext(CONTRACT_ADDRESS, COIN_PUBLIC_KEY, this.state as never, {});
   }
 
   /** Publish a note commitment, advancing the ledger. */
   async deposit(amount: bigint, ownerPk: Uint8Array, rho: Uint8Array): Promise<Uint8Array> {
-    const res = await this.contract.impureCircuits.deposit(this.context('deposit') as never, amount, ownerPk, rho);
-    this.state = res.context.callContext.currentQueryContext.state;
+    const res = await this.contract.impureCircuits.deposit(this.context() as never, amount, ownerPk, rho);
+    this.state = res.context.currentQueryContext.state;
     return res.result;
   }
 
   /** Spend, advancing the ledger. Throws if any assert in the circuit fails. */
   async transfer(currentTime: bigint = NOW): Promise<Uint8Array> {
-    const res = await this.contract.impureCircuits.transfer(this.context('transfer') as never, currentTime);
-    this.state = res.context.callContext.currentQueryContext.state;
+    const res = await this.contract.impureCircuits.transfer(this.context() as never, currentTime);
+    this.state = res.context.currentQueryContext.state;
     return res.result;
   }
 

@@ -40,6 +40,10 @@ Once the corresponding Stellar nullifier becomes public, an observer can calcula
 domain-separated decision and link that Midnight authorization to that Stellar settlement. This
 link is intentional: it is the cross-chain hand-off and replay boundary.
 
+The circuit does not hide transaction timing or every piece of wallet/network metadata. Observers
+of both chains may correlate close-in-time activity even before the nullifier link is published.
+This is privacy of credential contents, not a claim of end-to-end sender anonymity.
+
 ### What a public observer cannot learn
 
 The proof does not reveal:

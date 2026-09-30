@@ -45,7 +45,8 @@ const PROOF_SERVER = net.proofServer;
 
 // Non-zero by default so the deployed policy demonstrably rejects level-zero credentials.
 const REQUIRED_KYC = BigInt(process.env.REQUIRED_KYC ?? '1');
-const POLICY_TIME = BigInt(process.env.POLICY_TIME ?? Math.floor(Date.now() / 1000));
+const AUTO_POLICY_TIME = process.env.POLICY_TIME === undefined;
+let POLICY_TIME = BigInt(process.env.POLICY_TIME ?? Math.floor(Date.now() / 1000));
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 14_400_000);
@@ -134,7 +135,7 @@ console.log(`  indexer          ${net.indexer}`);
 console.log(`  proof server     ${PROOF_SERVER}`);
 console.log(`  required KYC     ${REQUIRED_KYC}`);
 console.log(`  policy authority ${hex(policyCommitment).slice(0, 32)}…`);
-console.log(`  policy time      ${POLICY_TIME}`);
+console.log(`  policy time      ${AUTO_POLICY_TIME ? 'current UTC time at submission' : POLICY_TIME}`);
 console.log(`  issuer key       ${credentialIssuer.x.toString(16).slice(0, 32)}…`);
 console.log(`  mode             ${DRY_RUN ? 'DRY RUN — nothing will be deployed' : 'LIVE'}`);
 console.log('─'.repeat(70));
@@ -221,7 +222,7 @@ if (!ok.every(Boolean)) {
 
 console.log('\nContract');
 console.log(
-  `  compliance    constructor(authority = ${hex(policyCommitment).slice(0, 16)}…, minKyc = ${REQUIRED_KYC}, policyTime = ${POLICY_TIME})`,
+  `  compliance    constructor(authority = ${hex(policyCommitment).slice(0, 16)}…, minKyc = ${REQUIRED_KYC}, policyTime = ${AUTO_POLICY_TIME ? 'at submission' : POLICY_TIME})`,
 );
 
 if (DRY_RUN) {
@@ -421,6 +422,15 @@ const midnightProvider = { submitTx: (tx) => wallet.submitTransaction(tx) };
 // machine cannot read each other's state. The password is derived from the wallet seed rather than
 // prompted for: it keeps deployment non-interactive, and it is not an additional secret — anyone
 // holding the seed controls the wallet anyway.
+
+// Wallet synchronization can take hours. If policy time was not explicitly pinned, capture it
+// immediately before building the constructor transaction, never at process start. Otherwise the
+// freshly deployed expiry policy would already be stale before the first user call.
+if (AUTO_POLICY_TIME) {
+  POLICY_TIME = BigInt(Math.floor(Date.now() / 1000));
+  console.log(`  policy time at submission ${POLICY_TIME}`);
+}
+
 const deployments = [
   {
     name: 'compliance',

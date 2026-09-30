@@ -162,11 +162,12 @@ tracked separately so a reviewer is never asked to mistake the older demo for a 
 | --- | --- | --- |
 | Meaningful Midnight privacy model | Contract complete; product integration pending | [Privacy model and circuit](privacy/midnight/README.md) |
 | Minimum 3 passing tests | **Done locally — 39 passing** | [Compliance tests](privacy/midnight/tests/compliance.test.ts) |
-| CI workflow and passing run | Workflow added; green GitHub run still required | [Midnight CI](.github/workflows/midnight-ci.yml) |
+| CI workflow and passing run | **Done — public run passed** | [Passing Midnight CI run](https://github.com/soumen0818/Prova/actions/runs/36740035882) · [workflow](.github/workflows/midnight-ci.yml) |
 | Approved idea from provided list | External evidence required | Add approval link or screenshot after organizer approval |
 | Minimum 10 / 15 meaningful commits | **Done — 129 commits before this work** | `git rev-list --count HEAD` |
 | Complete README, setup, and usage | In progress | [Midnight README](privacy/midnight/README.md) |
 | Live Midnight Preprod MVP + address | Initial contract deployed; managed replacement in progress; V2 app flow not integrated | [Deployment status and on-chain address](privacy/midnight/deploy/STATUS.md) |
+| First on-chain Midnight address (superseded; not the managed submission address) | `fc10b0068772ca70c2d1b47889ceb4d6507fd8a2d495dc499c681c9625283182` | [Receipt and maintenance-key caveat](privacy/midnight/deploy/STATUS.md) |
 | Test-output screenshot | Missing manual artifact | Capture the green 39-test output |
 | One-minute V2 demo video | Missing | Record only after the integrated flow works |
 | Product X profile linked | Missing | Create the profile, then add its public link |
@@ -930,9 +931,8 @@ circuit, contract, backend, and app must agree on shared formats.
 It runs on Midnight changes and manual dispatch, installs Node 22 and Compact 0.31.1, uses
 `npm ci`, recompiles every Compact contract, type-checks the harness, and runs all 39 tests.
 
-The workflow file is now present, but a **passing run is not claimed until these changes are
-committed and pushed to GitHub**. The badge at the top links directly to the run history, which is
-the reviewable evidence once it turns green. Existing backend, circuits, contracts, shared, web,
+The [public Midnight run](https://github.com/soumen0818/Prova/actions/runs/36740035882) passed on
+commit `261e244`; the badge links to run history. Existing backend, circuits, contracts, shared, web,
 mobile, Docker, and deployment workflows are also tracked under [`.github/workflows`](.github/workflows/).
 
 ## Roadmap

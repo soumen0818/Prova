@@ -14,7 +14,7 @@ nullifier. Stellar remains the settlement and custody layer; this contract never
 | Holder-bound, issuer-signed private credential | Complete |
 | Expiry, minimum KYC, issuer rotation, and anti-replay rules | Complete |
 | Automated contract tests | **39 passing locally** |
-| GitHub Actions workflow | Added; requires a pushed green run |
+| GitHub Actions workflow | **Passing** — [public run](https://github.com/soumen0818/Prova/actions/runs/36740035882) |
 | Preprod connectivity and deploy preflight | Passing |
 | Preprod contract deployment | Initial contract confirmed; managed replacement pending DUST sync and Preprod indexer recovery |
 | Product UI/backend integration | Not complete |

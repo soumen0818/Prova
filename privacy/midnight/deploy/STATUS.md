@@ -15,7 +15,7 @@ The compatibility guard in `scripts/check-toolchain.mjs` fails the build if thos
 ## Verified
 
 - All 39 Compact simulator tests pass.
-- The Preprod RPC responded; the v4 indexer responded earlier but returned HTTP 503 during the managed replacement sync on 2026-09-30.
+- The Preprod RPC responds; the v4 indexer is intermittent, alternating between successful responses and HTTP 503 during synchronization.
 - The local proof server responds and all required prover keys exist.
 - Deployment constructor arguments are derived and validated.
 - The deployer reads the new contract state back and verifies authority, issuer, KYC minimum,
@@ -46,8 +46,8 @@ transaction finalized, the SDK rejected its auto-generated maintenance key while
 private state. That key was not retained, so verifier or maintenance-authority updates cannot be
 signed. The replacement deployer now supplies an explicit, backed-up maintenance key.
 
-The managed replacement is syncing the DUST wallet. The official Preprod indexer returned HTTP
-503 during that scan; the SDK is retrying. Do not submit the initial address as the managed MVP.
+The managed replacement is syncing the DUST wallet. The official Preprod indexer has intermittently
+returned HTTP 503 during that scan; the SDK retries. Do not submit the initial address as the managed MVP.
 
 ## Resume sequence
 

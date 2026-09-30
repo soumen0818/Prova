@@ -7,6 +7,23 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import * as Compliance from '../build/contract/index.js';
 
 const manifest = JSON.parse(await readFile('deployments/preprod.json', 'utf8'));
+async function retryIndexer(operation, attempts = 5) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
+        console.warn(`Indexer request failed (${attempt}/${attempts}); retrying in ${delay} ms`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 if (manifest.network !== 'preprod' || manifest.contracts?.length !== 1) {
   throw new Error('Expected exactly one Midnight Preprod contract in deployments/preprod.json');
 }
@@ -20,7 +37,7 @@ const provider = indexerPublicDataProvider(
   manifest.indexer,
   manifest.indexer.replace(/^https:/, 'wss:').replace(/\/api\/v4\/graphql$/, '/api/v4/graphql/ws'),
 );
-const deployed = await provider.queryDeployContractState(contract.address);
+const deployed = await retryIndexer(() => provider.queryDeployContractState(contract.address));
 if (!deployed) throw new Error(`Contract ${contract.address} is absent from the Preprod indexer`);
 const ledger = Compliance.ledger(deployed.data);
 const expected = manifest.constructor;
@@ -50,14 +67,16 @@ const query = `query VerifyBlock($offset: BlockOffset) {
     }
   }
 }`;
-const response = await fetch(manifest.indexer, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ query, variables: { offset: { height: contract.blockHeight } } }),
-  signal: AbortSignal.timeout(15_000),
+const result = await retryIndexer(async () => {
+  const response = await fetch(manifest.indexer, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query, variables: { offset: { height: contract.blockHeight } } }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Indexer returned HTTP ${response.status}`);
+  return response.json();
 });
-if (!response.ok) throw new Error(`Indexer returned HTTP ${response.status}`);
-const result = await response.json();
 if (result.errors?.length) throw new Error(result.errors[0].message);
 const block = result.data?.block;
 if (!block || block.hash !== contract.blockHash) {

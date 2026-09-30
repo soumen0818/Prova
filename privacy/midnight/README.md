@@ -151,10 +151,14 @@ minimum, policy time, or empty replay set differs from the requested state.
 
 ## Known limitations before submission
 
-- The initial Preprod contract has a verifiable address, but its SDK-generated maintenance key was not retained after a local post-finalization error. Do not use it as the canonical submission address; a replacement using an explicitly backed-up key is in progress.
+- The initial Preprod contract has a verifiable address, but its SDK-generated maintenance key was
+  not retained after a local post-finalization error. Do not use it as the canonical submission
+  address; a replacement using an explicitly backed-up key is in progress.
 - Credential issuance and the user proof call are not yet connected to the product UI/backend.
 - Stellar does not yet verify or atomically consume the Midnight decision. Until that enforcement
   path is implemented, the cross-chain relay is a trust boundary.
+- The custom Jubjub Schnorr credential verifier has automated adversarial tests but no independent
+  cryptographic audit; do not use this demo contract to gate real funds or regulated identities.
 - Compact 0.23 has no trusted chain-time primitive, so an authorized operator must advance
   `policyTime`. The monotonic rule prevents rolling it backward, but it does **not** make the value
   advance automatically: if updates stop, credentials expired in real time can still pass.

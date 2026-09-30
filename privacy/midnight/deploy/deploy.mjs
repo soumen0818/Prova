@@ -48,6 +48,7 @@ const REQUIRED_KYC = BigInt(process.env.REQUIRED_KYC ?? '1');
 const POLICY_TIME = BigInt(process.env.POLICY_TIME ?? Math.floor(Date.now() / 1000));
 
 const DRY_RUN = process.argv.includes('--dry-run');
+const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 14_400_000);
 
 const fail = (msg) => {
   console.error(`\n  ✗ ${msg}\n`);
@@ -60,6 +61,9 @@ if (REQUIRED_KYC < 0n || REQUIRED_KYC > 255n) {
 }
 if (POLICY_TIME < 0n || POLICY_TIME > 18_446_744_073_709_551_615n) {
   fail(`POLICY_TIME must fit in an unsigned 64-bit integer; got ${POLICY_TIME}.`);
+}
+if (!Number.isSafeInteger(SYNC_TIMEOUT_MS) || SYNC_TIMEOUT_MS < 60_000 || SYNC_TIMEOUT_MS > 2_147_483_647) {
+  fail('SYNC_TIMEOUT_MS must be an integer from 60000 through 2147483647 milliseconds.');
 }
 
 // ---------------------------------------------------------------------------
@@ -282,14 +286,10 @@ console.log('ok');
  */
 const done = (p) => typeof p?.isStrictlyComplete === 'function' && p.isStrictlyComplete();
 const allSynced = (s) => done(s.shielded.state.progress) && done(s.unshielded.progress) && done(s.dust.state.progress);
-if (!Number.isSafeInteger(SYNC_TIMEOUT_MS) || SYNC_TIMEOUT_MS < 60_000 || SYNC_TIMEOUT_MS > 2_147_483_647) {
-  fail('SYNC_TIMEOUT_MS must be an integer from 60000 through 2147483647 milliseconds.');
-}
 
 // A first sync scans the whole chain. Runtime varies substantially with CPU and current chain size;
 // on Preprod the DUST scan has exceeded 45 minutes even while continuously making progress. Keep a
 // generous guard and allow operators to override it without editing this file.
-const SYNC_TIMEOUT_MS = Number(process.env.SYNC_TIMEOUT_MS ?? 14_400_000);
 console.log('  syncing…                (a first Preprod sync can take well over 45 min)');
 let state;
 let lastProgressLine = '';

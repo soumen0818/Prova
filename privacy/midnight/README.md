@@ -91,9 +91,14 @@ npm ci
 npm test
 ```
 
-`npm test` compiles all three Compact contracts, type-checks the TypeScript harness, and runs the Vitest suites. The submission-critical
+`npm test` compiles all three Compact contracts, type-checks the TypeScript harness, and runs the
+Vitest suites. The submission-critical
 compliance suite exercises valid authorization, forged signatures, post-signature tampering,
 credential theft, expiry boundaries, policy authorization, issuer rotation, and settlement replay.
+
+Evidence: [39 passing tests](../../Docs/evidence/midnight-tests-39-passing.png),
+[green GitHub Actions run](https://github.com/soumen0818/Prova/actions/runs/36741944357), and
+[CI screenshot](../../Docs/evidence/midnight-ci-green.png).
 
 ## Preprod deployment
 
@@ -153,5 +158,5 @@ minimum, policy time, or empty replay set differs from the requested state.
 - Compact 0.23 has no trusted chain-time primitive, so an authorized operator must advance
   `policyTime`. The monotonic rule prevents rolling it backward, but it does **not** make the value
   advance automatically: if updates stop, credentials expired in real time can still pass.
-- The V2 demo video, test screenshot, product X profile, and proposal-approval evidence are manual
-  submission artifacts and are not yet present in this repository.
+- The V2 demo video, product X profile, and proposal-approval evidence are manual submission
+  artifacts and are not yet present in this repository.

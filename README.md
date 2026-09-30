@@ -161,14 +161,14 @@ tracked separately so a reviewer is never asked to mistake the older demo for a 
 | Requirement | Status | Evidence / next gate |
 | --- | --- | --- |
 | Meaningful Midnight privacy model | Contract complete; product integration pending | [Privacy model and circuit](privacy/midnight/README.md) |
-| Minimum 3 passing tests | **Done locally — 39 passing** | [Compliance tests](privacy/midnight/tests/compliance.test.ts) |
-| CI workflow and passing run | **Done — public run passed** | [Passing Midnight CI run](https://github.com/soumen0818/Prova/actions/runs/36740035882) · [workflow](.github/workflows/midnight-ci.yml) |
+| Minimum 3 passing tests | **Done — 39 passing** | [Test-output screenshot](Docs/evidence/midnight-tests-39-passing.png) · [tests](privacy/midnight/tests/compliance.test.ts) |
+| CI workflow and passing run | **Done — public run passed** | [Passing Midnight CI run](https://github.com/soumen0818/Prova/actions/runs/36741944357) · [screenshot](Docs/evidence/midnight-ci-green.png) · [workflow](.github/workflows/midnight-ci.yml) |
 | Approved idea from provided list | External evidence required | Add approval link or screenshot after organizer approval |
 | Minimum 10 / 15 meaningful commits | **Done — 129 commits before this work** | `git rev-list --count HEAD` |
 | Complete README, setup, and usage | In progress | [Midnight README](privacy/midnight/README.md) |
 | Live Midnight Preprod MVP + address | Initial contract deployed; managed replacement in progress; V2 app flow not integrated | [Deployment status and on-chain address](privacy/midnight/deploy/STATUS.md) |
 | First on-chain Midnight address (superseded; not the managed submission address) | `fc10b0068772ca70c2d1b47889ceb4d6507fd8a2d495dc499c681c9625283182` | [Receipt and maintenance-key caveat](privacy/midnight/deploy/STATUS.md) |
-| Test-output screenshot | Missing manual artifact | Capture the green 39-test output |
+| Test-output screenshot | **Done — genuine terminal capture** | [View 39 passing tests](Docs/evidence/midnight-tests-39-passing.png) |
 | One-minute V2 demo video | Missing | Record only after the integrated flow works |
 | Product X profile linked | Missing | Create the profile, then add its public link |
 

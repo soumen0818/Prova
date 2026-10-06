@@ -37,8 +37,8 @@ export function GetTheApp() {
             <>
               <div className="cta-pending">
                 <span className="pulse-dot" />
-                An updated testnet APK is building. The previous download has been paused because
-                its identity-screen wording no longer matches the demo.
+                The Android download is temporarily unavailable. Please check back for the next
+                verified testnet build.
               </div>
               <a
                 className="btn btn-ghost"

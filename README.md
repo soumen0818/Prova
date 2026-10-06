@@ -33,7 +33,9 @@
 </p>
 
 <p align="center">
-  <img alt="Updated Android APK build pending" src="https://img.shields.io/badge/Android%20APK-updated%20build%20pending-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  <a href="https://expo.dev/artifacts/eas/klHtGMpJf6I4w-RWix36E1kjk6f6Wsv_NxvB1C11QdE.apk">
+    <img alt="Download Prova Android APK version 1.3.1" src="https://img.shields.io/badge/Download%20APK-v1.3.1%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+  </a>
   <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
     <img alt="Watch the Prova demo video" src="https://img.shields.io/badge/Watch%20Demo-Video-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
   </a>
@@ -43,11 +45,10 @@
   <sub>Android 8+ · <b>arm64</b> · Stellar <b>testnet</b> — balances are test assets with no monetary value</sub>
 </p>
 
-> **October 2026 release notice:** The hosted APK is an older Stellar testnet build. It predates
-> the current source changes that remove ID-photo capture from the demo credential path and explain
-> the Midnight integration status. Do **not** submit a real identity document in that APK: its
-> captured photos are not sent to a licensed verifier or a human reviewer. A replacement APK and a
-> combined Midnight–Stellar demo have not been released yet.
+> **October 2026 release notice:** Android v1.3.1 is a Stellar testnet demo. Its test-credential
+> request does **not** ask for ID photos or perform licensed identity verification. Midnight
+> contract tests exist, but the APK does not yet make a Midnight authorization or enforce one before
+> Stellar settlement. Use test assets only; a combined Midnight–Stellar demo remains pending.
 
 ---
 
@@ -58,7 +59,9 @@
     <td align="center" width="150">
       <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
       <br><br>
-      <span>Updated APK pending; old build removed from the featured download.</span>
+      <a href="https://expo.dev/artifacts/eas/klHtGMpJf6I4w-RWix36E1kjk6f6Wsv_NxvB1C11QdE.apk">
+        <img alt="Download Android APK v1.3.1" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
+      </a>
       <br><br>
       <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
         <img alt="Watch the demo video" src="https://img.shields.io/badge/Watch-Demo-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
@@ -66,7 +69,7 @@
     </td>
     <td>
       <table>
-        <tr><td><b>Version</b></td><td>1.3.1 · build pending</td></tr>
+        <tr><td><b>Version</b></td><td>1.3.1 · 86 MB</td></tr>
         <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
         <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
         <tr><td><b>Demo video</b></td><td><a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">Watch the walkthrough ↗</a></td></tr>
@@ -96,9 +99,8 @@ the balances are test assets with no monetary value.
 
 1. **Install** the app and allow installing from outside the Play Store.
 2. **Sign in** with your email. A 6-digit code arrives by email, then you choose a PIN.
-3. **Request a test credential.** The current source does this without asking for ID photos. An
-   operator may approve a demo credential, but no licensed identity verification takes place. The
-   hosted APK has not yet been rebuilt with this safer flow; do not give it real ID photos.
+3. **Request a test credential.** This APK does not ask for ID photos. An operator may approve a
+   demo credential, but no licensed identity verification takes place.
 4. **Add money** — free testnet funds, then "Make it private" to move them into the shielded pool.
 5. **Add the person you are sending to** — scan their QR from Profile → Account details → Receive
    privately, or paste the address they send you.
@@ -148,7 +150,7 @@ availability and update the demo artifacts before submitting the combined flow.
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Live demo (website)** | [provapay.duckdns.org](https://provapay.duckdns.org)                                                                                                                           |
 | **Demo video**          | [Watch the full walkthrough ↗](https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing)                                                             |
-| **Android APK**         | Updated v1.3.1 build pending; no current download link yet.                                                                                                              |
+| **Android APK**         | [Download v1.3.1 · 86 MB ↗](https://expo.dev/artifacts/eas/klHtGMpJf6I4w-RWix36E1kjk6f6Wsv_NxvB1C11QdE.apk)                                                      |
 | **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
 | **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
 | **Pool contract**       | [`CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA`](https://stellar.expert/explorer/testnet/contract/CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA)        |

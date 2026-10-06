@@ -37,7 +37,8 @@ export const REPO_URL = 'https://github.com/soumen0818/Prova';
  * else. An empty string is deliberate: a download button that 404s is worse than one that is
  * honestly absent.
  */
-export const APK_URL: string = '';
+export const APK_URL: string =
+  'https://expo.dev/artifacts/eas/klHtGMpJf6I4w-RWix36E1kjk6f6Wsv_NxvB1C11QdE.apk';
 
 /**
  * Shown next to the download so people know what they are installing.
@@ -46,4 +47,4 @@ export const APK_URL: string = '';
  * arm64 because that is what the build ships: the ZK prover has no 32-bit binary, so an older device
  * would install and then fail at the moment it tried to send. Saying so beats a silent failure.
  */
-export const APK_VERSION = '1.3.1 · Android (arm64) · testnet';
+export const APK_VERSION = '1.3.1 · Android (arm64) · Stellar testnet · 86 MB';

@@ -37,7 +37,8 @@ export function GetTheApp() {
             <>
               <div className="cta-pending">
                 <span className="pulse-dot" />
-                The download is not up yet — we are finishing the first public build.
+                An updated testnet APK is building. The previous download has been paused because
+                its identity-screen wording no longer matches the demo.
               </div>
               <a
                 className="btn btn-ghost"
@@ -73,9 +74,8 @@ export function GetTheApp() {
                   <b>Sign in</b> with your email. We send you a 6-digit code, then you pick a PIN.
                 </li>
                 <li>
-                  <b>Verify your identity</b> — your name, your phone, a photo of your ID and a
-                  selfie. Your documents never leave your phone. Approval takes a few minutes while
-                  someone reviews it.
+                  <b>Request a test credential</b> — the demo flow does not ask for ID photos or
+                  perform licensed identity verification. An operator may approve testnet access.
                 </li>
                 <li>
                   <b>Add money.</b> Test funds are free and instant. Tap <i>Make it private</i> to

@@ -57,8 +57,8 @@ export default function PayPage() {
                     <b>Give them a name</b> so you recognise them later. It stays on your phone.
                   </li>
                   <li>
-                    <b>Send.</b> You will need to verify your identity first, which takes a few
-                    minutes.
+                    <b>Send.</b> You will need a test credential first. Demo approval timing depends
+                    on the operator.
                   </li>
                 </ol>
               </div>

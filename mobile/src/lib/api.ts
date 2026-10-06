@@ -487,6 +487,8 @@ export type VerificationStatus =
 /** Status view of a verification. Carries no personal data — only status, tier and expiry. */
 export interface VerificationRecord {
   verificationId?: string;
+  /** Demo approval is not licensed identity verification. */
+  mode?: 'demo';
   status: VerificationStatus;
   tier: number;
   expiry?: number;
@@ -496,19 +498,15 @@ export interface VerificationRecord {
   updatedAt?: string;
 }
 
-/** Artefacts captured on-device. The images themselves never leave the phone. */
+/** Legacy capture names; the test-credential flow does not request documents. */
 export type CapturedArtifact = 'document_front' | 'document_back' | 'selfie' | 'proof_of_address';
 
 /**
  * Start a KYC verification.
  *
- * Sends the opaque `userId`, the requested tier, and the account's email — **never** documents,
- * names or numbers. In a real deployment the captured images go straight from the device to the
- * verification provider, so Prova's backend has no document to store. See Docs/kyc-verification.md.
- *
- * The email is here so a reviewer sees who they are approving instead of a 64-character hash. It is
- * a label, not identity: the backend has no session to check it against, so nothing is granted on
- * the strength of it and no decision reads it.
+ * The demo sends an opaque `userId` and tier, not identity documents. The server
+ * obtains the account email from the authenticated session for the operator queue;
+ * the legacy email body field is ignored. See Docs/kyc-verification.md.
  */
 export function startVerification(
   userId: string,
@@ -547,7 +545,7 @@ export function fetchCredential(userId: string): Promise<KycCredential> {
   );
 }
 
-/** Renew the credential before expiry (re-screens, then re-issues with a fresh window). */
+/** Legacy endpoint: currently rejects renewal until a new reviewed request is completed. */
 export function renewCredential(userId: string): Promise<KycCredential> {
   return json<KycCredential>('/kyc/credential/renew', {
     method: 'POST',

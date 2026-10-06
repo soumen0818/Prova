@@ -252,10 +252,9 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 		if pg == nil {
 			logger.Warn("postgres unavailable — /kyc/verifications disabled (credentials cannot be gated)")
 		} else {
-			provider := kyc.NewMockProvider(cfg.KYCMockDelay)
-			if cfg.KYCManualReview {
-				// Every submission lands in the human queue. See config.KYCManualReview.
-				provider.ForceDecision = kyc.DecisionReview
+			provider := newDemoProvider(cfg.KYCMockDelay)
+			if !cfg.KYCManualReview {
+				logger.Warn("KYC_MANUAL_REVIEW=false ignored: mock credentials always require operator approval")
 			}
 			svc := kyc.NewService(pg, provider, issuer, logger)
 			// The mock reports its simulated verdict straight back into the state machine, standing
@@ -273,6 +272,14 @@ func buildDeps(ctx context.Context, logger *slog.Logger, cfg config.Config) (ser
 	}
 
 	return deps, idx, poolIdx, folder
+}
+
+// newDemoProvider is intentionally fail-closed: the mock does not inspect an ID,
+// so an unchecked request must never receive an automatic approval.
+func newDemoProvider(delay time.Duration) *kyc.MockProvider {
+	provider := kyc.NewMockProvider(delay)
+	provider.ForceDecision = kyc.DecisionReview
+	return provider
 }
 
 func connectRedis(logger *slog.Logger, redisURL string) *redis.Client {

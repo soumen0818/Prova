@@ -122,14 +122,14 @@ export function HomeScreen({ onNavigateTab }: { onNavigateTab: (tab: 'activity')
         </View>
       </Card>
 
-      {/* KYC gate */}
+      {/* Test-credential gate */}
       {!verified ? (
         <Pressable onPress={() => router.push('/kyc')}>
           <Card style={styles.kycCard}>
             <ShieldCheck color={Palette.accent} size={22} strokeWidth={2} />
             <View style={styles.kycText}>
-              <Text style={styles.kycTitle}>Verify your identity</Text>
-              <Text style={styles.kycBody}>One quick check unlocks private transfers.</Text>
+              <Text style={styles.kycTitle}>Get a test credential</Text>
+              <Text style={styles.kycBody}>Demo approval unlocks testnet transfers.</Text>
             </View>
             <ChevronRight color={Palette.textMuted} size={20} />
           </Card>

@@ -11,7 +11,7 @@ import { getHealth, getHistory } from './api';
 import { logger } from './logger';
 import { getBalanceMinor, getDenomination } from './balance';
 import { getBackupMeta } from './cloud-backup';
-import { getStoredCredential, isExpired } from './kyc';
+import { getUsableCredential } from './kyc';
 import { listRecipients } from './recipients';
 import { getSession } from './session';
 
@@ -115,8 +115,9 @@ export function useKycVerified() {
   return useQuery({
     queryKey: ['kyc-verified'],
     queryFn: async () => {
-      const cred = await getStoredCredential();
-      return cred !== null && !isExpired(cred);
+      const { poolUserId } = await import('./pool');
+      const userId = await poolUserId();
+      return (await getUsableCredential(userId)) !== null;
     },
     staleTime: 0,
   });

@@ -78,18 +78,16 @@ export default function AboutPage() {
             <div className="reveal">
               <h2>What Prova does about it</h2>
               <p>
-                Your phone builds a zero-knowledge proof that you are verified, within your limit,
-                and that your verification has not expired. The network checks the proof and settles
-                the transfer. It never learns the amount, the recipient, or who you are — because
-                the proof carries none of that, and there is deliberately no endpoint on our side
-                that could receive it.
+                Today the phone builds a zero-knowledge proof for a Stellar testnet transfer. The
+                Soroban pool checks its spend and credential rules without publishing the amount or
+                recipient. A separate Midnight contract proves private credential eligibility, but
+                its decision is not yet enforced by the app's Stellar settlement.
               </p>
               <p>
                 Concretely: your keys are generated in your phone&rsquo;s secure hardware and never
-                leave it. Your identity documents are read on the device and never uploaded. Amounts
-                are never transmitted to us. We are not promising to be careful with your data — we
-                have built a system that mostly cannot have it in the first place, which is a much
-                stronger guarantee than a policy.
+                leave it. The current demo does not request identity photos. Amounts are not sent to
+                our backend in the transfer request. A licensed identity provider and the combined
+                Midnight-to-Stellar flow remain future work.
               </p>
             </div>
 
@@ -97,9 +95,9 @@ export default function AboutPage() {
               <h2>Where it is today</h2>
               <p>
                 Honestly: early. Prova runs on the Stellar test network with test assets that have
-                no monetary value. Identity verification is reviewed by a person rather than a
-                licensed vendor, because until that vendor is integrated, auto-approving would be
-                telling people they are verified on the strength of no check at all.
+                no monetary value. Its test credential can be approved by an operator, but no ID
+                document is checked and this must not be mistaken for regulated identity
+                verification. The Midnight compliance contract is tested separately on Preprod.
               </p>
               <p>{CORRIDOR_STATUS_NOTE}</p>
               <p>

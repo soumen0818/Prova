@@ -26,8 +26,8 @@ const SLIDES: Slide[] = [
   },
   {
     Icon: ShieldCheck,
-    title: 'Provably legal, privately',
-    body: 'Verify your identity once. Each transfer proves it’s compliant — revealing nothing.',
+    title: 'Two layers, one goal',
+    body: 'Stellar moves private test transfers today. Midnight credential proofs are being connected next.',
   },
 ];
 

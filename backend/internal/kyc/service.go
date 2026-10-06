@@ -6,10 +6,9 @@ package kyc
 //   - drive submissions through pending → in_review → approved/rejected/expired
 //   - write every transition to the append-only audit log
 //   - GATE credential issuance on a stored `approved` record — never on the caller's request
-//   - keep credentials short-lived (90d) and renewable, since an on-phone credential cannot be
-//     revoked remotely
+//   - keep credentials short-lived (90d); renewal requires a new reviewed request
 //
-// It never sees personal data: only the opaque userId.
+// It stores the signed-in email for the operator queue, but sees no identity documents.
 
 import (
 	"context"
@@ -36,6 +35,9 @@ func newUUID() string {
 var (
 	// ErrNotApproved means no approved verification exists — credential issuance is refused.
 	ErrNotApproved = errors.New("verification not approved")
+	// ErrReviewRequired prevents the demo issuer from extending a credential without
+	// another operator decision. No provider re-screening exists in this build.
+	ErrReviewRequired = errors.New("new review required before credential renewal")
 	// ErrNotRetryable means the previous rejection is terminal (e.g. sanctions) — no resubmission.
 	ErrNotRetryable = errors.New("verification cannot be retried")
 	// ErrNotFound means the user has no verification record.
@@ -194,17 +196,9 @@ func (s *Service) IssueCredential(ctx context.Context, userID string) (schema.Ky
 		return schema.KycCredential{}, ErrNotApproved
 	}
 
-	// Renew the window on issue so the app's silent pre-expiry renewal re-arms the credential.
-	expiry := v.Expiry
-	if expiry <= s.now().Unix() {
-		expiry = s.credentialExpiry()
-		if _, uerr := s.store.SetVerificationOutcome(
-			ctx, v.ID, schema.VerificationApproved, v.Tier, expiry, ""); uerr != nil {
-			return schema.KycCredential{}, uerr
-		}
-	}
-
-	cred, err := s.issuer.Issue(ctx, userID, v.Tier, expiry)
+	// Re-reading an approved record may reissue the same bounded credential window,
+	// but must never extend it. A new operator decision is required after expiry.
+	cred, err := s.issuer.Issue(ctx, userID, v.Tier, v.Expiry)
 	if err != nil {
 		return schema.KycCredential{}, err
 	}
@@ -215,30 +209,10 @@ func (s *Service) IssueCredential(ctx context.Context, userID string) (schema.Ky
 	return cred, nil
 }
 
-// Renew re-screens and re-issues before expiry. Re-screening at renewal is what bounds sanctions
-// exposure to the credential window (an on-phone credential cannot be revoked remotely).
-func (s *Service) Renew(ctx context.Context, userID string) (schema.KycCredential, error) {
-	v, err := s.Get(ctx, userID)
-	if err != nil {
-		return schema.KycCredential{}, err
-	}
-	if v.Status != schema.VerificationApproved {
-		return schema.KycCredential{}, ErrNotApproved
-	}
-	expiry := s.credentialExpiry()
-	if _, err := s.store.SetVerificationOutcome(
-		ctx, v.ID, schema.VerificationApproved, v.Tier, expiry, ""); err != nil {
-		return schema.KycCredential{}, err
-	}
-	cred, err := s.issuer.Issue(ctx, userID, v.Tier, expiry)
-	if err != nil {
-		return schema.KycCredential{}, err
-	}
-	s.audit(ctx, store.AuditEntry{
-		VerificationID: v.ID, UserID: userID, Event: store.AuditIssued,
-		FromStatus: v.Status, ToStatus: v.Status, Tier: v.Tier, Actor: "system:renew",
-	})
-	return cred, nil
+// Renew is closed until a real review/re-screening flow exists. The old implementation
+// extended an approved record and signed a new credential without checking identity again.
+func (s *Service) Renew(_ context.Context, _ string) (schema.KycCredential, error) {
+	return schema.KycCredential{}, ErrReviewRequired
 }
 
 // outcome maps a provider decision onto our state machine.

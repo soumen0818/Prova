@@ -1,11 +1,17 @@
 package schema
 
 // KYC verification contract (mobile <-> Go backend). Mirrors kyc.ts.
-// See Docs/kyc-verification.md — this API carries NO personally identifying information by design:
-// only the opaque userId (= Poseidon(secret, domain)), a tier, and a status.
+// The demo request carries an opaque wallet id and a tier. The backend also reads the
+// signed-in email from the session for the operator queue. No identity documents are sent.
 
 // VerificationStatus is the lifecycle state of one KYC verification.
 type VerificationStatus string
+
+// VerificationMode names the process behind an approval. The only implemented
+// process is a testnet demo; it must not be presented as licensed KYC.
+type VerificationMode string
+
+const VerificationModeDemo VerificationMode = "demo"
 
 const (
 	// VerificationNotStarted means no verification has been attempted.
@@ -18,7 +24,7 @@ const (
 	VerificationApproved VerificationStatus = "approved"
 	// VerificationRejected means the check failed; see ReasonCode for whether a retry is allowed.
 	VerificationRejected VerificationStatus = "rejected"
-	// VerificationExpired means the credential window lapsed; renewal (re-screening) is required.
+	// VerificationExpired means the credential window lapsed; a new demo approval is required.
 	VerificationExpired VerificationStatus = "expired"
 )
 
@@ -36,11 +42,11 @@ const (
 //
 // This is a SECURITY parameter, not a convenience one: a credential lives on the user's phone and
 // cannot be revoked remotely (the circuit only checks expiry). A short window bounds the exposure
-// if a user is sanctioned after approval — re-screening happens at every renewal.
+// if a user is sanctioned after approval. The demo does not silently renew or re-screen.
 // See Docs/kyc-verification.md §7.
 const CredentialTTLDays = 90
 
-// CredentialRenewWindowDays is how early the app should silently renew before expiry.
+// CredentialRenewWindowDays is reserved for a future provider-backed renewal flow.
 const CredentialRenewWindowDays = 14
 
 // TierLimit returns the per-transfer limit for a tier, in whole currency units.
@@ -87,9 +93,8 @@ func RetryableReason(code string) bool {
 
 // StartVerificationRequest is the body of POST /kyc/verifications.
 //
-// Deliberately carries NO PII: documents and personal data go straight from the device to the
-// verification provider, never through Prova. `Captured` records only which artefacts the user
-// supplied, so the UI and audit trail can show what was submitted.
+// The demo does not collect or submit identity documents. `Captured` is a legacy
+// compatibility field and is not evidence of any identity check.
 type StartVerificationRequest struct {
 	// UserID = Poseidon(secret, domain) — opaque; identifies a wallet without revealing it.
 	UserID Hex `json:"userId"`
@@ -97,17 +102,14 @@ type StartVerificationRequest struct {
 	Tier int `json:"tier"`
 	// Captured lists the artefact kinds supplied on-device, e.g. ["document_front","selfie"].
 	Captured []string `json:"captured,omitempty"`
-	// Email the submission belongs to, so a reviewer sees a person rather than a hash.
-	//
-	// UNTRUSTED and display-only. These routes have no session to check it against, so it is a
-	// label on the queue row: no decision reads it and nothing is granted because of it. Optional —
-	// omitting it leaves the row identified by UserID alone, exactly as before.
+	// Legacy field ignored by the server. It reads the signed-in email from the session.
 	Email string `json:"email,omitempty"`
 }
 
 // VerificationRecord is the status view returned to the app. No PII.
 type VerificationRecord struct {
 	VerificationID string             `json:"verificationId"`
+	Mode           VerificationMode   `json:"mode"`
 	Status         VerificationStatus `json:"status"`
 	Tier           int                `json:"tier"`
 	// Expiry is unix seconds of the approved credential window (0 unless approved).
@@ -126,11 +128,10 @@ type VerificationRecord struct {
 // already knows its own; a reviewer needs it to act, and it is an opaque hash rather than a name.
 type QueuedVerification struct {
 	UserID string `json:"userId"`
-	// Email of the account that submitted, when the app supplied one.
+	// Email of the signed-in account that submitted the demo request.
 	//
-	// Present only on this ops-facing type, never on the app-facing VerificationRecord. It is a
-	// label for the reviewer: no decision reads it, and it is not proof of anything, because these
-	// routes have no session to have checked it against.
+	// Present only on this ops-facing type, never on the app-facing VerificationRecord.
+	// Inbox control is not proof of legal identity.
 	Email string `json:"email,omitempty"`
 	VerificationRecord
 }

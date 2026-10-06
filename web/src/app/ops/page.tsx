@@ -53,14 +53,14 @@ export default async function OpsOverview() {
           <div className="ops-stat-top">
             <span className="ops-stat-label">
               <ShieldIcon size={16} />
-              Verifications to review
+              Test credentials to review
             </span>
           </div>
           <div className="ops-stat-value">{waiting}</div>
           <p className="ops-stat-note">
             {waiting === 0
               ? 'The queue is clear.'
-              : `Longest wait: ${oldestReview}. We promise a decision within 24 hours.`}
+              : `Longest wait: ${oldestReview}. No review deadline is guaranteed for this demo.`}
           </p>
           <span className="ops-stat-cta">
             {waiting === 0 ? 'View all verifications' : 'Review now'}

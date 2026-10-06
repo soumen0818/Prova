@@ -3,9 +3,9 @@
 </p>
 
 <h1 align="center">Prova</h1>
-<h3 align="center">Private, compliant cross-border remittance.</h3>
-<p align="center"><b>Midnight</b> proves it follows the rules · <b>Stellar</b> moves the money</p>
-<p align="center"><em>A transfer is accepted because it can be <b>proven</b> legal — not because someone saw it.</em></p>
+<h3 align="center">A testnet prototype for private remittance.</h3>
+<p align="center"><b>Midnight</b> privacy + <b>Stellar</b> settlement — combined flow in progress</p>
+<p align="center"><em>The current app settles on Stellar testnet; Midnight authorization is not yet enforced in that send path.</em></p>
 
 <p align="center">
   <a href="https://github.com/soumen0818/Prova/actions/workflows/midnight-ci.yml">
@@ -33,9 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="https://expo.dev/artifacts/eas/HTV_A9bQ1kf7ypUSbSwPgk8lSQPE7htrPuWoq8Gv_Do.apk">
-    <img alt="Download the Prova Android APK — version 1.3.0, 86 MB" src="https://img.shields.io/badge/Download%20APK-v1.3.0%20%C2%B7%2086%20MB-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
-  </a>
+  <img alt="Updated Android APK build pending" src="https://img.shields.io/badge/Android%20APK-updated%20build%20pending-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
   <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
     <img alt="Watch the Prova demo video" src="https://img.shields.io/badge/Watch%20Demo-Video-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
   </a>
@@ -44,6 +42,12 @@
 <p align="center">
   <sub>Android 8+ · <b>arm64</b> · Stellar <b>testnet</b> — balances are test assets with no monetary value</sub>
 </p>
+
+> **October 2026 release notice:** The hosted APK is an older Stellar testnet build. It predates
+> the current source changes that remove ID-photo capture from the demo credential path and explain
+> the Midnight integration status. Do **not** submit a real identity document in that APK: its
+> captured photos are not sent to a licensed verifier or a human reviewer. A replacement APK and a
+> combined Midnight–Stellar demo have not been released yet.
 
 ---
 
@@ -54,9 +58,7 @@
     <td align="center" width="150">
       <img src="mobile/assets/images/icon.png" alt="Prova app icon" width="96">
       <br><br>
-      <a href="https://expo.dev/artifacts/eas/HTV_A9bQ1kf7ypUSbSwPgk8lSQPE7htrPuWoq8Gv_Do.apk">
-        <img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E6F94E?style=for-the-badge&logo=android&logoColor=E6F94E&labelColor=0E0E11">
-      </a>
+      <span>Updated APK pending; old build removed from the featured download.</span>
       <br><br>
       <a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">
         <img alt="Watch the demo video" src="https://img.shields.io/badge/Watch-Demo-0E0E11?style=for-the-badge&logo=youtube&logoColor=E6F94E&labelColor=E6F94E&color=0E0E11">
@@ -64,7 +66,7 @@
     </td>
     <td>
       <table>
-        <tr><td><b>Version</b></td><td>1.3.0 · 86 MB</td></tr>
+        <tr><td><b>Version</b></td><td>1.3.1 · build pending</td></tr>
         <tr><td><b>Requires</b></td><td>Android 8+, <b>arm64</b> device</td></tr>
         <tr><td><b>Network</b></td><td>Stellar testnet</td></tr>
         <tr><td><b>Demo video</b></td><td><a href="https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing">Watch the walkthrough ↗</a></td></tr>
@@ -94,9 +96,9 @@ the balances are test assets with no monetary value.
 
 1. **Install** the app and allow installing from outside the Play Store.
 2. **Sign in** with your email. A 6-digit code arrives by email, then you choose a PIN.
-3. **Verify your identity** — your name, your phone, a photo of your ID and a selfie. It goes to a
-   reviewer, who approves it at [/ops](https://provapay.duckdns.org/ops). No vendor is connected
-   yet, so this step is manual.
+3. **Request a test credential.** The current source does this without asking for ID photos. An
+   operator may approve a demo credential, but no licensed identity verification takes place. The
+   hosted APK has not yet been rebuilt with this safer flow; do not give it real ID photos.
 4. **Add money** — free testnet funds, then "Make it private" to move them into the shielded pool.
 5. **Add the person you are sending to** — scan their QR from Profile → Account details → Receive
    privately, or paste the address they send you.
@@ -139,13 +141,14 @@ A step-by-step version for people who are not developers lives on
 
 ## Submission
 
-Everything a reviewer needs, in one place. Every link below was checked live at the time of writing.
+Existing public links and remaining submission gaps are collected here. Recheck external
+availability and update the demo artifacts before submitting the combined flow.
 
 | Item                    | Link                                                                                                                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Live demo (website)** | [provapay.duckdns.org](https://provapay.duckdns.org)                                                                                                                           |
 | **Demo video**          | [Watch the full walkthrough ↗](https://drive.google.com/file/d/1oq--g0CN8wtDmr8hj-Hdj38XWqBHMGI9/view?usp=sharing)                                                             |
-| **Android APK**         | [Download v1.3.0 · 86 MB ↗](https://expo.dev/artifacts/eas/HTV_A9bQ1kf7ypUSbSwPgk8lSQPE7htrPuWoq8Gv_Do.apk)                                                                    |
+| **Android APK**         | Updated v1.3.1 build pending; no current download link yet.                                                                                                              |
 | **Operations console**  | [provapay.duckdns.org/ops](https://provapay.duckdns.org/ops)                                                                                                                   |
 | **API health**          | [`/healthz`](https://provapayment.duckdns.org/healthz) · [`/readyz`](https://provapayment.duckdns.org/readyz) · [`/pool/status`](https://provapayment.duckdns.org/pool/status) |
 | **Pool contract**       | [`CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA`](https://stellar.expert/explorer/testnet/contract/CD645P75NWNDIYZZ3363ABNK6WL435KLYOQYKUPLHLMEXIF7QMI5WGUA)        |
@@ -269,10 +272,10 @@ The operations console at [`/ops`](https://provapay.duckdns.org/ops) is where ve
 reviewed and support conversations are answered. It shows queue state, per-submission status and
 approval timestamps.
 
-Note what is _not_ on that screen: no name, no document, no amount. The app checks identity documents
-on the device and never uploads them, so a reviewer decides on the record rather than on the
-paperwork — and an operator with full console access still cannot see what anyone is worth or who
-they paid. The API also exposes
+Note what is _not_ on that screen: no identity document or transfer amount. The current operator
+can approve a **test credential** but cannot inspect an ID or verify a person from the submitted
+record. This is not licensed identity review; an operator with full console access still cannot see
+what anyone sent or who they paid. The API also exposes
 [`/healthz`](https://provapayment.duckdns.org/healthz),
 [`/readyz`](https://provapayment.duckdns.org/readyz) and
 [`/pool/status`](https://provapayment.duckdns.org/pool/status), the last of which reports tree size,
@@ -318,9 +321,9 @@ relayer cannot steal or redirect anything: the amount, both output notes, the pa
 the encrypted payloads are all bound inside the proof. Its only powers are to refuse, and to see that
 a proof passed through it.
 
-> **On the 10-user requirement.** Onboarding is real and independently visible — the operations
-> console screenshot above shows **six approved Tier-2 verifications** spanning 17–29 Aug 2026, each
-> one a person who installed the app, submitted identity documents and was reviewed. What this table
+> **On the 10-user requirement.** The operations console screenshot above shows **six approved
+> Tier-2 demo records** spanning 17–29 Aug 2026. These do not prove that six distinct people were
+> identity-verified; the backend did not receive their documents. What this table
 > does not yet do is enumerate ten _distinct_ wallet interactions, because a private transfer is
 > deliberately unlinkable: the chain shows a nullifier and two commitments, never a sender. Additional
 > transaction hashes are being added here as testers complete transfers.
@@ -424,8 +427,9 @@ else. That's the whole trick, and it's why privacy and compliance stop being ene
 
 **Compliance, without the surveillance**
 
-- KYC once: an anchor-signed credential, verified _inside_ the ZK proof, proves "verified, unexpired,
-  sufficient tier" without ever putting a passport number or a name on-chain.
+- A signed credential, checked _inside_ the Stellar ZK proof, proves its signature, expiry, and tier
+  without putting a passport number or name on-chain. In the current testnet build the credential is
+  a demo approval, **not** evidence of licensed identity verification.
 - Every accepted transfer is an on-chain event; every KYC decision is an append-only audit record —
   auditable without being surveillable.
 
@@ -504,7 +508,7 @@ security model behind every entrypoint: [`contracts/README.md`](contracts/README
 | **On-device crypto (JS)**     | `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@scure/base`  | Audited pure-JS primitives for everything that isn't Groth16/Poseidon/Jubjub                                                                        |
 | **On-device crypto (native)** | Rust, `ark-groth16`, `ark-bls12-381`, `ark-ed-on-bls12-381`        | Groth16 proving is infeasible in JS at usable speed; one Rust implementation shared by mobile, backend, and contracts so nothing can silently drift |
 | **Backend**                   | Go 1.25, `stellar/go` SDK, `net/smtp`                              | First-class Stellar SDK; goroutines + strong typing fit a money system's concurrent, must-not-lose-it work                                          |
-| **Database**                  | PostgreSQL                                                         | ACID guarantees for financial state — holds no amounts or PII, only commitments/status/timestamps                                                   |
+| **Database**                  | PostgreSQL                                                         | ACID guarantees for financial state; the demo operator queue also stores the signed-in account email. No identity documents are stored.            |
 | **Cache / rate limiting**     | Redis                                                              | Shared OTP + rate-limit state across API replicas (falls back to per-instance counters if unset)                                                    |
 | **Smart contracts**           | Rust + Soroban SDK 22                                              | The only language for Soroban; native BLS12-381 pairing host functions                                                                              |
 | **ZK circuits**               | arkworks (Rust): `ark-groth16`, `ark-crypto-primitives` (Poseidon) | An active, audited Rust Groth16 stack over the one curve Soroban actually supports                                                                  |
@@ -683,9 +687,9 @@ sequenceDiagram
 
 1. **Sign up** — the app generates a master seed on-device (secure enclave), creates a backend
    account keyed by email, and signs in with an emailed one-time code.
-2. **Verify once (KYC)** — identity documents go from the phone to the verification provider,
-   never through Prova's servers. On approval, the anchor signs a credential the phone stores and
-   never uploads anywhere.
+2. **Request a test credential** — the current source sends an opaque wallet identifier to the
+   backend for an operator's demo approval; it does not send or inspect identity documents. On
+   approval, the test credential is signed and stored on the phone.
 3. **Add money** — deposit into the shielded pool via a real anchor rail (SEP-24) or, in dev, a
    simulated instant credit.
 4. **Send** — the phone selects a note, fetches its Merkle membership path, and generates a Groth16
@@ -870,8 +874,8 @@ breached.
 - The master seed and every key derived from it never leave `expo-secure-store` (iOS Keychain /
   Android Keystore) in the clear.
 - Postgres holds commitments, nullifiers, status, and timestamps — never an amount, never a name.
-- The KYC pipeline carries no PII across the wire it doesn't have to: documents go device → provider
-  directly; the backend only ever sees an opaque `userId = Poseidon(secret, domain)`.
+- The current test-credential request sends no identity documents. The backend sees the signed-in
+  email address and an opaque wallet identifier; no licensed identity provider is connected.
 - The pool admin key — the one secret that can replace contract code — is never written to a
   `.env`, a server, or git; only its public address is. See the full danger-ranked key table in
   `Docs/deployment-and-keys.md` §1.

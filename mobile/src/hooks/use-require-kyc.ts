@@ -35,7 +35,7 @@ export function useRequireKyc() {
         action();
         return;
       }
-      toast.error('Verify your identity to send or add money');
+      toast.error('Get a test credential to send or add test assets');
       router.push('/kyc');
     },
     [isLoading, verified, router, toast],

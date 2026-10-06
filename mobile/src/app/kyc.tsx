@@ -4,8 +4,6 @@ import { Clock, ShieldCheck, ShieldX, UserSearch } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { DocumentCapture } from '@/components/document-capture';
-import { LivenessCapture } from '@/components/liveness-capture';
 import { Loader } from '@/components/loader';
 import { Button, Card, Screen } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -13,48 +11,20 @@ import {
   ApiError,
   getVerification,
   startVerification,
-  type CapturedArtifact,
   type KycCredential,
   type VerificationRecord,
 } from '@/lib/api';
 import { syncBackup } from '@/lib/cloud-backup';
-import { collectCredential, daysRemaining, getStoredCredential } from '@/lib/kyc';
+import { collectCredential, daysRemaining, getUsableCredential } from '@/lib/kyc';
 import { poolUserId } from '@/lib/pool';
-import { KycIdentityStep, type CapturedIdentity } from '@/features/kyc-identity';
-import { getSession, patchSession } from '@/lib/session';
 import { QK } from '@/lib/queries';
 import { captureError } from '@/lib/reporting';
 import { Palette, Spacing, Typography } from '@/constants/theme';
 
-/** Capture steps for a Tier-2 (standard) verification. */
-const STEPS: { key: CapturedArtifact; title: string; hint: string; facing: 'front' | 'back' }[] = [
-  {
-    key: 'document_front',
-    title: 'Front of your ID',
-    hint: 'Passport, Emirates ID, Aadhaar, voter ID, PAN or driving licence — the side with your photo. Fill the frame, avoid glare.',
-    facing: 'back',
-  },
-  {
-    key: 'document_back',
-    title: 'Back of your ID',
-    hint: 'Skip this if your document has everything on one side (e.g. a passport photo page).',
-    facing: 'back',
-  },
-  {
-    key: 'selfie',
-    title: 'Liveness check',
-    hint: 'Follow the prompts so we can confirm a real person is here.',
-    facing: 'front',
-  },
-];
-
-/** The selfie step runs the guided liveness sequence instead of a single still capture. */
-const SELFIE_STEP = STEPS.findIndex((s) => s.key === 'selfie');
-
 /** How often to re-check status while a verification is being processed. */
 const POLL_MS = 3000;
 
-type Phase = 'loading' | 'identity' | 'intro' | 'capture' | 'status' | 'verified';
+type Phase = 'loading' | 'intro' | 'status' | 'verified';
 
 /**
  * What to tell someone whose verification would not submit.
@@ -69,8 +39,7 @@ type Phase = 'loading' | 'identity' | 'intro' | 'capture' | 'status' | 'verified
  */
 function submitErrorMessage(e: unknown): string {
   if (!(e instanceof ApiError)) {
-    // Not an API failure at all — a capture or storage problem on the device.
-    return 'Something went wrong preparing your verification. Please try again.';
+    return 'Something went wrong preparing your request. Please try again.';
   }
   // Transport failure or abort. The one case where checking the connection is the right advice.
   if (e.status === 0) {
@@ -79,8 +48,8 @@ function submitErrorMessage(e: unknown): string {
   switch (e.status) {
     case 401:
       return (
-        'Your session expired, so we could not submit this. Sign in again and your documents ' +
-        'will be ready to resubmit.'
+        'Your session expired, so we could not submit this. Sign in again and request the test ' +
+        'credential once more.'
       );
     case 403:
       // Either the wallet belongs to another account, or the verification is terminally rejected.
@@ -102,14 +71,8 @@ function submitErrorMessage(e: unknown): string {
 /**
  * Identity verification (Docs/kyc-verification.md).
  *
- * Capture ID + selfie → submit → poll the async state machine → on approval collect the
- * anchor-signed credential into the secure enclave.
- *
- * Two things worth knowing when reading this screen:
- *  - **No personal data is sent to Prova.** Photos stay on the device; the submit call carries only
- *    the opaque `userId` and which artefacts were captured.
- *  - **Approval is not instant and can fail.** `pending` and `in_review` are normal states, and a
- *    rejection may be terminal (sanctions/duplicate), in which case retrying is blocked.
+ * Request an operator-reviewed demo credential without collecting identity documents.
+ * The backend reads the account email from the authenticated session for the queue.
  */
 
 export default function KycScreen() {
@@ -118,8 +81,6 @@ export default function KycScreen() {
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [userId, setUserId] = useState('');
-  const [step, setStep] = useState(0);
-  const [captured, setCaptured] = useState<CapturedArtifact[]>([]);
   const [record, setRecord] = useState<VerificationRecord | null>(null);
   const [credential, setCredential] = useState<KycCredential | null>(null);
   const [busy, setBusy] = useState(false);
@@ -149,7 +110,7 @@ export default function KycScreen() {
             setCredential(cred);
             setPhase('verified');
             await queryClient.invalidateQueries({ queryKey: QK.kyc });
-            toast.success('Verified ✅');
+            toast.success('Test credential ready');
             void syncBackup(); // carry the credential into the cloud backup (silent)
           } else {
             setError('Approved — finishing up. This will complete on its own in a moment.');
@@ -176,7 +137,7 @@ export default function KycScreen() {
         if (!active) return;
         setUserId(uid);
 
-        const stored = await getStoredCredential();
+        const stored = await getUsableCredential(uid);
         if (stored) {
           if (!active) return;
           setCredential(stored);
@@ -185,7 +146,7 @@ export default function KycScreen() {
         }
         const v = await getVerification(uid).catch(() => null);
         if (!active) return;
-        if (v && v.status !== 'not_started') {
+        if (v && v.status !== 'not_started' && v.status !== 'expired') {
           setRecord(v);
           setPhase('status');
         } else {
@@ -218,89 +179,49 @@ export default function KycScreen() {
     return () => stopPolling();
   }, [phase, record?.status, credential, userId, refresh, stopPolling]);
 
-  const submit = useCallback(
-    async (artifacts: CapturedArtifact[]) => {
-      setBusy(true);
-      setError('');
-      try {
-        // The signed-in address travels with the submission so a reviewer sees a person instead of
-        // a hash. Nothing else about the person is sent — no name, no number, no document.
-        const session = await getSession();
-        const v = await startVerification(userId, 2, artifacts, session?.email);
-        setRecord(v);
-        setPhase('status');
-      } catch (e) {
-        captureError(e, { step: 'kyc-submit' });
-        /*
-         * Say which failure it was.
-         *
-         * This used to report *every* failure as "check your connection and try again", including
-         * ones the network had nothing to do with. A tester whose session had gone stale was told to
-         * check a connection that was working perfectly, went and checked it, and reported the app
-         * as broken — reasonably, because nothing on screen pointed at the actual problem.
-         *
-         * It lands at the worst possible moment: the end of verification, after photographing an ID
-         * and taking a selfie. Somebody who is told the wrong cause there does not retry, they give
-         * up. `ApiError.status` already carries what happened, so there is no excuse for guessing.
-         *
-         * Note `status === 0` is the ONLY genuine connectivity failure — `api` gives transport
-         * errors and aborts that code. Branch on status, never on the message.
-         */
-        setError(submitErrorMessage(e));
-      } finally {
-        setBusy(false);
+  const submit = useCallback(async () => {
+    setBusy(true);
+    setError('');
+    try {
+      if (!userId) {
+        setError('Wallet is not ready. Return to the home screen and try again.');
+        return;
       }
-    },
-    [userId],
-  );
-
-  const onCaptured = useCallback(() => {
-    const key = STEPS[step].key;
-    setCaptured((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    if (step < STEPS.length - 1) {
-      setStep(step + 1);
-    } else {
-      void submit([...captured, key]);
+      const v = await startVerification(userId, 2);
+      setRecord(v);
+      setPhase('status');
+    } catch (e) {
+      captureError(e, { step: 'kyc-submit' });
+      /*
+       * Say which failure it was.
+       *
+       * This used to report *every* failure as "check your connection and try again", including
+       * ones the network had nothing to do with. A tester whose session had gone stale was told to
+       * check a connection that was working perfectly, went and checked it, and reported the app
+       * as broken — reasonably, because nothing on screen pointed at the actual problem.
+       *
+       * `ApiError.status` already carries what happened, so there is no excuse for guessing.
+       *
+       * Note `status === 0` is the ONLY genuine connectivity failure — `api` gives transport
+       * errors and aborts that code. Branch on status, never on the message.
+       */
+      setError(submitErrorMessage(e));
+    } finally {
+      setBusy(false);
     }
-  }, [step, captured, submit]);
+  }, [userId]);
 
   const restart = useCallback(() => {
-    setCaptured([]);
-    setStep(0);
     setError('');
-    setPhase('capture');
+    setPhase('intro');
   }, []);
 
   // ---------- Render ----------
 
-  /**
-   * Identity captured: keep the name and number on-device, then move on to documents.
-   *
-   * Stored in the session rather than sent anywhere — the backend deliberately holds no PII (see
-   * Docs/kyc-verification.md §3), and the anchor receives identity data through its own vendor. The
-   * app keeps them to prefill later steps and to show what has been provided.
-   *
-   * The number is **user-asserted**: phone OTP verification is planned but not yet wired, so nothing
-   * should treat it as proved. The account's verified channel is the email from sign-in.
-   */
-  const onIdentityCaptured = useCallback(
-    async (identity: CapturedIdentity) => {
-      try {
-        await patchSession({ name: identity.name, phone: identity.phone });
-        await queryClient.invalidateQueries({ queryKey: QK.session });
-      } catch (e) {
-        captureError(e, { step: 'kyc-identity-save' });
-        // Not fatal: verification can continue, and the details are re-collected if needed.
-      }
-      setPhase('capture');
-    },
-    [queryClient],
-  );
-
   if (phase === 'loading') {
     return (
       <Screen>
-        <Stack.Screen options={{ title: 'Verify identity' }} />
+        <Stack.Screen options={{ title: 'Test credential' }} />
         <View style={styles.center}>
           <Loader size={12} />
         </View>
@@ -312,25 +233,25 @@ export default function KycScreen() {
     const left = daysRemaining(credential);
     return (
       <Screen scroll>
-        <Stack.Screen options={{ title: 'Verify identity' }} />
+        <Stack.Screen options={{ title: 'Test credential' }} />
         <View style={styles.hero}>
           <View style={styles.badge}>
             <ShieldCheck color={Palette.accent} size={38} strokeWidth={1.7} />
           </View>
-          <Text style={styles.heroTitle}>You’re verified</Text>
+          <Text style={styles.heroTitle}>Test credential ready</Text>
           <Text style={styles.heroBody}>
-            Your credential is stored in this device’s secure enclave and proves you’re verified
-            without revealing who you are.
+            This demo credential lets you try private transfers on testnet. It is not proof that a
+            licensed provider checked your identity.
           </Text>
         </View>
         <Card style={styles.card}>
-          <Row label="Status" value="Verified" accent />
+          <Row label="Status" value="Demo approved" accent />
           <Row label="Tier" value={`Level ${credential.kycLevel}`} />
           <Row label="Valid for" value={`${left} day${left === 1 ? '' : 's'}`} />
         </Card>
         <Text style={styles.note}>
-          Credentials are short-lived and renew automatically — that’s how verification stays
-          current without ever putting your identity on-chain.
+          The credential is stored on your device. Midnight eligibility is not connected to this app
+          yet; Stellar currently checks the test credential in its own proof.
         </Text>
       </Screen>
     );
@@ -339,70 +260,27 @@ export default function KycScreen() {
   if (phase === 'intro') {
     return (
       <Screen scroll>
-        <Stack.Screen options={{ title: 'Verify identity' }} />
+        <Stack.Screen options={{ title: 'Test credential' }} />
         <View style={styles.hero}>
           <View style={styles.badge}>
             <UserSearch color={Palette.accent} size={36} strokeWidth={1.7} />
           </View>
-          <Text style={styles.heroTitle}>Verify your identity</Text>
+          <Text style={styles.heroTitle}>Request a test credential</Text>
           <Text style={styles.heroBody}>
-            A one-time check to send money legally. You’ll photograph your ID and take a selfie.
+            This testnet build uses a demo approval process. It does not verify your identity or ask
+            for ID photos.
           </Text>
         </View>
         <Card style={styles.card}>
-          <Bullet text="Your photos stay on this phone — Prova never stores your ID or your name." />
-          <Bullet text="Checks usually finish in under a minute; sometimes a person reviews them." />
-          <Bullet text="Once verified, every transfer proves compliance without revealing you." />
+          <Bullet text="An operator may approve a demo credential without reviewing identity documents." />
+          <Bullet text="Use test assets only. This is not a real KYC or regulated payment service." />
+          <Bullet text="Stellar uses the test credential today; Midnight integration is in progress." />
         </Card>
-        <Button label="Start verification" onPress={() => setPhase('identity')} />
-      </Screen>
-    );
-  }
-
-  if (phase === 'identity') {
-    return (
-      <Screen scroll>
-        <Stack.Screen options={{ title: 'Verify identity' }} />
-        <Text style={styles.progress}>Step 1 of {STEPS.length + 1}</Text>
-        <KycIdentityStep onCaptured={onIdentityCaptured} />
-      </Screen>
-    );
-  }
-
-  if (phase === 'capture') {
-    const s = STEPS[step];
-    return (
-      <Screen scroll>
-        <Stack.Screen options={{ title: 'Verify identity' }} />
-        <Text style={styles.progress}>
-          Step {step + 2} of {STEPS.length + 1}
-        </Text>
-        {step === SELFIE_STEP ? (
-          <LivenessCapture key={s.key} onCaptured={onCaptured} />
-        ) : (
-          <DocumentCapture
-            key={s.key}
-            title={s.title}
-            hint={s.hint}
-            facing={s.facing}
-            side={s.key === 'document_back' ? 'back' : 'front'}
-            onCaptured={onCaptured}
-          />
-        )}
-        {step === 1 ? (
-          <Button
-            label="Skip — I used a passport"
-            variant="glass"
-            onPress={onCaptured}
-            style={styles.skip}
-          />
-        ) : null}
-        {busy ? (
-          <View style={styles.busyRow}>
-            <Loader />
-            <Text style={styles.busyText}>Submitting…</Text>
-          </View>
-        ) : null}
+        <Button
+          label="Request test credential"
+          onPress={() => void submit()}
+          disabled={busy || !userId}
+        />
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </Screen>
     );
@@ -411,7 +289,7 @@ export default function KycScreen() {
   // phase === 'status'
   return (
     <Screen scroll>
-      <Stack.Screen options={{ title: 'Verify identity' }} />
+      <Stack.Screen options={{ title: 'Test credential' }} />
       <StatusView record={record} onRetry={restart} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </Screen>
@@ -428,9 +306,25 @@ function StatusView({
   const router = useRouter();
   const status = record?.status ?? 'pending';
 
+  if (status === 'expired') {
+    return (
+      <>
+        <View style={styles.hero}>
+          <View style={styles.badge}>
+            <Clock color={Palette.accent} size={36} strokeWidth={1.7} />
+          </View>
+          <Text style={styles.heroTitle}>Test credential expired</Text>
+          <Text style={styles.heroBody}>
+            The old credential cannot be used for a new transfer. Request another demo approval.
+          </Text>
+        </View>
+        <Button label="Request a new test credential" onPress={onRetry} />
+      </>
+    );
+  }
+
   if (status === 'rejected') {
-    // A terminal rejection (sanctions, duplicate identity, tampered document) must not be retried —
-    // the backend refuses a resubmission, so we don't offer one.
+    // A terminal operator decision cannot be retried through the app.
     const canRetry = record?.retryable === true;
     return (
       <>
@@ -438,7 +332,7 @@ function StatusView({
           <View style={styles.badge}>
             <ShieldX color={Palette.statusDown} size={36} strokeWidth={1.7} />
           </View>
-          <Text style={styles.heroTitle}>We couldn’t verify you</Text>
+          <Text style={styles.heroTitle}>Request not approved</Text>
           <Text style={styles.heroBody}>{reasonText(record?.reasonCode)}</Text>
         </View>
         {canRetry ? (
@@ -463,18 +357,17 @@ function StatusView({
           <Clock color={Palette.accent} size={36} strokeWidth={1.7} />
         </View>
         <Text style={styles.heroTitle}>
-          {inReview ? 'Our team is reviewing your details' : 'Details received'}
+          {inReview ? 'Demo approval pending' : 'Request received'}
         </Text>
         <Text style={styles.heroBody}>
-          {inReview
-            ? 'A member of our team is checking your documents. This is usually done within 24 hours, and we will notify you as soon as it is decided.'
-            : 'Thanks — your details are in the queue. A member of our team reviews every application, usually within 24 hours.'}
+          An operator can approve this test credential. No identity documents are checked in this
+          build. Check this screen again for the decision.
         </Text>
       </View>
       <Card style={styles.card}>
-        <Bullet text="You can close the app — we will notify you when it is decided." />
-        <Bullet text="Most reviews finish well inside 24 hours." />
-        <Bullet text="Not heard from us after 24 hours? Message us and we will look into it." />
+        <Bullet text="You can close the app and return here to check the status." />
+        <Bullet text="Approval timing depends on the test operator." />
+        <Bullet text="If your request is stuck, message us." />
       </Card>
       {/*
         A direct way through, rather than "go to your profile and find the chat". Someone opening
@@ -482,31 +375,16 @@ function StatusView({
         the way to ask about it.
       */}
       <Button label="Chat with us" variant="secondary" onPress={() => router.push('/support')} />
-      <Text style={styles.note}>Your documents never leave your phone.</Text>
+      <Text style={styles.note}>No identity documents are requested for this test flow.</Text>
     </>
   );
 }
 
-/** Plain-language explanation of a rejection, so the user knows what to fix. */
+/** The demo operator can reject a request without performing an identity check. */
 function reasonText(code?: string): string {
-  switch (code) {
-    case 'document_unreadable':
-      return 'Your ID photo wasn’t clear enough to read. Try again in better light.';
-    case 'document_expired':
-      return 'That ID has expired. Please use a valid document.';
-    case 'face_mismatch':
-      return 'Your selfie didn’t match the photo on your ID.';
-    case 'liveness_failed':
-      return 'We couldn’t confirm a live selfie. Take it yourself, in good light.';
-    case 'document_tampered':
-      return 'The document couldn’t be accepted.';
-    case 'sanctions_hit':
-    case 'duplicate_identity':
-    case 'underage':
-      return 'We’re unable to verify this identity.';
-    default:
-      return 'Something didn’t pass our checks.';
-  }
+  return code === 'manual_review'
+    ? 'An operator has not approved this test credential yet.'
+    : 'This test-credential request was not approved. Contact support if you need help.';
 }
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
@@ -556,21 +434,6 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   bulletText: { ...Typography.caption, color: Palette.textSecondary, flex: 1 },
-  progress: {
-    ...Typography.micro,
-    color: Palette.textMuted,
-    textAlign: 'center',
-    marginBottom: Spacing.three,
-  },
-  skip: { marginTop: Spacing.three },
-  busyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.three,
-    marginVertical: Spacing.four,
-  },
-  busyText: { ...Typography.caption, color: Palette.textSecondary },
   note: { ...Typography.micro, color: Palette.textMuted, textAlign: 'center' },
   error: { ...Typography.caption, color: Palette.statusDown, marginTop: Spacing.four },
 });

@@ -92,7 +92,8 @@ type Config struct {
 	// verification record; the provider reports its verdict on an HMAC-authenticated webhook.
 	KYCWebhookSecret string        // shared secret for X-Prova-Signature; empty → checks skipped (local dev only)
 	KYCMockDelay     time.Duration // simulated provider latency for the Stage A mock provider
-	// KYCManualReview routes every submission to a human reviewer instead of auto-approving.
+	// KYCManualReview is retained for compatibility. The mock provider always
+	// requires operator approval; this flag cannot enable auto-approval.
 	//
 	// Until a licensed vendor is integrated, nothing in the pipeline actually inspects a document —
 	// so auto-approving would tell a user they are "verified" on the strength of no check at all.

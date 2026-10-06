@@ -1,9 +1,8 @@
 package store
 
-// KYC verification persistence. PII-free by design (Docs/kyc-verification.md §3): the only user
-// identifier stored is the opaque `userId` = Poseidon(secret, domain). Every state change is also
-// written to an append-only audit log, because regulators require proof of why each decision was
-// made and by whom.
+// Demo verification persistence. The opaque wallet id and signed-in account email
+// are stored for the operator queue; no identity documents are collected. State
+// changes are also written to an append-only audit log.
 
 import (
 	"context"
@@ -18,7 +17,7 @@ import (
 // ErrVerificationNotFound is returned when no verification exists for a user or reference.
 var ErrVerificationNotFound = errors.New("verification not found")
 
-// Verification is a persisted KYC verification record (no PII, ever).
+// Verification is a persisted demo verification record.
 type Verification struct {
 	ID          string
 	UserID      string
@@ -27,10 +26,8 @@ type Verification struct {
 	Expiry      int64
 	ReasonCode  string
 	ProviderRef string
-	// Email is the account this submission belongs to, for the reviewer's benefit only.
-	//
-	// Empty for rows written before accounts existed, and by any client that does not send it.
-	// Nothing about the decision depends on it — it is shown, never checked.
+	// Email comes from the authenticated session and is shown to the operator.
+	// It proves inbox control, not legal identity.
 	Email     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -184,6 +181,7 @@ func scanVerification(row scanner) (*Verification, error) {
 func (v *Verification) ToRecord() schema.VerificationRecord {
 	rec := schema.VerificationRecord{
 		VerificationID: v.ID,
+		Mode:           schema.VerificationModeDemo,
 		Status:         v.Status,
 		Tier:           v.Tier,
 		Expiry:         v.Expiry,

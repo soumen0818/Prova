@@ -134,7 +134,7 @@ export function ProfileScreen() {
           <Text style={styles.phone} numberOfLines={1} ellipsizeMode="tail">
             {session.data?.name
               ? `${session.data.name}${session.data.phone ? ` · ${session.data.phone}` : ''}`
-              : 'Verify your identity to add your name'}
+              : 'You can add your name in a future identity flow'}
           </Text>
         </View>
       </Card>
@@ -149,13 +149,13 @@ export function ProfileScreen() {
         </Card>
         <Pressable style={styles.flex} onPress={() => !verified && router.push('/kyc')}>
           <Card style={styles.statCard}>
-            <Text style={styles.statLabel}>Identity</Text>
+            <Text style={styles.statLabel}>Test credential</Text>
             <Text
               style={[
                 styles.statValue,
                 { color: verified ? Palette.accent : Palette.textSecondary },
               ]}>
-              {verified ? 'Verified' : 'Verify now'}
+              {verified ? 'Ready' : 'Request now'}
             </Text>
           </Card>
         </Pressable>
@@ -166,7 +166,7 @@ export function ProfileScreen() {
         <MenuRow Icon={UsersRound} label="Recipients" onPress={() => router.push('/recipients')} />
         <MenuRow
           Icon={ShieldCheck}
-          label={verified ? 'Identity verified' : 'Verify identity'}
+          label={verified ? 'Test credential ready' : 'Get test credential'}
           onPress={() => router.push('/kyc')}
         />
         <MenuRow Icon={Wallet} label="Add money" onPress={() => router.push('/deposit')} />

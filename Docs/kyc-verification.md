@@ -1,5 +1,12 @@
 # Prova — KYC & Verification
 
+> **Implementation status (6 October 2026):** This document describes the intended licensed-provider
+> design, not the current testnet identity process. The deployed backend uses a mock provider and an
+> operator-approved **test credential**; no ID document reaches a reviewer or licensed provider.
+> The new app source no longer asks for ID photos in this demo path. Automatic credential renewal is
+> disabled until a genuine re-review flow exists. Do not use these credentials for real money or
+> describe them as completed KYC.
+
 > Companion to [proposal.md](proposal.md) (§3 step 2, §4.2) and [implementation-guide.md](implementation-guide.md)
 > (Phase 3 / Phase 5). This is the authoritative spec for how a Prova user is verified, how a
 > verification is **approved**, and how the anchor-signed credential is issued, renewed and expired.
@@ -22,8 +29,8 @@
 3. **Approval is a three-way decision** — auto-approve / auto-reject / manual review — driven by a
    decision engine over vendor signals, with a human compliance officer for the middle band. See §5.
 4. **Credential issuance is gated by a persisted approval record**, never by the caller's request.
-5. **Credentials are short-lived (90 days) and auto-renewed.** This is the revocation mechanism —
-   see §7, which explains why an on-phone credential cannot be revoked directly.
+5. **Credentials are short-lived (90 days); renewal requires a new review.** The old silent-renewal
+   shortcut is disabled in the current demo. See §7 for the intended provider-backed flow.
 6. **Stage A ships the machinery, not a vendor.** A `Provider` interface with a mock implementation;
    swapping in a real vendor (or the anchor's SEP-12 flow) is a driver change, not a rewrite.
 

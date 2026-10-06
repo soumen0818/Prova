@@ -292,10 +292,10 @@ export default function DepositScreen() {
     return (
       <StateView
         illustration={<LockedMark color={Palette.accent} />}
-        title="Verify your identity first"
-        body="Adding money needs a verified account. It's a one-time check that takes a couple of minutes."
-        reassurance="Your details go to the licensed anchor — never stored by Prova."
-        primaryLabel="Verify identity"
+        title="Get a test credential first"
+        body="Adding test assets requires demo approval. No licensed identity check is performed in this build."
+        reassurance="Only use test assets with no monetary value."
+        primaryLabel="Request test credential"
         onPrimary={() => router.replace('/kyc')}
         secondaryLabel="Not now"
         onSecondary={() => router.back()}

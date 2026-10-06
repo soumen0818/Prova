@@ -10,7 +10,7 @@ import '../marketing.css';
 export const metadata: Metadata = {
   title: 'How it works — Prova',
   description:
-    'From verifying your identity to settlement on Stellar: what happens at each step, what leaves your phone, and what the network can see.',
+    'How the current Stellar testnet transfer works, where Midnight fits, and what remains unfinished.',
 };
 
 /**
@@ -36,8 +36,8 @@ export default function HowItWorksPage() {
               Four steps for you. <em>A lot</em> happening underneath.
             </h1>
             <p className="page-lede reveal in">
-              Sending takes about a minute. Below is what you do, and then exactly what leaves your
-              phone at each stage — so you can check the privacy claims rather than trust them.
+              Below is the current Stellar testnet journey and what leaves your phone. Midnight
+              credential proving is a separate component that is not yet wired into this app.
             </p>
           </div>
         </section>
@@ -47,7 +47,7 @@ export default function HowItWorksPage() {
           <div className="page">
             <div className="section-head reveal">
               <span className="eyebrow">What you do</span>
-              <h2>Verify once. Then send in a minute.</h2>
+              <h2>Request a test credential. Then send on testnet.</h2>
             </div>
 
             <p className="scope-note">{CORRIDOR_STATUS_NOTE}</p>
@@ -75,8 +75,8 @@ export default function HowItWorksPage() {
               <span className="eyebrow">Under the hood</span>
               <h2>What leaves your phone, step by step.</h2>
               <p>
-                This is the table worth checking. If any row said &ldquo;your amount&rdquo; or
-                &ldquo;your documents&rdquo;, the rest of this site would be marketing.
+                This table describes the current app. The credential approval is a demo workflow; no
+                identity document is checked by a reviewer or provider.
               </p>
             </div>
 
@@ -163,24 +163,24 @@ export default function HowItWorksPage() {
 
 const JOURNEY = [
   {
-    title: 'Verify your identity',
-    body: 'Photograph your ID and complete a short liveness check. A member of our team reviews it. Approval puts a credential on your phone that says only that you are verified, your tier, and when it expires.',
-    time: 'Once · usually reviewed within 24 hours',
+    title: 'Request a test credential',
+    body: 'Ask for a demo credential in the app. An operator may approve it, but this build does not perform a licensed ID check or request document photos.',
+    time: 'Approval time depends on the test operator',
   },
   {
     title: 'Add money',
-    body: 'Top up your balance, then move it into your private balance. This step is public on purpose — the institution you deposited with already knows, so hiding it would buy you nothing.',
+    body: 'Add test assets, then move them into your private balance. This is not a real bank deposit.',
     time: 'A few seconds to confirm',
   },
   {
     title: 'Send',
-    body: 'Choose a recipient and an amount. Your phone builds the proof that the transfer is valid and allowed. This is the slow part, and it is still about two and a half seconds.',
-    time: '≈ 2.6 seconds to prove',
+    body: 'Choose a recipient and an amount. Your phone builds a Stellar spend proof. Time varies by device; a Midnight eligibility proof is not yet part of this app step.',
+    time: 'Proof time varies by device',
   },
   {
     title: 'They receive',
     body: 'The transfer settles on Stellar and the money appears in the recipient’s private balance, ready for them to send onward.',
-    time: '≈ 5 seconds to settle',
+    time: 'Settlement time varies by network',
   },
 ];
 
@@ -191,9 +191,9 @@ const TRANSMISSION = [
     kept: 'Your PIN, and every key derived from it',
   },
   {
-    step: 'Verifying identity',
-    sent: 'An opaque identifier and which documents you captured — no images',
-    kept: 'Photographs of your ID and your face; they are read on-device',
+    step: 'Requesting a test credential',
+    sent: 'Your signed-in account and an opaque wallet identifier',
+    kept: 'Your wallet secret; no ID photos are requested',
   },
   {
     step: 'Adding money',
@@ -223,14 +223,14 @@ const MECHANISMS = [
   },
   {
     title: 'A credential, not an identity',
-    body: 'Approval issues your device a signed statement that you are verified. Your transfer proves it holds a valid one; it never attaches it. So the network can enforce the rules without learning who is following them.',
+    body: 'A demo approval issues a signed test credential to your device. The Stellar proof uses it today; the separate Midnight eligibility decision is not yet enforced by settlement.',
   },
 ];
 
 const FAQ = [
   {
     q: 'If you cannot see amounts, how do you stop money laundering?',
-    a: 'Every transfer must include a proof that the sender holds a valid, unexpired verification credential and is inside the transfer limit for their tier. The contract rejects anything without one. So the rules are enforced on every single transfer — more consistently than a system that checks a database after the fact — without the network learning who is behind it.',
+    a: 'The Stellar testnet contract checks a signed test credential and transfer limits inside its proof. This demonstrates the mechanism, but the current demo approval is not a licensed identity or sanctions check. A real-money service needs a qualified provider and regulated partners.',
   },
   {
     q: 'What happens if I lose my phone?',
@@ -238,7 +238,7 @@ const FAQ = [
   },
   {
     q: 'Can you freeze or reverse my transfer?',
-    a: 'No. A transfer confirmed on a public blockchain is final. We can decline to relay one, and we can revoke a verification so no future transfer proves valid, but we cannot claw back money that has settled.',
+    a: 'No. A transfer confirmed on a public blockchain is final. We can decline to relay a new test transfer, but cannot claw back one that has settled.',
   },
   {
     q: 'Why is adding money public when everything else is private?',

@@ -6,9 +6,8 @@ package kyc
 // Phase 5 the licensed anchor's own flow, without touching the service or handlers.
 // See Docs/kyc-verification.md §8.
 //
-// NOTE the shape of this interface: **no personal data crosses it**. Documents and PII travel
-// directly from the device to the provider; Prova only starts a session and later receives a
-// verdict. That is what keeps the backend PII-free by construction, not by policy.
+// The current mock receives only an opaque wallet id and tier. It does not inspect
+// identity documents. A real provider integration needs a separate data-handling review.
 
 import (
 	"context"
@@ -54,10 +53,8 @@ type VerdictSink func(ctx context.Context, v Verdict)
 
 // MockProvider simulates the real pipeline so every path is testable without a vendor account.
 //
-// It models the three-way decision from Docs/kyc-verification.md §5: most submissions auto-approve
-// after a short delay, some escalate to review, some hard-fail. Which outcome a submission gets is
-// **deterministic** per userID (so a given test wallet always behaves the same), and can be forced
-// outright via ForceDecision for scripted testing.
+// It can model three decisions for tests, but the API runtime forces every demo
+// request into manual review. No mock decision may grant a live credential automatically.
 type MockProvider struct {
 	// Delay before the simulated automated checks return (real vendors take seconds to minutes).
 	Delay time.Duration

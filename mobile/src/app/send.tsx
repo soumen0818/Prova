@@ -9,7 +9,8 @@ import { authenticate, canUseBiometrics } from '@/lib/auth';
 import { debit, formatBalance, getBalanceMinor, settlementDenomination } from '@/lib/balance';
 import { syncBackup } from '@/lib/cloud-backup';
 import { useMoney, usesPool } from '@/hooks/use-money';
-import { getStoredCredential, isExpired } from '@/lib/kyc';
+import { getUsableCredential } from '@/lib/kyc';
+import { poolUserId } from '@/lib/pool';
 import { formatAmount, minorPerUnit, parseAmountToMinor, tierLimit } from '@prova/shared';
 import { hasPin } from '@/lib/pin';
 import { InsufficientFunds, sendPrivately, type Payee } from '@/lib/pool';
@@ -72,13 +73,16 @@ export default function SendScreen() {
   useEffect(() => {
     let active = true;
     (async () => {
-      const s = await getSecret(SecureKey.zkSecretKey);
-      // Only accept a credential the circuit would still honour: an expired one produces a proof
-      // the contract rejects, so treat it as "not verified" and send the user back to KYC.
-      const stored = await getStoredCredential();
-      if (!active) return;
-      setSecret(s);
-      setCredential(stored && !isExpired(stored) ? stored : null);
+      try {
+        const s = await getSecret(SecureKey.zkSecretKey);
+        // Both expiry and wallet binding must hold before the send UI can use a credential.
+        const stored = await getUsableCredential(await poolUserId());
+        if (!active) return;
+        setSecret(s);
+        setCredential(stored);
+      } catch {
+        if (active) setError('Wallet is not ready. Return to the home screen and try again.');
+      }
     })();
     return () => {
       active = false;
@@ -357,7 +361,7 @@ export default function SendScreen() {
       return;
     }
     if (!secret || !credential) {
-      setError('Verify your identity first.');
+      setError('Get a test credential first.');
       return;
     }
     if (usesPool) {
@@ -446,11 +450,11 @@ export default function SendScreen() {
       <Screen scroll>
         <Card style={styles.gateCard}>
           <ShieldCheck color={Palette.accent} size={22} strokeWidth={2} />
-          <Text style={styles.gateTitle}>Verify your identity first</Text>
+          <Text style={styles.gateTitle}>Get a test credential first</Text>
           <Text style={styles.gateBody}>
-            One quick check with the anchor unlocks private transfers.
+            Demo approval unlocks testnet transfers. It is not a licensed identity check.
           </Text>
-          <Button label="Verify identity" onPress={() => router.replace('/kyc')} />
+          <Button label="Request test credential" onPress={() => router.replace('/kyc')} />
         </Card>
       </Screen>
     );

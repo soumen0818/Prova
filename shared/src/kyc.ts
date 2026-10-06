@@ -1,10 +1,8 @@
 /**
  * KYC verification contract (mobile <-> Go backend). Mirrors kyc.go.
  *
- * See Docs/kyc-verification.md. This API carries **no personally identifying information** by
- * design: only the opaque `userId` (= `Poseidon(secret, domain)`), a tier, and a status. Documents
- * and personal data go straight from the device to the verification provider — never through Prova,
- * which therefore has no identity data to store or leak.
+ * See Docs/kyc-verification.md. The current demo request uses an opaque `userId`, a tier,
+ * and the signed-in account email; it does not send documents to a provider.
  */
 
 import type { Hex } from './proof.js';
@@ -21,8 +19,11 @@ export type VerificationStatus =
   | 'approved'
   /** Failed; see `reasonCode` for whether a retry is allowed. */
   | 'rejected'
-  /** Credential window lapsed; renewal (re-screening) required. */
+  /** Credential window lapsed; a new demo approval is required. */
   | 'expired';
+
+/** Which process produced this status. Only demo approval is implemented today. */
+export type VerificationMode = 'demo';
 
 /** KYC tiers — the tier decides what data was collected and the limit it unlocks. */
 export const Tier = {
@@ -39,12 +40,13 @@ export const Tier = {
  *
  * A **security** parameter, not a convenience one: the credential lives on the user's phone and
  * cannot be revoked remotely (the circuit only checks expiry), so a short window bounds the exposure
- * if a user is sanctioned after approval. Re-screening happens at every renewal.
+ * if a user is sanctioned after approval. The current demo cannot re-screen, so silent
+ * renewal is disabled and a new operator decision is required after expiry.
  * See Docs/kyc-verification.md §7.
  */
 export const CREDENTIAL_TTL_DAYS = 90;
 
-/** How early the app silently renews the credential before it expires. */
+/** Reserved for a future provider-backed renewal flow; unused in the demo. */
 export const CREDENTIAL_RENEW_WINDOW_DAYS = 14;
 
 /**
@@ -86,22 +88,24 @@ export function retryableReason(code: string): boolean {
   ).includes(code);
 }
 
-/** Which artefacts the user captured on-device (names only — the images never leave the phone). */
+/** Legacy capture names; the demo does not request identity documents. */
 export type CapturedArtifact = 'document_front' | 'document_back' | 'selfie' | 'proof_of_address';
 
-/** Body of `POST /kyc/verifications`. Carries no PII. */
+/** Body of `POST /kyc/verifications`; the server uses session email, not a body email. */
 export interface StartVerificationRequest {
   /** `Poseidon(secret, domain)` — opaque; identifies a wallet without revealing it. */
   userId: Hex;
   /** Requested tier (1..3). */
   tier: number;
-  /** Artefact kinds supplied on-device (for the UI and audit trail). */
+  /** Legacy compatibility field, not evidence of an identity check. */
   captured?: CapturedArtifact[];
 }
 
 /** Status view returned to the app. No PII. */
 export interface VerificationRecord {
   verificationId: string;
+  /** `demo` is not a licensed identity check. */
+  mode: VerificationMode;
   status: VerificationStatus;
   tier: number;
   /** Unix seconds of the approved credential window (absent unless approved). */

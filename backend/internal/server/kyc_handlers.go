@@ -2,9 +2,8 @@ package server
 
 // KYC verification endpoints — see Docs/kyc-verification.md §6.
 //
-// None of these accept personal data. The app sends only the opaque userId (= Poseidon(secret,
-// domain)) and a tier; documents go straight from the device to the verification provider. There is
-// deliberately no endpoint that can receive a document, so there is no document store to leak.
+// The demo sends an opaque wallet id and tier. The server reads the signed-in email
+// from the session for the operator queue. No identity document is accepted or checked.
 
 import (
 	"crypto/hmac"
@@ -98,7 +97,9 @@ func (h *handler) getVerification(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := h.verification.Get(r.Context(), userID)
 	if errors.Is(err, kyc.ErrNotFound) {
-		writeJSON(w, http.StatusOK, schema.VerificationRecord{Status: schema.VerificationNotStarted})
+		writeJSON(w, http.StatusOK, schema.VerificationRecord{
+			Mode: schema.VerificationModeDemo, Status: schema.VerificationNotStarted,
+		})
 		return
 	}
 	if err != nil {
@@ -265,8 +266,8 @@ func (h *handler) issueCredential(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cred)
 }
 
-// renewCredential re-issues before expiry (POST /kyc/credential/renew). Re-screening at renewal is
-// what bounds sanctions exposure, since an on-phone credential cannot be revoked remotely.
+// renewCredential retains the authenticated route for old clients but never issues a new
+// credential until a genuine re-review flow is implemented.
 func (h *handler) renewCredential(w http.ResponseWriter, r *http.Request) {
 	var req schema.StartVerificationRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKYCBody)).Decode(&req); err != nil {
@@ -295,6 +296,10 @@ func (h *handler) renewCredential(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, kyc.ErrNotApproved), errors.Is(err, kyc.ErrNotFound):
 		writeError(w, http.StatusForbidden, schema.ErrKYCRequired, "verification is not approved")
+		return
+	case errors.Is(err, kyc.ErrReviewRequired):
+		writeError(w, http.StatusConflict, schema.ErrKYCRequired,
+			"request a new test credential for operator approval")
 		return
 	case err != nil:
 		h.logger.Error("credential renewal failed", "err", err)

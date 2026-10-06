@@ -27,15 +27,15 @@ export default function HomePage() {
           <div className="hero-glow" aria-hidden="true" />
           <div className="page hero-grid">
             <div>
-              <span className="eyebrow reveal in">UAE → India · Stellar</span>
+              <span className="eyebrow reveal in">Midnight privacy · Stellar settlement</span>
               <h1 className="reveal in">
                 Send money home <em>without</em> broadcasting it.
               </h1>
               <p
                 className="hero-sub reveal in"
                 style={{ '--delay': '80ms' } as React.CSSProperties}>
-                Prova proves your transfer is compliant on your own phone. The amount, the recipient
-                and your documents never leave it — only a proof does.
+                Private transfers work on Stellar testnet today. Midnight credential proofs are
+                built and tested, with the app-to-Midnight connection still in progress.
               </p>
               <div
                 className="hero-actions reveal in"
@@ -56,14 +56,56 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="section" id="networks">
+          <div className="page">
+            <div className="section-head reveal">
+              <span className="eyebrow">Two networks, distinct jobs</span>
+              <h2>Privacy on Midnight. Settlement on Stellar.</h2>
+              <p>
+                This is the architecture we are building. The current Android app settles private
+                test transfers on Stellar; it does not yet require a Midnight decision.
+              </p>
+            </div>
+            <div className="grid-2">
+              <article className="card feature reveal">
+                <h3>Midnight · eligibility</h3>
+                <p>
+                  Our Compact contract proves that an issuer-signed credential meets a public KYC
+                  policy without publishing its contents. It has 39 recorded passing tests and an
+                  initial Preprod deployment. Product integration and a managed deployment remain
+                  open.
+                </p>
+                <a
+                  className="inline-link"
+                  href="https://github.com/soumen0818/Prova/tree/main/privacy/midnight">
+                  Inspect the contract and tests →
+                </a>
+              </article>
+              <article className="card feature reveal">
+                <h3>Stellar · value</h3>
+                <p>
+                  The Android app uses a Soroban shielded pool for testnet transfers. Stellar holds
+                  the test assets and verifies the existing spend proof. It does not yet enforce a
+                  Midnight authorization.
+                </p>
+                <a
+                  className="inline-link"
+                  href="https://github.com/soumen0818/Prova/blob/main/contracts/DEPLOYMENTS.md">
+                  See Stellar contract references →
+                </a>
+              </article>
+            </div>
+          </div>
+        </section>
+
         <section className="section" id="privacy">
           <div className="page">
             <div className="section-head reveal">
               <span className="eyebrow">Private by construction</span>
-              <h2>Nobody sees your money — including us.</h2>
+              <h2>Private transfer details, with clear limits.</h2>
               <p>
-                Privacy here is not a policy we promise to keep. It is what the system is physically
-                able to know, which is almost nothing.
+                The Stellar proof hides amounts and recipients in the shielded transfer. Identity
+                approval is still a testnet demo, not a licensed KYC check.
               </p>
             </div>
 
@@ -88,10 +130,10 @@ export default function HomePage() {
           <div className="page">
             <div className="section-head reveal">
               <span className="eyebrow">How it works</span>
-              <h2>Four steps, about a minute.</h2>
+              <h2>Four steps on testnet.</h2>
               <p>
-                The heavy work — proving you are allowed to send this — happens on the phone in your
-                hand, in a couple of seconds.
+                Proof generation runs on the phone. Timing varies by device and network, and the
+                Midnight proof is not yet part of the app journey.
               </p>
             </div>
 
@@ -113,11 +155,11 @@ export default function HomePage() {
           <div className="page">
             <div className="section-head reveal">
               <span className="eyebrow">Compliance</span>
-              <h2>Private does not mean unaccountable.</h2>
+              <h2>Test credentials today; private eligibility next.</h2>
               <p>
-                Every transfer carries a proof that the sender is verified, within their limit, and
-                that their verification has not expired. The proof is checked by the network. What
-                it does not carry is who they are.
+                The current Stellar proof checks a signed test credential and transfer rules. The
+                Midnight contract separately tests private credential eligibility; it does not yet
+                authorize transfers from this app. No licensed identity provider is connected.
               </p>
             </div>
 
@@ -165,8 +207,8 @@ const FEATURES = [
   },
   {
     glyph: '◇',
-    title: 'Your documents never upload',
-    body: 'Identity checks run on the device. Photos of your ID and your face are read where they were taken and are not sent to us — there is deliberately no endpoint that could receive them.',
+    title: 'No documents in this demo',
+    body: 'The current test credential flow does not request ID photos. A licensed identity-check provider is not yet connected.',
   },
   {
     glyph: '○',
@@ -177,16 +219,16 @@ const FEATURES = [
 
 const STEPS = [
   {
-    title: 'Verify once',
-    body: 'Confirm your identity in the app. A person on our team reviews it, usually well within 24 hours.',
+    title: 'Get a test credential',
+    body: 'Request a demo approval in the app. An operator may approve it, but no identity document is checked.',
   },
   {
     title: 'Add money',
-    body: 'Top up, then move it into your private balance. That step is public by design — the anchor already knows.',
+    body: 'Add test assets, then move them into your private balance. This is not a bank deposit.',
   },
   {
     title: 'Prove and send',
-    body: 'Your phone builds a zero-knowledge proof in a couple of seconds. Only the proof is submitted.',
+    body: 'Your phone builds a zero-knowledge spend proof. Proving time depends on the device.',
   },
   {
     title: 'They receive',
@@ -196,8 +238,8 @@ const STEPS = [
 
 const COMPLIANCE = [
   {
-    title: 'Verified, without identifying you',
-    body: 'Approval issues a credential to your device saying only that you are verified, your tier, and when it expires. Your transfer proves it holds a valid one — it does not attach it.',
+    title: 'A private credential proof',
+    body: 'Midnight can prove an issuer-signed credential meets a KYC policy without revealing its contents. This contract is tested, but not yet connected to the app.',
   },
   {
     title: 'Limits enforced by the network',
@@ -205,11 +247,11 @@ const COMPLIANCE = [
   },
   {
     title: 'Credentials expire',
-    body: 'A credential lives on a phone and cannot be revoked remotely, so it is short-lived by design. Renewal re-screens, which bounds how long a stale approval can be used.',
+    body: 'The test credential has an expiry. Automated renewal is not a substitute for a licensed identity check; the real provider workflow remains to be built.',
   },
   {
     title: 'An audit trail that holds no identities',
-    body: 'Every verification decision is recorded immutably — what changed, when, and who decided. The subject is an opaque hash, so the trail proves the process without exposing the person.',
+    body: 'The backend records demo approval decisions and their status changes. These records document operator actions, not a completed document review.',
   },
 ];
 
@@ -217,5 +259,5 @@ const STATS = [
   { value: '~2.6s', label: 'Proof built on a mid-range phone' },
   { value: '5s', label: 'Typical settlement on Stellar' },
   { value: '0', label: 'Amounts stored on our servers' },
-  { value: '0', label: 'Documents uploaded to us' },
+  { value: '39', label: 'Recorded passing Midnight tests' },
 ];

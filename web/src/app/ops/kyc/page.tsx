@@ -44,9 +44,9 @@ export default async function KycQueuePage({
       <div className="ops-head">
         <h1>Verifications</h1>
         <p>
-          Every submission is reviewed by a person. Nothing here contains a name or a document — the
-          app checks those on the device and never uploads them, so you are deciding on the record,
-          not on the paperwork.
+          This is a test-credential approval queue. No ID document or selfie reaches this console,
+          and no licensed provider checks one. Approval enables testnet use; it must not be treated
+          as proof of identity.
         </p>
       </div>
 

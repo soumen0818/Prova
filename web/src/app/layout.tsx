@@ -1,18 +1,16 @@
 import type { Metadata, Viewport } from 'next';
-import { Urbanist } from 'next/font/google';
+import localFont from 'next/font/local';
 
 import './globals.css';
 
 /**
- * Urbanist is the app's typeface, self-hosted by `next/font` at build time.
+ * Urbanist is pinned in the web lockfile and bundled by `next/font/local`.
  *
- * Loading it from Google's CDN at runtime would put a third party in the render path of every page
- * view and hand them a log of who visited — an odd thing to do on a site whose subject is not being
- * observed.
+ * This avoids both browser requests to Google and a build-time fetch that can fail in CI.
  */
-const urbanist = Urbanist({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+const urbanist = localFont({
+  src: '../../node_modules/@fontsource-variable/urbanist/files/urbanist-latin-wght-normal.woff2',
+  weight: '100 900',
   display: 'swap',
   variable: '--font-urbanist',
 });
